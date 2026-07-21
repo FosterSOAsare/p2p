@@ -1,71 +1,337 @@
-import { NavLink, Link, Outlet } from 'react-router-dom'
-import { Handshake, Store, ShieldCheck, Palette } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { NavLink, Link, Outlet, useLocation } from 'react-router-dom'
+import {
+  Handshake,
+  Store,
+  ShieldCheck,
+  Menu,
+  X,
+  User,
+  ShoppingBag,
+  Settings,
+  ChevronDown,
+  LogOut,
+  LayoutDashboard,
+  Package,
+  Sun,
+  Moon,
+  PlusCircle,
+  FileText,
+} from 'lucide-react'
+import { Footer } from './Footer'
 
 const primaryNavItems = [
   { to: '/marketplace', label: 'Marketplace', icon: Store },
-  { to: '/escrow', label: 'Escrow', icon: ShieldCheck },
+  { to: '/escrow', label: 'Escrow Deals', icon: ShieldCheck },
+  { to: '/sell', label: 'Sell Goods', icon: Store },
+  { to: '/user/orders', label: 'My Orders', icon: ShoppingBag },
 ]
 
 export function Layout() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(true)
+
+  // Dark/Light Mode Theme State (Class strategy with System fallback)
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('p2p_theme')
+    if (saved) return saved === 'dark'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark')
+      localStorage.setItem('p2p_theme', 'dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+      localStorage.setItem('p2p_theme', 'light')
+    }
+  }, [darkMode])
+
+  const location = useLocation()
+  const isHomePage = location.pathname === '/'
+
+  // Automatically scroll to top when route changes
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [location.pathname])
+
+  const toggleTheme = () => setDarkMode(!darkMode)
+
   return (
-    <div className="min-h-screen flex flex-col bg-white text-slate-900">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-          <Link to="/" className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-600 text-white">
-              <Handshake size={18} />
+    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
+      <header className={`sticky top-0 z-40 border-b backdrop-blur-md transition-colors duration-300 ${darkMode ? 'border-slate-800 bg-slate-950/90' : 'border-slate-200/80 bg-white/90'}`}>
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2 group">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 text-white shadow-md transition-transform group-hover:scale-105">
+              <Handshake size={20} />
             </span>
-            <span className="font-display text-lg font-semibold">P2P Trust Market</span>
+            <span className={`font-display text-base sm:text-lg font-bold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+              P2P Trust Market
+            </span>
           </Link>
 
-          <nav className="hidden items-center gap-1 md:flex">
+          {/* Desktop Navigation Bar */}
+          <nav className="hidden md:flex items-center gap-1">
             {primaryNavItems.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
                 className={({ isActive }) =>
-                  `flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                    isActive ? 'bg-primary-50 text-primary-700' : 'text-slate-600 hover:text-slate-900'
+                  `flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
+                    isActive
+                      ? darkMode ? 'bg-primary-950 text-primary-400 font-bold border border-primary-800/60' : 'bg-primary-50 text-primary-700 font-bold border border-primary-200/80'
+                      : darkMode ? 'text-slate-300 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                   }`
                 }
               >
-                <Icon size={16} />
+                <Icon size={15} />
                 {label}
               </NavLink>
             ))}
           </nav>
 
+          {/* Action Links, Theme Toggle & Profile Dropdown */}
           <div className="flex items-center gap-2">
-            <Link
-              to="/sell"
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            <div className="hidden sm:flex items-center gap-2">
+              {/* + New Escrow Deal CTA Button */}
+              <Link
+                to="/escrow/new"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:bg-primary-700 transition-all cursor-pointer"
+              >
+                <PlusCircle size={15} /> New Deal
+              </Link>
+
+              {isLoggedIn ? (
+                /* Logged-In User Profile Pill & Dropdown */
+                <div className="relative">
+                  <button
+                    onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                    className={`flex items-center gap-2 rounded-xl border p-1.5 pr-2.5 text-xs font-semibold transition-all cursor-pointer ${
+                      darkMode ? 'border-slate-800 bg-slate-900 text-slate-100 hover:bg-slate-800' : 'border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <img
+                      src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80"
+                      alt="User Avatar"
+                      className="h-6 w-6 rounded-lg object-cover"
+                    />
+                    <span>kwaku_b</span>
+                    <ChevronDown size={14} className="text-slate-400" />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {userDropdownOpen && (
+                    <div
+                      className={`absolute right-0 mt-2 w-56 rounded-2xl border p-2 shadow-2xl animate-fade-in z-50 text-xs space-y-0.5 ${
+                        darkMode ? 'border-slate-800 bg-slate-900 text-slate-100' : 'border-slate-200 bg-white text-slate-900'
+                      }`}
+                      onMouseLeave={() => setUserDropdownOpen(false)}
+                    >
+                      <div className={`px-3 py-2 border-b mb-1 ${darkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+                        <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>Kwaku Bonsu</p>
+                        <p className="text-[11px] text-slate-400 truncate">kwaku@example.com</p>
+                      </div>
+
+                      <Link
+                        to="/user/dashboard"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
+                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
+                        }`}
+                      >
+                        <LayoutDashboard size={15} /> Dashboard Overview
+                      </Link>
+
+                      <Link
+                        to="/user/orders"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
+                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
+                        }`}
+                      >
+                        <ShoppingBag size={15} /> My Orders & Sales
+                      </Link>
+
+                      <Link
+                        to="/user/products"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
+                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
+                        }`}
+                      >
+                        <Package size={15} /> My Products
+                      </Link>
+
+                      <Link
+                        to="/vendor/dashboard"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
+                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
+                        }`}
+                      >
+                        <Store size={15} /> Merchant Store Panel
+                      </Link>
+
+                      <Link
+                        to="/user/settings"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
+                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
+                        }`}
+                      >
+                        <Settings size={15} /> Account Settings
+                      </Link>
+
+                      <Link
+                        to="/terms"
+                        onClick={() => setUserDropdownOpen(false)}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
+                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
+                        }`}
+                      >
+                        <FileText size={15} /> Terms & Legal Policy
+                      </Link>
+
+                      <div className={`pt-1 border-t mt-1 ${darkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+                        <button
+                          onClick={() => {
+                            setIsLoggedIn(false)
+                            setUserDropdownOpen(false)
+                          }}
+                          className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 font-semibold cursor-pointer"
+                        >
+                          <LogOut size={15} /> Sign Out
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/login"
+                    className={`rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                      darkMode ? 'border-slate-800 text-slate-300 hover:bg-slate-900' : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    Log In
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="rounded-xl bg-primary-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-primary-700 transition-colors"
+                  >
+                    Sign Up
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Dark / Light Mode Toggle Button */}
+            <button
+              onClick={toggleTheme}
+              aria-label="Toggle Theme"
+              className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer ${
+                darkMode
+                  ? 'border-slate-800 bg-slate-900 text-amber-400 hover:bg-slate-800'
+                  : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+              title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             >
-              Sell
-            </Link>
-            <Link to="/login" className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900">
-              Log in
-            </Link>
-            <Link
-              to="/signup"
-              className="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+              {darkMode ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+
+            {/* Mobile menu trigger */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className={`flex md:hidden h-9 w-9 items-center justify-center rounded-xl border transition-all ${
+                darkMode ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 bg-slate-100 text-slate-700'
+              }`}
+              aria-label="Toggle Navigation Drawer"
             >
-              Sign up
-            </Link>
-            <span className="mx-1 h-6 w-px bg-slate-200" />
-            <Link
-              to="/style-guide"
-              title="Style Guide"
-              className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            >
-              <Palette size={16} />
-            </Link>
+              {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Drawer */}
+        {mobileMenuOpen && (
+          <div className={`md:hidden border-t p-4 animate-fade-in ${darkMode ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-900'}`}>
+            <nav className="space-y-1">
+              {primaryNavItems.map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold ${
+                      isActive
+                        ? darkMode ? 'bg-primary-950 text-primary-400 font-bold' : 'bg-primary-50 text-primary-700 font-bold'
+                        : darkMode ? 'text-slate-300 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-50'
+                    }`
+                  }
+                >
+                  <Icon size={16} />
+                  {label}
+                </NavLink>
+              ))}
+
+              <Link
+                to="/escrow/new"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3 text-xs font-bold text-white shadow-md my-2"
+              >
+                <PlusCircle size={16} /> Create New Escrow Deal
+              </Link>
+
+              <div className={`pt-2 border-t space-y-1 font-medium ${darkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3">Account & Support</span>
+                <Link
+                  to="/user/dashboard"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${darkMode ? 'text-slate-300 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <LayoutDashboard size={16} /> Dashboard Overview
+                </Link>
+                <Link
+                  to="/user/orders"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${darkMode ? 'text-slate-300 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <ShoppingBag size={16} /> My Orders & Sales
+                </Link>
+                <Link
+                  to="/user/products"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${darkMode ? 'text-slate-300 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <Package size={16} /> My Products
+                </Link>
+                <Link
+                  to="/terms"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${darkMode ? 'text-slate-300 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                >
+                  <FileText size={16} /> Terms & Privacy
+                </Link>
+              </div>
+            </nav>
+          </div>
+        )}
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
-        <Outlet />
+      <main className="w-full flex-1">
+        {isHomePage ? (
+          <Outlet />
+        ) : (
+          <div className="mx-auto max-w-6xl px-3 sm:px-6 py-3 sm:py-8">
+            <Outlet />
+          </div>
+        )}
       </main>
+      <Footer />
     </div>
   )
 }

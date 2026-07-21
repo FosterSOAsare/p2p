@@ -144,7 +144,7 @@ export function StyleGuide() {
             filters, which then show here as removable chips (per [buyer.md](buyer.md)).
           </p>
           <div className="max-w-lg space-y-3">
-            <SearchBar />
+            <SearchBar filterCount={filters.length} />
             <div className="flex flex-wrap gap-2">
               {filters.map((label) => (
                 <FilterChip
@@ -181,8 +181,9 @@ export function StyleGuide() {
         <section id="listing-card" className="scroll-mt-8">
           <h2 className="font-display text-xl font-semibold mb-4">Listing Card</h2>
           <p className="mb-4 text-sm text-slate-600">Core card for Marketplace Browse and Saved Listings.</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <ListingCard
+              id="1"
               title="Wireless mechanical keyboard"
               price="$89.00"
               location="Accra • Ships nationwide"
@@ -190,8 +191,10 @@ export function StyleGuide() {
               vendorVerified
               rating={4.5}
               reviewCount={62}
+              imageUrl="https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800&auto=format&fit=crop&q=80"
             />
             <ListingCard
+              id="2"
               title="Vintage film camera"
               price="$150.00"
               location="Kumasi • Local pickup"
@@ -199,8 +202,10 @@ export function StyleGuide() {
               vendorVerified
               rating={5}
               reviewCount={19}
+              imageUrl="https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=800&auto=format&fit=crop&q=80"
             />
             <ListingCard
+              id="3"
               title="Office chair, like new"
               price="$40.00"
               location="Tema • Ships nationwide"
@@ -208,6 +213,7 @@ export function StyleGuide() {
               vendorVerified={false}
               rating={3}
               reviewCount={4}
+              imageUrl="https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&auto=format&fit=crop&q=80"
             />
           </div>
         </section>
