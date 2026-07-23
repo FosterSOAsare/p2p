@@ -12,7 +12,6 @@ import {
   Smartphone,
   Wallet,
 } from 'lucide-react'
-import { AdminGuard } from '../features/admin/ui/AdminGuard'
 import { useAdminKyc, useApproveKyc, useRejectKyc } from '../features/admin/data/adminApi'
 import { apiErrorMessage } from '../features/shared/libs/api'
 import { formatDate, formatDateTime } from '../features/shared/libs/date'
@@ -57,7 +56,7 @@ export function AdminKycDetail() {
   }
 
   return (
-    <AdminGuard>
+    <>
       <div className="mx-auto max-w-3xl py-4 sm:py-6 space-y-6">
         <Link
           to="/admin/kyc"
@@ -219,6 +218,6 @@ export function AdminKycDetail() {
           </>
         )}
       </div>
-    </AdminGuard>
+    </>
   )
 }

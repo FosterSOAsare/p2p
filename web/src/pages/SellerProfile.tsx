@@ -7,6 +7,7 @@ import {
   MessageCircle,
   Package,
   Trophy,
+  Star,
   MapPin,
   CalendarDays,
   Loader2,
@@ -129,7 +130,7 @@ export function SellerProfile() {
           {!isOwnProfile && !blockEntry && (
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => navigate(me ? `/messages/${profile.username}` : '/login')}
+                onClick={() => navigate(me ? `/messages/${profile.username}?redirect=/seller/${profile.username}` : '/login')}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-md hover:bg-primary-700 transition-all cursor-pointer"
               >
                 <MessageCircle size={16} />
@@ -170,7 +171,7 @@ export function SellerProfile() {
 
 
         {/* Stats strip */}
-        <div className="mt-6 grid grid-cols-2 gap-3 border-t border-slate-100 dark:border-slate-800 pt-5 sm:max-w-sm">
+        <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-3 border-t border-slate-100 dark:border-slate-800 pt-5 sm:max-w-lg">
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50 dark:bg-primary-950/60 text-primary-600 dark:text-primary-400">
               <Package size={16} />
@@ -187,6 +188,20 @@ export function SellerProfile() {
             <div>
               <div className="text-sm font-bold text-slate-900 dark:text-white">{profile.stats.salesCompleted}</div>
               <div className="text-[10px] font-semibold uppercase text-slate-400">Completed Sales</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-500">
+              <Star size={16} fill="currentColor" />
+            </span>
+            <div>
+              <div className="text-sm font-bold text-slate-900 dark:text-white">
+                {profile.stats.rating !== null ? profile.stats.rating.toFixed(1) : '—'}
+                {profile.stats.reviewCount > 0 && (
+                  <span className="text-[10px] font-normal text-slate-400"> ({profile.stats.reviewCount})</span>
+                )}
+              </div>
+              <div className="text-[10px] font-semibold uppercase text-slate-400">Rating</div>
             </div>
           </div>
         </div>

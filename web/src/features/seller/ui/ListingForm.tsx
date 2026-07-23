@@ -70,10 +70,10 @@ export function ListingForm({ defaultValues, submitLabel, pendingLabel, isPendin
         </label>
         <textarea
           id="listing-desc"
-          rows={4}
+          rows={7}
           {...register('description')}
           placeholder="Condition details, what's included, warranty, delivery notes..."
-          className={`${inputClass} resize-none`}
+          className={`${inputClass} resize-y`}
         />
         <FieldError message={errors.description?.message} />
       </div>
@@ -83,7 +83,7 @@ export function ListingForm({ defaultValues, submitLabel, pendingLabel, isPendin
           <label className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400" htmlFor="listing-price">
             Price (GH₵)
           </label>
-          <input id="listing-price" type="number" step="0.01" min={0} {...register('price')} className={inputClass} />
+          <input id="listing-price" type="number" step="0.01" min={0} {...register('price', { valueAsNumber: true })} className={inputClass} />
           <FieldError message={errors.price?.message} />
         </div>
 
@@ -91,7 +91,7 @@ export function ListingForm({ defaultValues, submitLabel, pendingLabel, isPendin
           <label className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400" htmlFor="listing-qty">
             Quantity
           </label>
-          <input id="listing-qty" type="number" min={1} {...register('quantity')} className={inputClass} />
+          <input id="listing-qty" type="number" min={1} {...register('quantity', { valueAsNumber: true })} className={inputClass} />
           <FieldError message={errors.quantity?.message} />
         </div>
 
@@ -138,10 +138,10 @@ export function ListingForm({ defaultValues, submitLabel, pendingLabel, isPendin
         <div className="flex gap-3">
           <textarea
             id="listing-images"
-            rows={3}
+            rows={5}
             {...register('imagesText')}
             placeholder={'https://images.unsplash.com/photo-...\nhttps://...'}
-            className={`${inputClass} resize-none font-mono text-[11px] flex-1`}
+            className={`${inputClass} resize-y font-mono text-[11px] flex-1`}
           />
           {firstImage && (
             <img src={firstImage} alt="Cover preview" className="h-20 w-20 rounded-xl object-cover border border-slate-200 dark:border-slate-800 shrink-0" />

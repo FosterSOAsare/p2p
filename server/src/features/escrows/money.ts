@@ -1,0 +1,53 @@
+/**
+ * Fee math — ported from TaaS (packages/shared/money.ts), adapted from BigInt
+ * minor units to integer pesewas so the payout invariant survives Decimal storage:
+ *   fundingTotal === sellerPayout + fee   (always, on any amount)
+ * The fee is computed ONCE at creation and stored — never recomputed.
+ */
+
+export interface FeeConfig {
+  bps: number; // basis points (150 = 1.5%)
+  minP: number; // minimum fee, pesewas
+  capP: number; // cap, pesewas (0 = no cap)
+}
+
+export const FIAT_FEE: FeeConfig = { bps: 150, minP: 200, capP: 15_000 }; // 1.5%, min GH₵2, cap GH₵150
+export const CRYPTO_FEE: FeeConfig = { bps: 100, minP: 0, capP: 0 }; // 1.0%, no min/cap
+
+export function toPesewas(amount: number): number {
+  return Math.round(amount * 100);
+}
+
+export function fromPesewas(p: number): number {
+  return p / 100;
+}
+
+export function computeFeeP(amountP: number, cfg: FeeConfig): number {
+  let raw = Math.floor((amountP * cfg.bps) / 10_000);
+  if (raw < cfg.minP) raw = cfg.minP;
+  if (cfg.capP > 0 && raw > cfg.capP) raw = cfg.capP;
+  return raw;
+}
+
+/** Fee split is 50/50 (SPLIT). Integer-floor the buyer's half; seller takes the rounding remainder. */
+export function feeMathP(amountP: number, feeP: number) {
+  const buyerShareP = Math.floor(feeP / 2);
+  const sellerShareP = feeP - buyerShareP;
+  return {
+    buyerShareP,
+    sellerShareP,
+    fundingTotalP: amountP + buyerShareP, // what the buyer pays/locks
+    sellerPayoutP: amountP - sellerShareP, // what the seller receives on release
+  };
+}
+
+/** Convenience: full breakdown in GH₵ floats for a Decimal-stored escrow row. */
+export function breakdown(amount: number, fee: number) {
+  const m = feeMathP(toPesewas(amount), toPesewas(fee));
+  return {
+    buyerFee: fromPesewas(m.buyerShareP),
+    sellerFee: fromPesewas(m.sellerShareP),
+    fundingTotal: fromPesewas(m.fundingTotalP),
+    sellerPayout: fromPesewas(m.sellerPayoutP),
+  };
+}

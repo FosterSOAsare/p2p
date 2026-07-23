@@ -10,6 +10,8 @@ import { kycRouter } from "./features/kyc/kyc.router";
 import { adminRouter } from "./features/admin/admin.router";
 import { categoriesRouter, listingsRouter } from "./features/listings/listings.router";
 import { messagesRouter } from "./features/messages/messages.router";
+import { walletRouter } from "./features/wallet/wallet.router";
+import { escrowsRouter } from "./features/escrows/escrows.router";
 
 export function createApp() {
   const app = express();
@@ -26,8 +28,8 @@ export function createApp() {
   app.use("/api/listings", listingsRouter);
   app.use("/api/categories", categoriesRouter);
   app.use("/api/messages", messagesRouter);
-  // Next feature modules mount here:
-  // app.use("/api/escrow", escrowRouter);
+  app.use("/api/wallet", walletRouter);
+  app.use("/api/escrows", escrowsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -80,8 +80,9 @@ export async function getById(id: string) {
   });
   if (!listing) throw ApiError.notFound("Listing not found");
 
-  // Best-effort view counter (not worth failing the request over)
-  prisma.listing.update({ where: { id }, data: { views: { increment: 1 } } }).catch(() => undefined);
+  // Best-effort view counter — awaited so it doesn't race another query on the
+  // same pg connection (fire-and-forget triggers pg's concurrent-query warning).
+  await prisma.listing.update({ where: { id }, data: { views: { increment: 1 } } }).catch(() => undefined);
 
   const ratings = listing.reviews.map((r) => r.rating);
   return {

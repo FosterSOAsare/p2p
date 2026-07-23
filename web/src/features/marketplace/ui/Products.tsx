@@ -115,13 +115,13 @@ export function Products() {
         <div>
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary-600 dark:text-primary-400 mb-1">
             <Store size={14} />
-            Peer-to-Peer Physical Goods
+            Peer-to-Peer Goods & Services
           </div>
           <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
             Marketplace Browse
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-            Discover verified seller items protected by GH₵ escrow.
+            Physical items and online-delivered goods — all protected by GH₵ escrow.
           </p>
         </div>
       </div>

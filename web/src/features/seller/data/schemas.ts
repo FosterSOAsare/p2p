@@ -36,10 +36,10 @@ export const CONDITIONS = ['Brand New', 'Like New', 'Good', 'Fair'] as const
 export const listingSchema = z.object({
   title: z.string().trim().min(3, 'Title must be at least 3 characters').max(120),
   description: z.string().trim().max(4000).or(z.literal('')),
-  price: z.coerce.number().positive('Enter a valid GH₵ price').max(10_000_000),
+  price: z.number('Enter a valid GH₵ price').positive('Enter a valid GH₵ price').max(10_000_000),
   category: z.string().min(1, 'Pick a category'),
   condition: z.enum(CONDITIONS),
-  quantity: z.coerce.number().int('Whole numbers only').min(1, 'At least 1 unit').max(10_000),
+  quantity: z.number('Enter a quantity').int('Whole numbers only').min(1, 'At least 1 unit').max(10_000),
   imagesText: z
     .string()
     .trim()

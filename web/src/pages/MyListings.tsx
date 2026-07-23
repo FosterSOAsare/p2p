@@ -2,7 +2,6 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   Package,
   PlusCircle,
-  Eye,
   Pencil,
   Trash2,
   Loader2,
@@ -11,7 +10,7 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { useState } from 'react'
-import { SellerGuard } from '../features/seller/ui/SellerGuard'
+import { ConfirmDialog } from '../features/shared/ui/ConfirmDialog'
 import { useMyListings, useDeleteListing, type MyListingCard } from '../features/seller/data/listingsApi'
 import { formatMoney } from '../features/shared/libs/currency'
 import { formatDate } from '../features/shared/libs/date'
@@ -32,7 +31,7 @@ function StatusBadge({ status }: { status: MyListingCard['status'] }) {
   return <span className="rounded-full bg-slate-200 dark:bg-slate-800 px-2.5 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">Draft</span>
 }
 
-function MyListingsInner() {
+export function MyListings() {
   // Filters + pagination live in the URL
   const [searchParams, setSearchParams] = useSearchParams()
   const status = searchParams.get('status') ?? 'all'
@@ -55,7 +54,7 @@ function MyListingsInner() {
 
   const listQuery = useMyListings(apiQuery.toString())
   const deleteListing = useDeleteListing()
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<MyListingCard | null>(null)
 
   const data = listQuery.data
 
@@ -164,9 +163,6 @@ function MyListingsInner() {
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   {formatMoney(l.price)} · {l.category} · qty {l.quantity} · listed {formatDate(l.createdAt)}
                 </p>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1 mt-0.5">
-                  <Eye size={11} /> {l.views.toLocaleString()} views
-                </p>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
@@ -184,25 +180,13 @@ function MyListingsInner() {
                 >
                   <Pencil size={14} />
                 </Link>
-                {confirmDeleteId === l.id ? (
-                  <button
-                    onClick={() => {
-                      deleteListing.mutate(l.id, { onSettled: () => setConfirmDeleteId(null) })
-                    }}
-                    disabled={deleteListing.isPending}
-                    className="rounded-xl bg-rose-600 px-2.5 h-8 text-[11px] font-bold text-white hover:bg-rose-700 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    {deleteListing.isPending ? '...' : 'Confirm?'}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setConfirmDeleteId(l.id)}
-                    title="Delete listing"
-                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 transition-all cursor-pointer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
+                <button
+                  onClick={() => setDeleteTarget(l)}
+                  title="Delete listing"
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 transition-all cursor-pointer"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             </div>
           ))}
@@ -243,14 +227,19 @@ function MyListingsInner() {
           </button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete this listing?"
+        description={deleteTarget ? `"${deleteTarget.title}" will be permanently removed from the marketplace. This can't be undone.` : undefined}
+        confirmLabel="Delete Listing"
+        isPending={deleteListing.isPending}
+        onConfirm={() => {
+          if (deleteTarget) deleteListing.mutate(deleteTarget.id, { onSettled: () => setDeleteTarget(null) })
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }
 
-export function MyListings() {
-  return (
-    <SellerGuard>
-      <MyListingsInner />
-    </SellerGuard>
-  )
-}

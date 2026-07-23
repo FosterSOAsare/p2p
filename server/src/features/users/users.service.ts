@@ -15,12 +15,13 @@ export async function getPublicProfile(username: string) {
   if (!user || user.status === "suspended") throw ApiError.notFound("User not found");
 
   const verified = user.kyc?.status === "verified";
-  const [listings, salesCompleted] = await Promise.all([
+  const [listings, salesCompleted, ratingAgg] = await Promise.all([
     prisma.listing.findMany({
       where: { sellerId: user.id, status: "active" },
       orderBy: { createdAt: "desc" },
     }),
     prisma.escrow.count({ where: { sellerId: user.id, status: "disbursed" } }),
+    prisma.review.aggregate({ _avg: { rating: true }, _count: true, where: { revieweeId: user.id } }),
   ]);
 
   return {
@@ -33,6 +34,8 @@ export async function getPublicProfile(username: string) {
     stats: {
       activeListings: listings.length,
       salesCompleted,
+      rating: ratingAgg._avg.rating ?? null,
+      reviewCount: ratingAgg._count,
     },
     listings: listings.map((l) => ({
       id: l.id,

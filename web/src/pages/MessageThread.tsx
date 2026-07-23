@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, SendHorizonal, ShieldCheck, Lock } from 'lucide-react'
 import { useSellerProfile } from '../features/user/data/usersApi'
 
@@ -17,6 +17,12 @@ interface LocalMessage {
  */
 export function MessageThread() {
   const { username = '' } = useParams()
+  const [searchParams] = useSearchParams()
+  // Where "Back" returns to — passed by the caller (a deal, a profile, a listing).
+  // Only accept in-app paths (must start with "/") to avoid open-redirects.
+  const redirectParam = searchParams.get('redirect')
+  const backTo = redirectParam && redirectParam.startsWith('/') ? redirectParam : `/seller/${username}`
+
   const profileQuery = useSellerProfile(username)
   const counterparty = profileQuery.data
 
@@ -42,11 +48,11 @@ export function MessageThread() {
   return (
     <div className="mx-auto max-w-2xl py-4 sm:py-6 space-y-4">
       <Link
-        to="/messages"
+        to={backTo}
         className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
       >
         <ArrowLeft size={16} />
-        All Messages
+        Back
       </Link>
 
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col" style={{ height: '65vh' }}>
@@ -82,7 +88,7 @@ export function MessageThread() {
 
           {messages.length === 0 && (
             <p className="text-center text-xs text-slate-400 dark:text-slate-500 pt-8">
-              Say hello — ask about a listing or propose a deal.
+              Say hello — ask about a listing or coordinate a delivery.
             </p>
           )}
 

@@ -1,10 +1,9 @@
-import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Outlet } from 'react-router-dom'
 import { Loader2, Store, ArrowRight } from 'lucide-react'
 import { useMe } from '../../auth/data/authApi'
 
-/** Wraps seller-only pages (listings management): admins and KYC-verified sellers pass; buyers are sent to /sell. */
-export function SellerGuard({ children }: { children: ReactNode }) {
+/** Layout route for seller-only pages: admins and KYC-verified sellers get <Outlet/>; buyers are sent to /sell. */
+export function SellerGuard() {
   const { data: me, isLoading } = useMe()
 
   if (isLoading) {
@@ -39,5 +38,5 @@ export function SellerGuard({ children }: { children: ReactNode }) {
     )
   }
 
-  return <>{children}</>
+  return <Outlet />
 }

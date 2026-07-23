@@ -5,7 +5,7 @@ import {
   Handshake,
   Store,
   ShieldCheck,
-  MessageCircle,
+  AlertTriangle,
   Menu,
   X,
   ShoppingBag,
@@ -166,8 +166,8 @@ export function Layout() {
                         </Link>
                       )}
 
-                      <Link to="/messages" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
-                        <MessageCircle size={15} /> Messages
+                      <Link to="/escrow?tab=disputed" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                        <AlertTriangle size={15} /> Disputes
                       </Link>
 
                       <Link to="/user/settings" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
@@ -301,11 +301,11 @@ export function Layout() {
                   </Link>
                 )}
                 <Link
-                  to="/messages"
+                  to="/escrow?tab=disputed"
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
                 >
-                  <MessageCircle size={16} /> Messages
+                  <AlertTriangle size={16} /> Disputes
                 </Link>
                 <Link
                   to="/terms"

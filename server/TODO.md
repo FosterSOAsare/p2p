@@ -41,10 +41,10 @@ Out of scope (client shows but proposal drops): Google OAuth buttons → remove 
 
 ## 4. Wallet (`/api/wallet`) — simulated GHS momo; client shows balances but has no wallet page yet (FE to add)
 
-- [ ] `GET /` 🔒 — `{ available, escrowLocked, currency: "GHS" }` (+ seller `totalEarnings` derived)
-- [ ] `POST /deposit` 🔒 — `{ amount }` → instant simulated momo credit (Simulation banner)
-- [ ] `POST /withdraw` 🔒 — `{ amount, destination }` → instant simulated payout
-- [ ] `GET /transactions` 🔒 — history (type, amount, escrow link, createdAt)
+- [x] `GET /` 🔒 — `{ balance, escrowLocked, currency: "GHS" }`
+- [x] `POST /deposit` 🔒 — `{ amount }` → instant simulated momo credit
+- [x] `POST /withdraw` 🔒 — `{ amount, destination }` → instant simulated payout (guarded balance)
+- [x] `GET /transactions` 🔒 — paginated history (type, signed amount, escrow link, createdAt)
 
 ## 5. Marketplace (`/api/listings`) — client: Products, ProductDetail, UserProducts, SellerDashboard
 
@@ -56,7 +56,7 @@ Out of scope (client shows but proposal drops): Google OAuth buttons → remove 
 - [ ] `POST /` 🔒 (KYC-verified sellers) — `{ title, price, quantity, category, condition?, description?, images[] (URLs — no upload infra), location? }`
 - [ ] `PATCH /:id` 🔒 (owner) — edit-listing modal fields; `DELETE /:id` 🔒 (owner)
 - [ ] `GET /mine` 🔒 — seller's listings with `views`, `status (active|out_of_stock|draft)`
-- [ ] `GET /:id/reviews` — included in detail; `POST /api/escrows/:id/review` 🔒 — `{ rating, comment }` after disbursed (`verifiedPurchase` = came from a real deal)
+- [x] `POST /api/escrows/:id/review` 🔒 — `{ rating 1-5, comment? }` after disbursed; one per party; buyer→seller reviews surface on the listing + seller profile rating. Listing detail already returns reviews + avg rating.
 
 ## 6. Escrow — the core (`/api/escrows`) — client: Escrow list, NewEscrow, EscrowDetail, EscrowMessages, UserOrders, UserDashboard
 
@@ -92,6 +92,11 @@ Out of scope (client shows but proposal drops): Google OAuth buttons → remove 
 - [ ] `GET /disputes?status=open` — queue with deal + chat/evidence context
 - [ ] `POST /disputes/:id/rule` — `{ outcome: release|refund|split, buyerAmount?, sellerAmount?, note }` → moves money, escrow → `disbursed`, records ruling
 - [x] `GET /kyc?status=` — review queue (+ `GET /kyc/:id` detail); `POST /kyc/:id/approve` · `POST /kyc/:id/reject { reason }` (pending-only guard; records reviewer + timestamp)
+
+## 7b. Payments & notifications (deferred)
+
+- [ ] [BE] **Real payment step** — buyer actually pays for the order before it's marked funded. Right now checkout SIMULATES payment (no wallet, no charge): `POST /from-listing` creates the escrow `funded` immediately. `escrows.service.ts` + `applyEffects` FUND both have `TODO(payments)` markers.
+- [ ] [BE] **Mock email notifications** — a `mailService.send()` that `console.log`s `[mail:simulated] To <email>: ...` on each lifecycle event (order placed → seller, delivered → buyer, released → both, dispute opened → both, review received). Mirror the existing simulated verify/reset email pattern. Only the **in-app** conversation message exists today (`postDealMessage`). Real email/push (Resend) is later. `TODO(notifications)`.
 
 ## 8. Background jobs (not endpoints — simple `setInterval` workers are fine at this scope)
 

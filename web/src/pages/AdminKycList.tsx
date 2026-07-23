@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ShieldCheck, Clock, CheckCircle2, XCircle, ArrowRight, Inbox, Loader2 } from 'lucide-react'
-import { AdminGuard } from '../features/admin/ui/AdminGuard'
 import { useAdminKycList } from '../features/admin/data/adminApi'
 import { apiErrorMessage } from '../features/shared/libs/api'
 import { formatDate } from '../features/shared/libs/date'
@@ -39,7 +38,7 @@ export function AdminKycList() {
   const list = useAdminKycList(tab)
 
   return (
-    <AdminGuard>
+    <>
       <div className="py-4 sm:py-6 space-y-6">
         <div className="border-b border-slate-200 dark:border-slate-800 pb-5 space-y-2">
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 px-3 py-1 rounded-full border border-primary-200 dark:border-primary-800">
@@ -126,6 +125,6 @@ export function AdminKycList() {
           </div>
         )}
       </div>
-    </AdminGuard>
+    </>
   )
 }

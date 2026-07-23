@@ -26,7 +26,7 @@ export interface PublicSellerProfile {
   storeName: string | null
   country: string | null
   joinedAt: string
-  stats: { activeListings: number; salesCompleted: number }
+  stats: { activeListings: number; salesCompleted: number; rating: number | null; reviewCount: number }
   listings: {
     id: string
     title: string

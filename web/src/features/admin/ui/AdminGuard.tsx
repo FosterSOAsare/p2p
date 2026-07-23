@@ -1,10 +1,9 @@
-import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Outlet } from 'react-router-dom'
 import { Loader2, ShieldAlert } from 'lucide-react'
 import { useMe } from '../../auth/data/authApi'
 
-/** Wraps admin pages: spinner while auth resolves, block for non-admins. */
-export function AdminGuard({ children }: { children: ReactNode }) {
+/** Layout route for admin pages: spinner while auth resolves, block for non-admins, <Outlet/> when allowed. */
+export function AdminGuard() {
   const { data: me, isLoading } = useMe()
 
   if (isLoading) {
@@ -35,5 +34,5 @@ export function AdminGuard({ children }: { children: ReactNode }) {
     )
   }
 
-  return <>{children}</>
+  return <Outlet />
 }
