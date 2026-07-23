@@ -5,6 +5,7 @@ import {env} from "./shared/config/env"
 import { errorHandler, notFoundHandler } from "./shared/middleware/error.middleware";
 import { healthRouter } from "./features/health/health.router";
 import { authRouter } from "./features/auth/auth.router";
+import { usersRouter } from "./features/users/users.router";
 
 export function createApp() {
   const app = express();
@@ -15,6 +16,7 @@ export function createApp() {
 
   app.use("/health", healthRouter);
   app.use("/api/auth", authRouter);
+  app.use("/api/users", usersRouter);
   // Next feature modules mount here:
   // app.use("/api/escrow", escrowRouter);
   // app.use("/api/admin", adminRouter);

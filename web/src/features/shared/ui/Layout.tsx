@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { NavLink, Link, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useMe, useLogout } from '../../auth/data/authApi'
 import {
   Handshake,
   Store,
@@ -40,9 +41,12 @@ function toggleTheme() {
 }
 
 export function Layout() {
+  const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
-  const [isLoggedIn, setIsLoggedIn] = useState(true)
+  const { data: me } = useMe()
+  const logout = useLogout()
+  const isLoggedIn = Boolean(me)
 
   // Apply saved (or system-preferred) theme on first mount
   useEffect(() => {
@@ -111,12 +115,14 @@ export function Layout() {
                     onClick={() => setUserDropdownOpen(!userDropdownOpen)}
                     className="flex items-center gap-2 rounded-xl border p-1.5 pr-2.5 text-xs font-semibold transition-all cursor-pointer border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                   >
-                    <img
-                      src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80"
-                      alt="User Avatar"
-                      className="h-6 w-6 rounded-lg object-cover"
-                    />
-                    <span>kwaku_b</span>
+                    {me?.avatarUrl ? (
+                      <img src={me.avatarUrl} alt="User Avatar" className="h-6 w-6 rounded-lg object-cover" />
+                    ) : (
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary-600 text-[11px] font-bold text-white uppercase">
+                        {me?.username.charAt(0)}
+                      </span>
+                    )}
+                    <span>{me?.username}</span>
                     <ChevronDown size={14} className="text-slate-400" />
                   </button>
 
@@ -127,8 +133,8 @@ export function Layout() {
                       onMouseLeave={() => setUserDropdownOpen(false)}
                     >
                       <div className="px-3 py-2 border-b mb-1 border-slate-100 dark:border-slate-800">
-                        <p className="font-bold text-slate-900 dark:text-white">Kwaku Bonsu</p>
-                        <p className="text-[11px] text-slate-400 truncate">kwaku@example.com</p>
+                        <p className="font-bold text-slate-900 dark:text-white">{me?.fullName}</p>
+                        <p className="text-[11px] text-slate-400 truncate">{me?.email}</p>
                       </div>
 
                       <Link to="/user/dashboard" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
@@ -158,8 +164,8 @@ export function Layout() {
                       <div className="pt-1 border-t mt-1 border-slate-100 dark:border-slate-800">
                         <button
                           onClick={() => {
-                            setIsLoggedIn(false)
                             setUserDropdownOpen(false)
+                            logout.mutate(undefined, { onSettled: () => navigate('/') })
                           }}
                           className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 font-semibold cursor-pointer"
                         >

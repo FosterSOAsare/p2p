@@ -13,25 +13,25 @@ Conventions: all `🔒` routes require `Authorization: Bearer <access token>` (a
 
 ## 1. Auth (`/api/auth`) — client: Signup, Login, VerifyEmail, Forgot/Reset/ChangePassword
 
-- [ ] `POST /signup` — `{ username, email, password, fullName }` → 201 `{ user, tokens }`; 409 taken username/email; reserved-username check; sends (simulated) verification link
-- [ ] `POST /login` — `{ identifier (email OR username), password }` → `{ user, tokens }`; generic error, no enumeration
-- [ ] `POST /refresh` — `{ refreshToken }` → new token pair (rotate session)
-- [ ] `POST /logout` 🔒 — `{ refreshToken }` → revoke session
-- [ ] `GET /username-available?u=` — `{ available }` (live check on signup form)
-- [ ] `POST /verify-email` — `{ token }` (client is **link-based**, not OTP; token from email — simulated: log/return it in dev)
-- [ ] `POST /resend-verification` 🔒
-- [ ] `POST /forgot-password` — `{ email }` → always generic success; reset link token (simulated delivery)
-- [ ] `POST /reset-password` — `{ token, newPassword }` (client sends token via `/reset-password?token=`)
-- [ ] `POST /change-password` 🔒 — `{ currentPassword, newPassword }`
-- [ ] `GET /me` 🔒 — user + profile fields the client shows (username, fullName, email, phone, avatarUrl, kycStatus, joinedDate) + dashboard counts (activeOrdersCount, totalSpent, savedItemsCount)
+- [x] `POST /signup` — `{ username, email, password, fullName }` → 201 `{ user, tokens }`; 409 taken username/email; reserved-username check; sends (simulated) verification link
+- [x] `POST /login` — `{ identifier (email OR username), password }` → `{ user, tokens }`; generic error, no enumeration
+- [x] `POST /refresh` — `{ refreshToken }` → new token pair (rotate session; reuse revokes all sessions)
+- [x] `POST /logout` — `{ refreshToken }` → revoke session
+- [x] `GET /username-available?u=` — `{ available }` (live check on signup form)
+- [x] `POST /verify-email` — `{ token }` (client is **link-based**, not OTP; simulated mail → link logged to server console)
+- [x] `POST /resend-verification` 🔒
+- [x] `POST /forgot-password` — `{ email }` → always generic success; reset link token (simulated delivery)
+- [x] `POST /reset-password` — `{ token, newPassword }` (client sends token via `/reset-password?token=`; revokes all sessions)
+- [x] `POST /change-password` 🔒 — `{ currentPassword, newPassword }` (revokes sessions, returns fresh tokens)
+- [x] `GET /me` 🔒 — user + profile fields the client shows (username, fullName, email, phone, avatarUrl, kycStatus, joinedDate) + dashboard counts (activeOrdersCount, totalSpent, savedItemsCount)
 
 Out of scope (client shows but proposal drops): Google OAuth buttons → remove client-side.
 
 ## 2. Users & settings (`/api/users`) — client: UserSettings
 
-- [ ] `PATCH /me` 🔒 — `{ fullName, phone, avatarUrl }` (username immutable v1; email change out of scope)
-- [ ] `PUT /me/notification-prefs` 🔒 — `{ emailShipmentUpdates, smsReleaseAlerts }` (the two checkboxes)
-- [ ] `GET /me/saved` 🔒 — saved listing ids/cards · `POST /me/saved/:listingId` · `DELETE /me/saved/:listingId` (bookmark toggle on marketplace)
+- [x] `PATCH /me` 🔒 — `{ fullName, phone, avatarUrl }` (username immutable v1; email change out of scope; `null` clears phone/avatar)
+- [x] `PUT /me/notification-prefs` 🔒 — `{ emailShipmentUpdates, smsReleaseAlerts }` (the two checkboxes)
+- [x] `GET /me/saved` 🔒 — saved listing cards · `POST /me/saved/:listingId` · `DELETE /me/saved/:listingId` (bookmark toggle; both idempotent)
 - [ ] *(stretch)* `POST /me/blocked/:username` + `DELETE` — vendor block toggle · `POST /api/listings/:id/report` — report listing
 
 ## 3. KYC (`/api/kyc`) — client: VendorKyc (replace fake instant approval with pending → admin review)

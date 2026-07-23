@@ -1,5 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
 import argon2 from "argon2";
+import jwt from "jsonwebtoken";
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
 import { env } from "../../shared/config/env";
@@ -23,13 +23,15 @@ const ARGON2_OPTS = {
   parallelism: 4,
 } as const;
 
-// Simulated email delivery (proposal scope): single-use tokens kept in memory,
-// links printed to the server console instead of being emailed.
-const emailVerifyTokens = new Map<string, { userId: string; exp: number }>();
-const passwordResetTokens = new Map<string, { userId: string; exp: number }>();
-
-const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60_000; // 24 h
-const RESET_TOKEN_TTL_MS = 30 * 60_000; // 30 min
+// Simulated email delivery (proposal scope): links are printed to the server
+// console instead of being emailed. The tokens themselves are stateless JWTs so
+// they survive dev-server restarts (an in-memory map would be wiped by tsx watch).
+// They are signed with JWT_REFRESH_SECRET (not the access secret) so an email
+// token can never pass the auth middleware as an access token.
+interface EmailTokenPayload {
+  sub?: string;
+  purpose?: string;
+}
 
 // ---------- Signup & email verification ----------
 
@@ -67,27 +69,29 @@ export async function signup(input: SignupInput, ctx: RequestContext): Promise<A
 }
 
 function sendVerificationEmail(user: User): void {
-  const token = randomBytes(32).toString("base64url");
-  emailVerifyTokens.set(hashToken(token), {
-    userId: user.id,
-    exp: Date.now() + VERIFY_TOKEN_TTL_MS,
+  const token = jwt.sign({ sub: user.id, purpose: "verify_email" }, env.JWT_REFRESH_SECRET, {
+    expiresIn: "24h",
   });
   const link = `${env.WEB_ORIGIN}/verify-email?token=${token}`;
   console.log(`[mail:simulated] Email verification for ${user.email}: ${link}`);
 }
 
+/** Idempotent — clicking an already-used (but unexpired) link still succeeds. */
 export async function verifyEmail(token: string): Promise<void> {
-  const key = hashToken(token);
-  const record = emailVerifyTokens.get(key);
-  if (!record || record.exp < Date.now()) {
-    emailVerifyTokens.delete(key);
-    throw ApiError.badRequest("This verification link is invalid or has expired");
+  const invalid = () => ApiError.badRequest("This verification link is invalid or has expired");
+  let payload: EmailTokenPayload;
+  try {
+    payload = jwt.verify(token, env.JWT_REFRESH_SECRET) as EmailTokenPayload;
+  } catch {
+    throw invalid();
   }
-  emailVerifyTokens.delete(key);
-  await prisma.user.update({
-    where: { id: record.userId },
-    data: { emailVerifiedAt: new Date() },
-  });
+  if (payload.purpose !== "verify_email" || !payload.sub) throw invalid();
+
+  await prisma.user
+    .update({ where: { id: payload.sub }, data: { emailVerifiedAt: new Date() } })
+    .catch(() => {
+      throw invalid();
+    });
 }
 
 export async function resendVerification(userId: string): Promise<void> {
@@ -178,29 +182,33 @@ export async function logout(refreshToken: string): Promise<void> {
 export async function forgotPassword(email: string): Promise<void> {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return; // Never reveal whether the email exists.
-  const token = randomBytes(32).toString("base64url");
-  passwordResetTokens.set(hashToken(token), {
-    userId: user.id,
-    exp: Date.now() + RESET_TOKEN_TTL_MS,
+  // Signed with secret + current password hash → the moment the password
+  // changes, the token stops verifying. Stateless single-use.
+  const token = jwt.sign({ sub: user.id, purpose: "reset_password" }, env.JWT_REFRESH_SECRET + user.passwordHash, {
+    expiresIn: "30m",
   });
   const link = `${env.WEB_ORIGIN}/reset-password?token=${token}`;
   console.log(`[mail:simulated] Password reset for ${email}: ${link}`);
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
-  const key = hashToken(token);
-  const record = passwordResetTokens.get(key);
-  if (!record || record.exp < Date.now()) {
-    passwordResetTokens.delete(key);
-    throw ApiError.badRequest("This reset link is invalid or has expired");
+  const invalid = () => ApiError.badRequest("This reset link is invalid or has expired");
+
+  const decoded = jwt.decode(token) as EmailTokenPayload | null;
+  if (!decoded?.sub || decoded.purpose !== "reset_password") throw invalid();
+  const user = await prisma.user.findUnique({ where: { id: decoded.sub } });
+  if (!user) throw invalid();
+  try {
+    jwt.verify(token, env.JWT_REFRESH_SECRET + user.passwordHash);
+  } catch {
+    throw invalid();
   }
-  passwordResetTokens.delete(key);
 
   const passwordHash = await argon2.hash(newPassword, ARGON2_OPTS);
-  await prisma.user.update({ where: { id: record.userId }, data: { passwordHash } });
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
   // Reset invalidates all sessions.
   await prisma.session.updateMany({
-    where: { userId: record.userId, revokedAt: null },
+    where: { userId: user.id, revokedAt: null },
     data: { revokedAt: new Date() },
   });
 }
@@ -265,7 +273,7 @@ export async function me(userId: string) {
 
 // ---------- helpers ----------
 
-function publicUser(user: User): PublicUser {
+export function publicUser(user: User): PublicUser {
   return {
     id: user.id,
     username: user.username,
@@ -278,8 +286,4 @@ function publicUser(user: User): PublicUser {
     phoneVerified: Boolean(user.phoneVerifiedAt),
     createdAt: user.createdAt.toISOString(),
   };
-}
-
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
 }
