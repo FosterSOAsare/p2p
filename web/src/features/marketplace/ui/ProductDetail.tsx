@@ -225,7 +225,9 @@ export function ProductDetail() {
                     <div className="flex items-center gap-1">
                       <span className="font-semibold text-slate-900 dark:text-white text-xs sm:text-sm">@{product.vendorName}</span>
                       {product.vendorVerified && (
-                        <ShieldCheck size={15} className="text-primary-600 dark:text-primary-400" title="KYC Verified Vendor" />
+                        <span title="KYC Verified Vendor" className="flex shrink-0">
+                          <ShieldCheck size={15} className="text-primary-600 dark:text-primary-400" />
+                        </span>
                       )}
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">Response time: {product.vendorResponseTime}</p>

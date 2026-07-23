@@ -188,7 +188,9 @@ export function UserOrders() {
                   <div className="flex items-center gap-1.5 font-medium text-slate-600 dark:text-slate-300">
                     Seller: <strong className="text-slate-900 dark:text-white">@{ord.vendorName}</strong>
                     {ord.vendorVerified && (
-                      <ShieldCheck size={14} className="text-primary-600 dark:text-primary-400" title="KYC Verified Seller" />
+                      <span title="KYC Verified Seller" className="flex shrink-0">
+                        <ShieldCheck size={14} className="text-primary-600 dark:text-primary-400" />
+                      </span>
                     )}
                   </div>
                 </div>

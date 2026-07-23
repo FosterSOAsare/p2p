@@ -19,7 +19,6 @@ export function EscrowDetail() {
 
   const [deal, setDeal] = useState<EscrowDeal>(foundDeal)
   const [newMessage, setNewMessage] = useState('')
-  const [disputed, setDisputed] = useState(deal.status === 'disputed')
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,7 +44,6 @@ export function EscrowDetail() {
   }
 
   const handleOpenDispute = () => {
-    setDisputed(true)
     setDeal((prev) => ({
       ...prev,
       status: 'disputed',

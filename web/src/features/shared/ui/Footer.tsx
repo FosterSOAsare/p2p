@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Handshake, ShieldCheck, Lock, Wallet, ArrowUpRight } from 'lucide-react'
+import { Handshake, ShieldCheck, Lock, Wallet } from 'lucide-react'
 
 export function Footer() {
   return (

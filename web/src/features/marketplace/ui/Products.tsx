@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   Heart,
   ShieldCheck,
-  BookmarkPlus,
-  X,
   Store,
   Search as SearchIcon,
 } from 'lucide-react'
@@ -21,7 +19,6 @@ export function Products() {
   const [maxPrice, setMaxPrice] = useState<number>(15000)
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'rating'>('featured')
   const [savedListings, setSavedListings] = useState<string[]>([])
-  const [savedSearchAlert, setSavedSearchAlert] = useState<boolean>(false)
   const [showFilterDrawer, setShowFilterDrawer] = useState<boolean>(false)
 
   // Toggle saved bookmark
@@ -31,12 +28,6 @@ export function Products() {
     setSavedListings((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     )
-  }
-
-  // Handle Save Search
-  const handleSaveSearch = () => {
-    setSavedSearchAlert(true)
-    setTimeout(() => setSavedSearchAlert(false), 3000)
   }
 
   // Filter logic
@@ -334,7 +325,9 @@ export function Products() {
                     <span className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300 truncate max-w-[65%]">
                       @{p.vendorName}
                       {p.vendorVerified && (
-                        <ShieldCheck size={12} className="text-primary-600 dark:text-primary-400 shrink-0" title="KYC Verified Vendor" />
+                        <span title="KYC Verified Vendor" className="flex shrink-0">
+                          <ShieldCheck size={12} className="text-primary-600 dark:text-primary-400" />
+                        </span>
                       )}
                     </span>
                     <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-medium text-slate-500 dark:text-slate-400 text-[10px]">

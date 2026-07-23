@@ -50,7 +50,11 @@ export function ListingCard({
         <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
           <span className="flex items-center gap-1 font-medium text-slate-700 dark:text-slate-300 truncate max-w-[65%]">
             @{vendorName}
-            {vendorVerified && <ShieldCheck size={12} className="text-primary-600 dark:text-primary-400 shrink-0" title="KYC Verified" />}
+            {vendorVerified && (
+              <span title="KYC Verified" className="flex shrink-0">
+                <ShieldCheck size={12} className="text-primary-600 dark:text-primary-400" />
+              </span>
+            )}
           </span>
           <span className="truncate max-w-[35%] text-slate-400 dark:text-slate-500 text-[10px]">{location.split('•')[0]}</span>
         </div>

@@ -6,7 +6,6 @@ import {
   ShieldCheck,
   Menu,
   X,
-  User,
   ShoppingBag,
   Settings,
   ChevronDown,
@@ -27,27 +26,30 @@ const primaryNavItems = [
   { to: '/user/orders', label: 'My Orders', icon: ShoppingBag },
 ]
 
+const dropdownLinkClass =
+  'flex items-center gap-2 rounded-lg px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 hover:text-primary-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
+
+// Dark/Light Mode Theme (class strategy on <html>, with system fallback)
+function applyTheme(dark: boolean) {
+  document.documentElement.classList.toggle('dark', dark)
+  localStorage.setItem('p2p_theme', dark ? 'dark' : 'light')
+}
+
+function toggleTheme() {
+  applyTheme(!document.documentElement.classList.contains('dark'))
+}
+
 export function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(true)
 
-  // Dark/Light Mode Theme State (Class strategy with System fallback)
-  const [darkMode, setDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem('p2p_theme')
-    if (saved) return saved === 'dark'
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-  })
-
+  // Apply saved (or system-preferred) theme on first mount
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark')
-      localStorage.setItem('p2p_theme', 'dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-      localStorage.setItem('p2p_theme', 'light')
-    }
-  }, [darkMode])
+    const saved = localStorage.getItem('p2p_theme')
+    const dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+    document.documentElement.classList.toggle('dark', dark)
+  }, [])
 
   const location = useLocation()
   const isHomePage = location.pathname === '/'
@@ -57,18 +59,16 @@ export function Layout() {
     window.scrollTo(0, 0)
   }, [location.pathname])
 
-  const toggleTheme = () => setDarkMode(!darkMode)
-
   return (
-    <div className={`min-h-screen flex flex-col transition-colors duration-300 ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
-      <header className={`sticky top-0 z-40 border-b backdrop-blur-md transition-colors duration-300 ${darkMode ? 'border-slate-800 bg-slate-950/90' : 'border-slate-200/80 bg-white/90'}`}>
+    <div className="min-h-screen flex flex-col transition-colors duration-300 bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <header className="sticky top-0 z-40 border-b backdrop-blur-md transition-colors duration-300 border-slate-200/80 bg-white/90 dark:border-slate-800 dark:bg-slate-950/90">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 text-white shadow-md transition-transform group-hover:scale-105">
               <Handshake size={20} />
             </span>
-            <span className={`font-display text-base sm:text-lg font-bold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+            <span className="font-display text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white">
               P2P Trust Market
             </span>
           </Link>
@@ -82,8 +82,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
                     isActive
-                      ? darkMode ? 'bg-primary-950 text-primary-400 font-bold border border-primary-800/60' : 'bg-primary-50 text-primary-700 font-bold border border-primary-200/80'
-                      : darkMode ? 'text-slate-300 hover:text-white hover:bg-slate-900' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+                      ? 'bg-primary-50 text-primary-700 font-bold border border-primary-200/80 dark:bg-primary-950 dark:text-primary-400 dark:border-primary-800/60'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-900'
                   }`
                 }
               >
@@ -109,9 +109,7 @@ export function Layout() {
                 <div className="relative">
                   <button
                     onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                    className={`flex items-center gap-2 rounded-xl border p-1.5 pr-2.5 text-xs font-semibold transition-all cursor-pointer ${
-                      darkMode ? 'border-slate-800 bg-slate-900 text-slate-100 hover:bg-slate-800' : 'border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100'
-                    }`}
+                    className="flex items-center gap-2 rounded-xl border p-1.5 pr-2.5 text-xs font-semibold transition-all cursor-pointer border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                   >
                     <img
                       src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80"
@@ -125,77 +123,39 @@ export function Layout() {
                   {/* Dropdown Menu */}
                   {userDropdownOpen && (
                     <div
-                      className={`absolute right-0 mt-2 w-56 rounded-2xl border p-2 shadow-2xl animate-fade-in z-50 text-xs space-y-0.5 ${
-                        darkMode ? 'border-slate-800 bg-slate-900 text-slate-100' : 'border-slate-200 bg-white text-slate-900'
-                      }`}
+                      className="absolute right-0 mt-2 w-56 rounded-2xl border p-2 shadow-2xl animate-fade-in z-50 text-xs space-y-0.5 border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                       onMouseLeave={() => setUserDropdownOpen(false)}
                     >
-                      <div className={`px-3 py-2 border-b mb-1 ${darkMode ? 'border-slate-800' : 'border-slate-100'}`}>
-                        <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>Kwaku Bonsu</p>
+                      <div className="px-3 py-2 border-b mb-1 border-slate-100 dark:border-slate-800">
+                        <p className="font-bold text-slate-900 dark:text-white">Kwaku Bonsu</p>
                         <p className="text-[11px] text-slate-400 truncate">kwaku@example.com</p>
                       </div>
 
-                      <Link
-                        to="/user/dashboard"
-                        onClick={() => setUserDropdownOpen(false)}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
-                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
-                        }`}
-                      >
+                      <Link to="/user/dashboard" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                         <LayoutDashboard size={15} /> Dashboard Overview
                       </Link>
 
-                      <Link
-                        to="/user/orders"
-                        onClick={() => setUserDropdownOpen(false)}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
-                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
-                        }`}
-                      >
+                      <Link to="/user/orders" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                         <ShoppingBag size={15} /> My Orders & Sales
                       </Link>
 
-                      <Link
-                        to="/user/products"
-                        onClick={() => setUserDropdownOpen(false)}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
-                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
-                        }`}
-                      >
+                      <Link to="/user/products" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                         <Package size={15} /> My Products
                       </Link>
 
-                      <Link
-                        to="/vendor/dashboard"
-                        onClick={() => setUserDropdownOpen(false)}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
-                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
-                        }`}
-                      >
+                      <Link to="/vendor/dashboard" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                         <Store size={15} /> Merchant Store Panel
                       </Link>
 
-                      <Link
-                        to="/user/settings"
-                        onClick={() => setUserDropdownOpen(false)}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
-                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
-                        }`}
-                      >
+                      <Link to="/user/settings" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                         <Settings size={15} /> Account Settings
                       </Link>
 
-                      <Link
-                        to="/terms"
-                        onClick={() => setUserDropdownOpen(false)}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 font-medium ${
-                          darkMode ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-700 hover:bg-slate-50 hover:text-primary-600'
-                        }`}
-                      >
+                      <Link to="/terms" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                         <FileText size={15} /> Terms & Legal Policy
                       </Link>
 
-                      <div className={`pt-1 border-t mt-1 ${darkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+                      <div className="pt-1 border-t mt-1 border-slate-100 dark:border-slate-800">
                         <button
                           onClick={() => {
                             setIsLoggedIn(false)
@@ -213,9 +173,7 @@ export function Layout() {
                 <div className="flex items-center gap-2">
                   <Link
                     to="/login"
-                    className={`rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                      darkMode ? 'border-slate-800 text-slate-300 hover:bg-slate-900' : 'border-slate-300 text-slate-700 hover:bg-slate-50'
-                    }`}
+                    className="rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-colors border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
                   >
                     Log In
                   </Link>
@@ -233,22 +191,17 @@ export function Layout() {
             <button
               onClick={toggleTheme}
               aria-label="Toggle Theme"
-              className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer ${
-                darkMode
-                  ? 'border-slate-800 bg-slate-900 text-amber-400 hover:bg-slate-800'
-                  : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-              title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              title="Toggle Theme"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:text-amber-400 dark:hover:bg-slate-800"
             >
-              {darkMode ? <Sun size={17} /> : <Moon size={17} />}
+              <Sun size={17} className="hidden dark:block" />
+              <Moon size={17} className="dark:hidden" />
             </button>
 
             {/* Mobile menu trigger */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className={`flex md:hidden h-9 w-9 items-center justify-center rounded-xl border transition-all ${
-                darkMode ? 'border-slate-800 bg-slate-900 text-slate-300' : 'border-slate-200 bg-slate-100 text-slate-700'
-              }`}
+              className="flex md:hidden h-9 w-9 items-center justify-center rounded-xl border transition-all border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
               aria-label="Toggle Navigation Drawer"
             >
               {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
@@ -258,7 +211,7 @@ export function Layout() {
 
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
-          <div className={`md:hidden border-t p-4 animate-fade-in ${darkMode ? 'border-slate-800 bg-slate-950 text-slate-100' : 'border-slate-200 bg-white text-slate-900'}`}>
+          <div className="md:hidden border-t p-4 animate-fade-in border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             <nav className="space-y-1">
               {primaryNavItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
@@ -268,8 +221,8 @@ export function Layout() {
                   className={({ isActive }) =>
                     `flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold ${
                       isActive
-                        ? darkMode ? 'bg-primary-950 text-primary-400 font-bold' : 'bg-primary-50 text-primary-700 font-bold'
-                        : darkMode ? 'text-slate-300 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-50'
+                        ? 'bg-primary-50 text-primary-700 font-bold dark:bg-primary-950 dark:text-primary-400'
+                        : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900'
                     }`
                   }
                 >
@@ -286,33 +239,33 @@ export function Layout() {
                 <PlusCircle size={16} /> Create New Escrow Deal
               </Link>
 
-              <div className={`pt-2 border-t space-y-1 font-medium ${darkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+              <div className="pt-2 border-t space-y-1 font-medium border-slate-100 dark:border-slate-800">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3">Account & Support</span>
                 <Link
                   to="/user/dashboard"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${darkMode ? 'text-slate-300 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
                 >
                   <LayoutDashboard size={16} /> Dashboard Overview
                 </Link>
                 <Link
                   to="/user/orders"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${darkMode ? 'text-slate-300 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
                 >
                   <ShoppingBag size={16} /> My Orders & Sales
                 </Link>
                 <Link
                   to="/user/products"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${darkMode ? 'text-slate-300 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
                 >
                   <Package size={16} /> My Products
                 </Link>
                 <Link
                   to="/terms"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${darkMode ? 'text-slate-300 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
                 >
                   <FileText size={16} /> Terms & Privacy
                 </Link>

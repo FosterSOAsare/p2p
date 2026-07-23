@@ -149,7 +149,7 @@ export function Signup() {
             </div>
 
             {error && (
-              <div className="rounded-xl bg-rose-50 border border-rose-200 p-3.5 text-xs font-semibold text-rose-700 animate-fade-in">
+              <div className="rounded-xl bg-rose-50 border border-rose-200 p-3.5 text-xs font-semibold text-rose-700 dark:bg-rose-950/60 dark:border-rose-800 dark:text-rose-300 animate-fade-in">
                 {error}
               </div>
             )}

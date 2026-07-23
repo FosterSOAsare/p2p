@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   ShieldCheck,
   Store,
@@ -8,17 +8,12 @@ import {
   FileCheck,
   CreditCard,
   Wallet,
-  Upload,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
-  FileText,
-  AlertCircle,
 } from 'lucide-react'
 
 export function VendorKyc() {
-  const navigate = useNavigate()
-
   // Prefilled mock data for instant vendor application
   const [legalName, setLegalName] = useState('Kwaku Bonsu')
   const [storeName, setStoreName] = useState('TechHub Ghana Electronics')
@@ -31,8 +26,6 @@ export function VendorKyc() {
   const [walletAddress, setWalletAddress] = useState('0x71C7656EC7ab88b098defB751B7401B5f6d8976F')
   const [bankAccount, setBankAccount] = useState('GTBank • Account ending in 4920')
 
-  const [idUploaded, setIdUploaded] = useState(true) // prefilled mock attachment
-  const [proofUploaded, setProofUploaded] = useState(true) // prefilled mock attachment
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 

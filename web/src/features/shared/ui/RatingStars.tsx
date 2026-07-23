@@ -16,7 +16,7 @@ export function RatingStars({
   return (
     <div className="inline-flex items-center gap-1.5">
       <div className="relative inline-flex">
-        <div className="flex gap-0.5 text-slate-200">
+        <div className="flex gap-0.5 text-slate-200 dark:text-slate-700">
           {Array.from({ length: STAR_COUNT }).map((_, i) => (
             <Star key={i} size={size} fill="currentColor" stroke="none" />
           ))}
@@ -31,7 +31,7 @@ export function RatingStars({
         </div>
       </div>
       {reviewCount !== undefined && (
-        <span className="text-xs text-slate-500">({reviewCount})</span>
+        <span className="text-xs text-slate-500 dark:text-slate-400">({reviewCount})</span>
       )}
     </div>
   )
