@@ -1,0 +1,426 @@
+// P2P Marketplace Escrow — simplified from the TaaS schema to the proposal scope:
+// 5-state escrow, simulated GHS wallet, real TRX (Shasta testnet), usernames,
+// share-code/QR join, disputes w/ admin ruling + time-locked auto-resolution.
+// Enum values are lowercase to match the web client's vocabulary exactly.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  // connection URLs live in prisma.config.ts (Prisma 7)
+}
+
+// ---------- Enums ----------
+
+enum UserRole {
+  user
+  admin
+}
+
+enum AccountStatus {
+  active
+  suspended
+}
+
+enum KycStatus {
+  pending
+  verified
+  rejected
+}
+
+enum Currency {
+  GHS
+  TRX
+}
+
+enum EscrowRail {
+  fiat
+  crypto
+}
+
+enum EscrowRole {
+  buyer
+  seller
+}
+
+enum EscrowStatus {
+  created
+  funded
+  delivered
+  disbursed
+  disputed
+}
+
+enum MilestoneStatus {
+  pending
+  delivered
+  disbursed
+}
+
+enum TransactionType {
+  deposit
+  withdrawal
+  escrow_fund
+  escrow_release
+  escrow_refund
+  fee
+}
+
+enum ListingStatus {
+  draft
+  active
+  out_of_stock
+}
+
+enum DisputeStatus {
+  open
+  resolved
+}
+
+enum DisputeOutcome {
+  release
+  refund
+  split
+}
+
+enum DisputeReason {
+  not_delivered
+  not_as_described
+  wrong_item
+  service_not_done
+  other
+}
+
+// ---------- Identity ----------
+
+model User {
+  id                   String        @id @default(uuid(7))
+  username             String        @unique
+  email                String        @unique
+  passwordHash         String
+  fullName             String
+  phone                String?
+  avatarUrl            String?
+  role                 UserRole      @default(user)
+  status               AccountStatus @default(active)
+  emailVerifiedAt      DateTime?
+  phoneVerifiedAt      DateTime?
+  // notification preferences (the two checkboxes in Settings)
+  emailShipmentUpdates Boolean       @default(true)
+  smsReleaseAlerts     Boolean       @default(false)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  sessions         Session[]
+  kyc              KycProfile?
+  kycReviews       KycProfile[]  @relation("KycReviewer")
+  wallets          Wallet[]
+  listings         Listing[]
+  savedListings    SavedListing[]
+  escrowsCreated   Escrow[]      @relation("EscrowCreator")
+  escrowsAsBuyer   Escrow[]      @relation("EscrowBuyer")
+  escrowsAsSeller  Escrow[]      @relation("EscrowSeller")
+  chatMessages     ChatMessage[]
+  escrowEvents     EscrowEvent[]
+  disputesOpened   Dispute[]     @relation("DisputeOpener")
+  disputesResolved Dispute[]     @relation("DisputeResolver")
+  reviewsWritten   Review[]      @relation("ReviewAuthor")
+  reviewsReceived  Review[]      @relation("ReviewTarget")
+
+  @@index([status])
+  @@map("users")
+}
+
+model Session {
+  id               String    @id @default(uuid(7))
+  userId           String
+  refreshTokenHash String    @unique
+  userAgent        String?
+  ip               String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Lightweight KYC — single submission reviewed by an admin (no tiers, no file uploads).
+model KycProfile {
+  id              String     @id @default(uuid(7))
+  userId          String     @unique
+  legalName       String
+  storeName       String
+  taxId           String?
+  country         String
+  address         String
+  idType          String
+  idNumber        String
+  payoutRail      EscrowRail
+  momoNumber      String? // fiat payout destination (simulated momo)
+  trxAddress      String? // crypto payout destination (Shasta)
+  status          KycStatus  @default(pending)
+  rejectionReason String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("KycReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status])
+  @@map("kyc_profiles")
+}
+
+// ---------- Money (simulated GHS; TRX moves on-chain, not in wallets) ----------
+
+model Wallet {
+  id        String   @id @default(uuid(7))
+  userId    String
+  currency  Currency @default(GHS)
+  balance   Decimal  @default(0) @db.Decimal(14, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([userId, currency])
+  @@map("wallets")
+}
+
+model Transaction {
+  id        String          @id @default(uuid(7))
+  walletId  String
+  type      TransactionType
+  amount    Decimal         @db.Decimal(14, 2) // positive = credit, negative = debit
+  escrowId  String?
+  note      String?
+  createdAt DateTime        @default(now())
+
+  wallet Wallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  escrow Escrow? @relation(fields: [escrowId], references: [id])
+
+  @@index([walletId, createdAt])
+  @@map("transactions")
+}
+
+// ---------- Marketplace ----------
+
+model Listing {
+  id          String        @id @default(uuid(7))
+  sellerId    String
+  title       String
+  description String?
+  price       Decimal       @db.Decimal(14, 2)
+  currency    Currency      @default(GHS)
+  category    String
+  condition   String?
+  quantity    Int           @default(1)
+  views       Int           @default(0)
+  images      String[] // URLs (no upload infra at this scope)
+  location    String?
+  status      ListingStatus @default(active)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  seller  User           @relation(fields: [sellerId], references: [id])
+  savedBy SavedListing[]
+  escrows Escrow[]
+  reviews Review[]
+
+  @@index([status, category])
+  @@index([sellerId])
+  @@map("listings")
+}
+
+model SavedListing {
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@id([userId, listingId])
+  @@map("saved_listings")
+}
+
+// ---------- Escrow (the core — 5 states) ----------
+
+model Escrow {
+  id              String       @id @default(uuid(7))
+  code            String       @unique // share code, e.g. ESC-8F3K2M
+  title           String
+  description     String?
+  listingId       String? // set when created from a marketplace listing
+  quantity        Int?
+  creatorId       String
+  creatorRole     EscrowRole
+  buyerId         String?
+  sellerId        String?
+  invitedUsername String? // unresolved counterparty invite; joinable by code
+  amount          Decimal      @db.Decimal(14, 2)
+  feeAmount       Decimal      @default(0) @db.Decimal(14, 2) // fiat 1.5% / crypto 1.0%
+  currency        Currency
+  rail            EscrowRail
+  status          EscrowStatus @default(created)
+  // seller dispatch info (deliver transition)
+  carrier         String?
+  trackingNumber  String?
+  deliveryNote    String?
+  // time-locked auto-release (set on deliver; frozen by dispute)
+  autoReleaseAt   DateTime?
+  fundedAt        DateTime?
+  deliveredAt     DateTime?
+  disbursedAt     DateTime?
+  disputedAt      DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  listing      Listing?      @relation(fields: [listingId], references: [id])
+  creator      User          @relation("EscrowCreator", fields: [creatorId], references: [id])
+  buyer        User?         @relation("EscrowBuyer", fields: [buyerId], references: [id])
+  seller       User?         @relation("EscrowSeller", fields: [sellerId], references: [id])
+  milestones   Milestone[]
+  messages     ChatMessage[]
+  events       EscrowEvent[]
+  dispute      Dispute?
+  crypto       CryptoEscrow?
+  transactions Transaction[]
+  reviews      Review[]
+
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([status, autoReleaseAt])
+  @@map("escrows")
+}
+
+/// Milestone markers for digital-goods/service deals (pending → delivered → disbursed).
+model Milestone {
+  id          String          @id @default(uuid(7))
+  escrowId    String
+  position    Int
+  title       String
+  amount      Decimal         @db.Decimal(14, 2)
+  status      MilestoneStatus @default(pending)
+  deliveredAt DateTime?
+  disbursedAt DateTime?
+
+  escrow Escrow @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+
+  @@unique([escrowId, position])
+  @@map("milestones")
+}
+
+/// Immutable per-deal chat — auto-attached as evidence when a dispute opens.
+model ChatMessage {
+  id        String   @id @default(uuid(7))
+  escrowId  String
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  escrow Escrow @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  sender User   @relation(fields: [senderId], references: [id])
+
+  @@index([escrowId, createdAt])
+  @@map("chat_messages")
+}
+
+/// Append-only timeline of every state transition (detail-page stepper + admin oversight).
+model EscrowEvent {
+  id        String   @id @default(uuid(7))
+  escrowId  String
+  actorId   String?
+  actorRole String // buyer | seller | system | admin
+  event     String // e.g. created, joined, funded, delivered, released, disputed, ruled
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  escrow Escrow @relation(fields: [escrowId], references: [id], onDelete: Cascade)
+  actor  User?  @relation(fields: [actorId], references: [id])
+
+  @@index([escrowId, createdAt])
+  @@map("escrow_events")
+}
+
+// ---------- Disputes ----------
+
+model Dispute {
+  id                String          @id @default(uuid(7))
+  escrowId          String          @unique
+  openedById        String
+  reason            DisputeReason
+  description       String
+  status            DisputeStatus   @default(open)
+  outcome           DisputeOutcome?
+  ruledAmountBuyer  Decimal?        @db.Decimal(14, 2) // for split rulings
+  ruledAmountSeller Decimal?        @db.Decimal(14, 2)
+  rulingNote        String?
+  resolvedById      String?
+  autoResolveAt     DateTime? // time-locked auto-resolution if no admin ruling
+  resolvedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  escrow     Escrow @relation(fields: [escrowId], references: [id])
+  openedBy   User   @relation("DisputeOpener", fields: [openedById], references: [id])
+  resolvedBy User?  @relation("DisputeResolver", fields: [resolvedById], references: [id])
+
+  @@index([status, autoResolveAt])
+  @@map("disputes")
+}
+
+// ---------- Crypto rail (TRON Shasta testnet — the only real money) ----------
+
+model CryptoEscrow {
+  id                  String   @id @default(uuid(7))
+  escrowId            String   @unique
+  depositAddress      String
+  depositKeyEnc       String? // encrypted private key of the deposit address
+  sellerPayoutAddress String?
+  buyerRefundAddress  String?
+  expectedTrx         Decimal  @db.Decimal(18, 6)
+  receivedTrx         Decimal  @default(0) @db.Decimal(18, 6)
+  confirmations       Int      @default(0)
+  depositTxid         String?
+  releaseTxid         String?
+  refundTxid          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  escrow Escrow @relation(fields: [escrowId], references: [id])
+
+  @@map("crypto_escrows")
+}
+
+// ---------- Reviews ----------
+
+model Review {
+  id         String   @id @default(uuid(7))
+  escrowId   String
+  listingId  String? // shown on the product page when the deal came from a listing
+  reviewerId String
+  revieweeId String
+  rating     Int      @db.SmallInt // 1–5
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  escrow   Escrow   @relation(fields: [escrowId], references: [id])
+  listing  Listing? @relation(fields: [listingId], references: [id])
+  reviewer User     @relation("ReviewAuthor", fields: [reviewerId], references: [id])
+  reviewee User     @relation("ReviewTarget", fields: [revieweeId], references: [id])
+
+  @@unique([escrowId, reviewerId])
+  @@index([revieweeId])
+  @@index([listingId])
+  @@map("reviews")
+}

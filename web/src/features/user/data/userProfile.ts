@@ -7,7 +7,7 @@ export interface UserOrder {
   vendorVerified: boolean
   imageUrl: string
   orderDate: string
-  status: 'funded' | 'shipped' | 'completed' | 'disputed'
+  status: 'funded' | 'delivered' | 'disbursed' | 'disputed'
   trackingCode?: string
   shippingCarrier?: string
 }
@@ -48,7 +48,7 @@ export const mockUserOrders: UserOrder[] = [
     vendorVerified: true,
     imageUrl: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800&auto=format&fit=crop&q=80',
     orderDate: '2026-07-19',
-    status: 'shipped',
+    status: 'delivered',
     trackingCode: 'DHL-GH-882910',
     shippingCarrier: 'DHL Express (Insured)',
   },
@@ -61,7 +61,7 @@ export const mockUserOrders: UserOrder[] = [
     vendorVerified: true,
     imageUrl: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80',
     orderDate: '2026-07-15',
-    status: 'completed',
+    status: 'disbursed',
     trackingCode: 'FEDEX-992019',
     shippingCarrier: 'FedEx Priority',
   },

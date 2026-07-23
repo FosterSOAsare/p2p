@@ -10,21 +10,22 @@ import {
 } from 'lucide-react'
 import { initialDeals, type EscrowDeal } from '../features/escrow/data/deals'
 import { Badge } from '../features/shared/ui/Badge'
+import { formatMoney } from '../features/shared/libs/currency'
 
 export function Escrow() {
   const [deals] = useState<EscrowDeal[]>(initialDeals)
-  const [activeTab, setActiveTab] = useState<'all' | 'active' | 'released' | 'disputed'>('all')
+  const [activeTab, setActiveTab] = useState<'all' | 'active' | 'disbursed' | 'disputed'>('all')
 
   const filteredDeals = deals.filter((deal) => {
-    if (activeTab === 'active') return deal.status === 'funded' || deal.status === 'awaiting_acceptance'
-    if (activeTab === 'released') return deal.status === 'released'
+    if (activeTab === 'active') return deal.status === 'created' || deal.status === 'funded' || deal.status === 'delivered'
+    if (activeTab === 'disbursed') return deal.status === 'disbursed'
     if (activeTab === 'disputed') return deal.status === 'disputed'
     return true
   })
 
   // Summary statistics
   const totalVolume = deals.reduce((acc, curr) => acc + curr.amount, 0)
-  const activeCount = deals.filter((d) => d.status === 'funded' || d.status === 'awaiting_acceptance').length
+  const activeCount = deals.filter((d) => d.status === 'created' || d.status === 'funded' || d.status === 'delivered').length
 
   return (
     <div className="py-4 sm:py-6 space-y-6 sm:space-y-8">
@@ -49,7 +50,7 @@ export function Escrow() {
             <div className="flex flex-wrap items-center gap-4 sm:gap-6 pt-2 text-xs">
               <div>
                 <span className="text-slate-500 dark:text-slate-400 block font-medium">Total Contract Volume</span>
-                <span className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white">${totalVolume.toLocaleString()}</span>
+                <span className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white">{formatMoney(totalVolume)}</span>
               </div>
               <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
               <div>
@@ -85,7 +86,7 @@ export function Escrow() {
           {[
             { id: 'all', label: 'All Deals' },
             { id: 'active', label: 'Active Locked' },
-            { id: 'released', label: 'Completed & Released' },
+            { id: 'disbursed', label: 'Completed & Disbursed' },
             { id: 'disputed', label: 'Disputed' },
           ].map((tab) => (
             <button
@@ -119,7 +120,7 @@ export function Escrow() {
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <Badge
                     tone={
-                      deal.status === 'released'
+                      deal.status === 'disbursed'
                         ? 'success'
                         : deal.status === 'funded'
                         ? 'info'
@@ -128,7 +129,7 @@ export function Escrow() {
                         : 'warning'
                     }
                   >
-                    {deal.status.replace('_', ' ').toUpperCase()}
+                    {deal.status === 'delivered' ? 'DELIVERED / UNDER REVIEW' : deal.status.replace('_', ' ').toUpperCase()}
                   </Badge>
 
                   <span className="flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full text-[11px]">
@@ -157,7 +158,7 @@ export function Escrow() {
                 <div className="text-left md:text-right">
                   <span className="text-[11px] text-slate-400 block font-medium">Escrow Amount</span>
                   <span className="font-display text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
-                    ${deal.amount.toLocaleString()} <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{deal.currency}</span>
+                    {formatMoney(deal.amount, deal.currency)}
                   </span>
                 </div>
 

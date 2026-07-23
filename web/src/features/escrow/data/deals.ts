@@ -5,28 +5,38 @@ export interface EscrowChatMessage {
   message: string
 }
 
+export interface EscrowMilestone {
+  id: string
+  title: string
+  amount: number
+  status: 'pending' | 'delivered' | 'disbursed'
+}
+
 export interface EscrowDeal {
   id: string
+  code: string
   creatorUsername: string
   counterpartyUsername: string
   title: string
   amount: number
-  currency: 'USD' | 'USDC' | 'USDT'
+  currency: 'GHS' | 'TRX'
   rail: 'fiat' | 'crypto'
-  status: 'draft' | 'awaiting_acceptance' | 'funded' | 'released' | 'disputed'
+  status: 'created' | 'funded' | 'delivered' | 'disbursed' | 'disputed'
   createdAt: string
   description: string
   chat: EscrowChatMessage[]
+  milestones?: EscrowMilestone[]
 }
 
 export const initialDeals: EscrowDeal[] = [
   {
     id: 'deal-801',
+    code: 'ESC-8F3K2M',
     creatorUsername: 'kofi_dev',
     counterpartyUsername: 'ama_design',
     title: 'Custom UI Design & Figma Kit (Freelance Contract)',
     amount: 1200,
-    currency: 'USDC',
+    currency: 'TRX',
     rail: 'crypto',
     status: 'funded',
     createdAt: '2026-07-18',
@@ -36,7 +46,7 @@ export const initialDeals: EscrowDeal[] = [
         id: 'm1',
         sender: 'kofi_dev',
         timestamp: 'July 18, 10:15 AM',
-        message: 'Hi Ama! I initiated the escrow contract for $1,200 USDC. Once you accept, funds will be locked.',
+        message: 'Hi Ama! I initiated the escrow contract for 1,200 TRX on the TRON testnet. Once you accept, funds will be locked.',
       },
       {
         id: 'm2',
@@ -45,16 +55,22 @@ export const initialDeals: EscrowDeal[] = [
         message: 'Accepted and funded! Working on the initial Figma wireframes now.',
       },
     ],
+    milestones: [
+      { id: 'ms-1', title: 'Wireframes & user flows', amount: 300, status: 'disbursed' },
+      { id: 'ms-2', title: '12 hi-fi web screens', amount: 600, status: 'delivered' },
+      { id: 'ms-3', title: 'Component style guide & handoff', amount: 300, status: 'pending' },
+    ],
   },
   {
     id: 'deal-802',
+    code: 'ESC-2QW9RD',
     creatorUsername: 'yaw_trader',
     counterpartyUsername: 'kwame_tech',
     title: 'Off-Market GPU Server Rig Purchase',
     amount: 3400,
-    currency: 'USD',
+    currency: 'GHS',
     rail: 'fiat',
-    status: 'released',
+    status: 'disbursed',
     createdAt: '2026-07-10',
     description: '2x Nvidia RTX 4090 GPU workstations shipped via insured courier.',
     chat: [
@@ -62,19 +78,20 @@ export const initialDeals: EscrowDeal[] = [
         id: 'm3',
         sender: 'yaw_trader',
         timestamp: 'July 10, 02:00 PM',
-        message: 'Shipment received and verified working! Releasing escrow funds now.',
+        message: 'Shipment received and verified working! Disbursing escrow funds now.',
       },
     ],
   },
   {
     id: 'deal-803',
+    code: 'ESC-7NP4XA',
     creatorUsername: 'daniel_web',
     counterpartyUsername: 'agency_x',
     title: 'Smart Contract Audit & Pen-Test',
     amount: 4500,
-    currency: 'USDT',
+    currency: 'TRX',
     rail: 'crypto',
-    status: 'awaiting_acceptance',
+    status: 'created',
     createdAt: '2026-07-20',
     description: 'Security vulnerability audit of Solidity contracts and formal report delivery.',
     chat: [],

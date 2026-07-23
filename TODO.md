@@ -3,7 +3,7 @@
 Comprehensive build checklist derived from the locked functional spec in [`docs/`](docs/README.md).
 Owner tags: **[BE]** backend (owned by teammate) · **[FE]** frontend · **[SH]** shared packages · **[SC]** smart contract · **[INF]** infra/devops · **[QA]** testing · **[DOC]** report/docs.
 
-Current state: `web/` is a Vite SPA prototype (marketplace browse/detail, mock escrow list/detail/chat, auth screens, dashboards — all mock data, no API). Functionality in `docs/` is authoritative; the Coinbase DESIGN.md is **not** adopted — keep the existing visual style.
+Current state: `web/` is a Vite SPA prototype (marketplace browse/detail, mock escrow list/detail/chat, auth screens, dashboards — all mock data, no API). The backend in `contracts/TaaS/apps/api` is built (M0–M8); see **§14b** for the audited server↔client gap list. Functionality in `docs/` is authoritative; the Coinbase DESIGN.md is **not** adopted — keep the existing visual style.
 
 ---
 
@@ -155,6 +155,56 @@ Current state: `web/` is a Vite SPA prototype (marketplace browse/detail, mock e
 - [ ] [FE] Global conventions: skeletons not spinners, Zod client validation on blur, success panels for money actions, confirm dialogs on irreversible actions (docs/04 header)
 - [ ] [FE] Replace all mock data files with TanStack Query hooks against the real API; remove role-toggle hacks (UserOrders buyer/seller switch → real per-transaction roles)
 - [ ] [FE] Landing page updates: fee calculator w/ GH₵ + fee-split selector (A3), live stats, how-it-works per type (A2)
+
+## 14b. Client gap audit — missing pages/features vs live TaaS API (audited 2026-07-23)
+
+Server (`contracts/TaaS/apps/api`) vs client (`p2p/web`) diff. The API is built and exposes all endpoints below; the client has **zero API calls** and is missing these screens/features entirely. Overlaps with sections above are cross-referenced — this list is the concrete integration work order.
+
+### Missing pages (whole screens)
+
+- [ ] [FE] **Checkout / fund escrow** — `/checkout?listing=:id` is navigated to (ProductDetail.tsx:247) but the route doesn't exist → 404. Wire to `POST /api/escrow/from-listing/:listingId` → `POST /api/escrow/:id/fund` (§6 C6)
+- [ ] [FE] **Wallet page**: GHS+TRX balances, tx history w/ cursor pagination, tx detail — `GET /api/wallet`, `/transactions`, `/transactions/:id` (§3 E1/E4)
+- [ ] [FE] **Deposit flow**: Paystack init + redirect to `authorizationUrl` — `POST /api/payments/deposit` (§3 E2)
+- [ ] [FE] **Withdrawal flow**: amount + momo/bank destination + 2FA code; history; "approval pending" state for ≥GH₵5,000 — `POST /api/payments/withdraw`, `GET /api/payments/withdrawals` (§3 E3)
+- [ ] [FE] **Escrow accept-by-code**: public share-link preview + accept — `GET /api/escrow/code/:code` (public), `POST /api/escrow/code/:code/accept` (§4 D2/A10)
+- [ ] [FE] **Dispute center**: open form (reason enum, requested outcome RELEASE/FULL_REFUND/PARTIAL + amount), evidence upload, dispute message thread, ruling display — `/api/escrow/:id/dispute` + `/evidence` + `/message` (§8 F1/F2)
+- [ ] [FE] **Notification center**: feed + unread badge + mark read/read-all — `GET /api/notifications`, `POST /:id/read`, `/read-all` (§10 F4)
+- [ ] [FE] **Buyer delivery code reveal**: 6-digit code + QR panel — `POST /api/escrow/:id/delivery/reveal` (§5 D7)
+- [ ] [FE] **Seller delivery arrangement**: mode picker (platform_driver/own_courier/pickup), dropoff address + lat/lng + geofence radius — replaces current carrier+tracking modal which matches nothing server-side — `POST /api/escrow/:id/delivery` (§5)
+- [ ] [FE] **Driver pages**: token-link job view → accept → pickup → arrive (GPS) → code verify + photo/signature upload + refuse-report — `GET/POST /api/driver/:token/*` (§5 G1–G3)
+- [ ] [FE] **Crypto escrow panel**: TRX deposit address, confirmation counter, Tronscan links — `GET /api/escrow/:id/crypto`, `POST /check` (§7)
+- [ ] [FE] **Admin console**: dashboard, user search/suspend, KYC review queue, dispute queue/assign/rule, escrow browser, settings, audit log — `/api/admin/*` (16 endpoints) (§11)
+- [ ] [FE] **Session management**: active sessions list, revoke one/others — `GET /api/auth/sessions`, `POST /:id/revoke`, `/revoke-others` (§1 F7)
+
+### Missing features inside existing pages
+
+- [ ] [FE] Settings→Security: 2FA setup/enable/disable (`/api/auth/2fa/*`), phone verify (`/api/auth/phone/*` — grants Tier 1; users can't transact without it)
+- [ ] [FE] Escrow detail: drive buttons off `availableActions` (FUND/RELEASE/DISPUTE/START_FULFILMENT/SUBMIT_DELIVERY/CANCEL); deadline countdowns (accept/funding/inspection)
+- [ ] [FE] Escrow create: add required server fields — `type` (PHYSICAL…CRYPTO), `role` (buyer/seller), `feeSplit` (BUYER/SELLER/SPLIT)
+- [ ] [FE] KYC: selfie upload (required for Tier 2), doc status tracking + rejection reason (`GET /api/kyc/me`), Tier 3 address-proof path; remove fake instant approval
+- [ ] [FE] Reviews: post-release leave-review flow — `GET/POST /api/escrow/:id/review`
+- [ ] [FE] Chat: render `flagged: true` messages with scam-warning banner
+- [ ] [FE] Realtime: Socket.IO client (`escrow:subscribe`; handle `escrow:update`, `chat:message`, `notification`, `dispute:update`)
+- [ ] [FE] Listings: pause/activate/delete actions, real image upload via `POST /api/marketplace/upload`, fetch categories from `GET /api/marketplace/categories` (drop hardcoded list)
+- [ ] [FE] Auth: 6-digit email OTP entry (server shape), handle `2fa_required` → challengeToken login branch, `credentials: "include"` on all requests (cookie-only auth)
+
+### Contract alignment (client vocabulary → server)
+
+- [ ] [FE] Currency model: USD/USDC/USDT + `rail` → **GHS/TRX** + `EscrowType`; amounts: plain numbers → minor-unit strings (responses) / decimal strings (requests)
+- [ ] [FE] Enum renames: escrow status (5 lowercase → 13 UPPERCASE), condition (`Brand New`→`NEW` etc.), listing status (`out_of_stock` doesn't exist → quantity/SOLD), sort (`price-asc`→`price_asc`; drop `featured`/`rating` or add server-side)
+- [ ] [FE] Drop or defer unsupported client features: Google OAuth buttons, carrier+tracking dispatch, report-listing/block-vendor/saved-items (no endpoints), instant-KYC, `returnPolicy`/`shippingEstimate`/`vendorResponseTime` listing fields
+- [ ] [FE] Fee display: replace 1.0%/1.5% seller-paid calculator with server model (1.5%, min GH₵2, cap GH₵150, BUYER/SELLER/SPLIT)
+- [ ] [DOC] Terms.tsx: fix rule claims to match server config (auto-release timers, tier limits GH₵1,000/10,000 not $1,000, Paystack not Stripe)
+
+### Decision: usernames (adopted — client approach wins) — full spec in [docs/13-username-support.md](docs/13-username-support.md)
+
+- [ ] [BE] Signup takes user-chosen `username` → `UserProfile.handle` (drop auto-generation, auth.service.ts:76-80); 409 on taken, reserved-list check (docs/13 §13.2–13.4)
+- [ ] [BE] New public `GET /api/auth/username-available?u=` (throttled)
+- [ ] [BE] Login by email **or** username: `identifier` field; preserve generic errors + timing equalization on both lookup paths
+- [ ] [BE] Escrow create: `counterpartyUsername` (XOR with `counterpartyEmail`); unresolved → null invite, same as email today
+- [ ] [SH] `usernameSchema` + `RESERVED_USERNAMES` in `packages/shared`
+- [ ] [QA] Test matrix in docs/13 §13.6
+- [ ] [FE] Wire Signup/Login/NewEscrow username fields to updated API; display `profile.handle` wherever mock `username` appears
 
 ## 15. Testing & verification [QA]
 

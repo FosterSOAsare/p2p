@@ -3,9 +3,9 @@ export interface SellerSaleOrder {
   title: string
   buyerUsername: string
   amount: number
-  currency: string
+  currency: 'GHS' | 'TRX'
   date: string
-  status: 'awaiting_shipment' | 'shipped' | 'released' | 'disputed'
+  status: 'funded' | 'delivered' | 'disbursed' | 'disputed'
   trackingNumber?: string
   carrier?: string
 }
@@ -51,18 +51,18 @@ export const mockSellerOrders: SellerSaleOrder[] = [
     title: 'MacBook Pro 16" M3 Max (36GB RAM, 1TB SSD)',
     buyerUsername: 'kwaku_b',
     amount: 2450,
-    currency: 'USD',
+    currency: 'GHS',
     date: '2026-07-21',
-    status: 'awaiting_shipment',
+    status: 'funded',
   },
   {
     id: 'sale-102',
     title: 'Sony Alpha A7 IV Mirrorless Camera Body',
     buyerUsername: 'daniel_web',
     amount: 1850,
-    currency: 'USD',
+    currency: 'GHS',
     date: '2026-07-18',
-    status: 'shipped',
+    status: 'delivered',
     trackingNumber: 'DHL-GH-99201',
     carrier: 'DHL Express',
   },
@@ -71,9 +71,9 @@ export const mockSellerOrders: SellerSaleOrder[] = [
     title: 'DJI Mini 4 Pro Fly More Combo',
     buyerUsername: 'ama_design',
     amount: 1100,
-    currency: 'USDC',
+    currency: 'TRX',
     date: '2026-07-12',
-    status: 'released',
+    status: 'disbursed',
     trackingNumber: 'FEDEX-88201',
     carrier: 'FedEx Priority',
   },

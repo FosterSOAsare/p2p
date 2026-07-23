@@ -1,0 +1,9 @@
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# deps & builds
+node_modules/
+dist/
+server/src/generated/
