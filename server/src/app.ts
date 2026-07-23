@@ -6,6 +6,10 @@ import { errorHandler, notFoundHandler } from "./shared/middleware/error.middlew
 import { healthRouter } from "./features/health/health.router";
 import { authRouter } from "./features/auth/auth.router";
 import { usersRouter } from "./features/users/users.router";
+import { kycRouter } from "./features/kyc/kyc.router";
+import { adminRouter } from "./features/admin/admin.router";
+import { categoriesRouter, listingsRouter } from "./features/listings/listings.router";
+import { messagesRouter } from "./features/messages/messages.router";
 
 export function createApp() {
   const app = express();
@@ -17,9 +21,13 @@ export function createApp() {
   app.use("/health", healthRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/users", usersRouter);
+  app.use("/api/kyc", kycRouter);
+  app.use("/api/admin", adminRouter);
+  app.use("/api/listings", listingsRouter);
+  app.use("/api/categories", categoriesRouter);
+  app.use("/api/messages", messagesRouter);
   // Next feature modules mount here:
   // app.use("/api/escrow", escrowRouter);
-  // app.use("/api/admin", adminRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

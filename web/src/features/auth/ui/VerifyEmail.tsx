@@ -1,29 +1,32 @@
-import { useEffect, useRef } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { MailCheck, ArrowRight, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
-import { useMe, useResendVerification, useVerifyEmail } from '../data/authApi'
+import { authKeys, useMe, useResendVerification, useVerifyEmailToken } from '../data/authApi'
 import { apiErrorMessage } from '../../shared/libs/api'
 
 export function VerifyEmail() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
 
   const { data: me } = useMe()
-  const verify = useVerifyEmail()
+  // Runs automatically when a ?token= is present — no effect/ref needed.
+  const verify = useVerifyEmailToken(token)
   const resend = useResendVerification()
 
-  // If the page was opened from the emailed link (?token=...), verify automatically.
-  const attempted = useRef(false)
+  // Successful verification → refresh session state, then send the user to login.
   useEffect(() => {
-    if (token && !attempted.current) {
-      attempted.current = true
-      verify.mutate(token)
+    if (verify.isSuccess) {
+      queryClient.invalidateQueries({ queryKey: authKeys.me })
+      const timer = setTimeout(() => navigate('/login'), 1500)
+      return () => clearTimeout(timer)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+  }, [verify.isSuccess, navigate, queryClient])
 
   // 1. Verifying the emailed link right now
-  if (token && verify.isPending) {
+  if (token && verify.isLoading) {
     return (
       <div className="mx-auto max-w-md py-12 space-y-6 text-center">
         <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-950 text-primary-600 dark:text-primary-400 shadow-md">
@@ -39,26 +42,41 @@ export function VerifyEmail() {
     )
   }
 
-  // 2. Verified — either via the link just now, or the account was already confirmed
-  if ((token && verify.isSuccess) || (!token && me?.emailVerified)) {
+  // 2. Verified via the link just now → confirmation flash, then redirect to login
+  if (token && verify.isSuccess) {
     return (
       <div className="mx-auto max-w-md py-12 space-y-6 text-center">
         <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 shadow-md">
           <CheckCircle2 size={32} />
         </div>
         <div className="space-y-2">
-          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {token ? 'Email verified!' : 'Your email is already verified'}
-          </h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Email verified!</h1>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-sm mx-auto">
-            {me?.email ? (
-              <>
-                <strong className="text-slate-800 dark:text-slate-200">{me.email}</strong> is confirmed.{' '}
-              </>
-            ) : (
-              'Your email address has been confirmed. '
-            )}
-            You'll receive order status updates and escrow release alerts.
+            Your email address has been confirmed. Redirecting you to sign in...
+          </p>
+        </div>
+        <Link
+          to="/login"
+          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary-600 py-2.5 px-5 text-xs font-semibold text-white hover:bg-primary-700 transition-all"
+        >
+          Continue to Sign In <ArrowRight size={14} />
+        </Link>
+      </div>
+    )
+  }
+
+  // 2b. Already-confirmed account visiting without a token
+  if (!token && me?.emailVerified) {
+    return (
+      <div className="mx-auto max-w-md py-12 space-y-6 text-center">
+        <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 shadow-md">
+          <CheckCircle2 size={32} />
+        </div>
+        <div className="space-y-2">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Your email is already verified</h1>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-sm mx-auto">
+            <strong className="text-slate-800 dark:text-slate-200">{me.email}</strong> is confirmed. You'll receive order
+            status updates and escrow release alerts.
           </p>
         </div>
         <Link

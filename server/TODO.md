@@ -36,8 +36,8 @@ Out of scope (client shows but proposal drops): Google OAuth buttons → remove 
 
 ## 3. KYC (`/api/kyc`) — client: VendorKyc (replace fake instant approval with pending → admin review)
 
-- [ ] `POST /` 🔒 — `{ legalName, storeName, taxId?, country, address, idType, idNumber, payoutRail (fiat|crypto), momoNumber? | trxAddress? }` → status `pending` (no file uploads — decorative in client; no tier system)
-- [ ] `GET /me` 🔒 — `{ status: unverified|pending|verified|rejected, rejectionReason? }`
+- [x] `POST /` 🔒 — `{ legalName, storeName, taxId?, country, address, idType, idNumber, momoNumber?, trxAddress? }` (no rail choice — both payout accounts at once, ≥1 required) → status `pending`; 409 while pending/verified; resubmit allowed after rejection (no file uploads; no tier system)
+- [x] `GET /me` 🔒 — `{ status: unverified|pending|verified|rejected, rejectionReason?, submission }` (submission echo prefills the rejected-refill form)
 
 ## 4. Wallet (`/api/wallet`) — simulated GHS momo; client shows balances but has no wallet page yet (FE to add)
 
@@ -48,8 +48,11 @@ Out of scope (client shows but proposal drops): Google OAuth buttons → remove 
 
 ## 5. Marketplace (`/api/listings`) — client: Products, ProductDetail, UserProducts, SellerDashboard
 
-- [ ] `GET /` — query params the client filter bar needs: `search`, `category`, `condition`, `verifiedOnly`, `maxPrice`, `sort (featured|price_asc|price_desc|rating)`, pagination
-- [ ] `GET /:id` — detail: full product fields + vendor card (name, verified, rating, responseTime*) + reviews (*drop or hardcode responseTime)
+> **Rail rule:** marketplace listings are **GHS/fiat only** (simulated momo). TRX/crypto is exclusively for standalone escrow deals (§6). Listing create enforces `currency: GHS`; listing-originated escrows are always `rail: fiat`.
+
+- [x] `GET /` — `search` (title/description/@seller), `category`, `condition`, `verifiedOnly`, `maxPrice`, `sort (featured|newest|price_asc|price_desc)`, `page`/`limit` pagination → `{ listings, total, page, pages }`
+- [x] `GET /:id` — full detail + seller card (username, storeName, verified, joinedAt) + reviews + avg rating; increments `views`
+- [x] `GET /api/categories` — Category table (27 seeded), ordered by position
 - [ ] `POST /` 🔒 (KYC-verified sellers) — `{ title, price, quantity, category, condition?, description?, images[] (URLs — no upload infra), location? }`
 - [ ] `PATCH /:id` 🔒 (owner) — edit-listing modal fields; `DELETE /:id` 🔒 (owner)
 - [ ] `GET /mine` 🔒 — seller's listings with `views`, `status (active|out_of_stock|draft)`
@@ -88,7 +91,7 @@ Out of scope (client shows but proposal drops): Google OAuth buttons → remove 
 - [ ] `GET /escrows` — all deals, filter by status (oversight table)
 - [ ] `GET /disputes?status=open` — queue with deal + chat/evidence context
 - [ ] `POST /disputes/:id/rule` — `{ outcome: release|refund|split, buyerAmount?, sellerAmount?, note }` → moves money, escrow → `disbursed`, records ruling
-- [ ] `GET /kyc?status=pending` — review queue; `POST /kyc/:id/approve` · `POST /kyc/:id/reject { reason }`
+- [x] `GET /kyc?status=` — review queue (+ `GET /kyc/:id` detail); `POST /kyc/:id/approve` · `POST /kyc/:id/reject { reason }` (pending-only guard; records reviewer + timestamp)
 
 ## 8. Background jobs (not endpoints — simple `setInterval` workers are fine at this scope)
 

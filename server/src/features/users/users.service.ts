@@ -4,6 +4,48 @@ import { publicUser } from "../auth/auth.service";
 import type { PublicUser } from "../auth/auth.model";
 import type { NotificationPrefsInput, SavedListingCard, UpdateProfileInput } from "./users.model";
 
+// ---------- Public seller profile ----------
+
+/** Public view of a user — store identity, stats, and active listings. No email/legal name. */
+export async function getPublicProfile(username: string) {
+  const user = await prisma.user.findUnique({
+    where: { username },
+    include: { kyc: { select: { status: true, storeName: true, country: true } } },
+  });
+  if (!user || user.status === "suspended") throw ApiError.notFound("User not found");
+
+  const verified = user.kyc?.status === "verified";
+  const [listings, salesCompleted] = await Promise.all([
+    prisma.listing.findMany({
+      where: { sellerId: user.id, status: "active" },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.escrow.count({ where: { sellerId: user.id, status: "disbursed" } }),
+  ]);
+
+  return {
+    username: user.username,
+    avatarUrl: user.avatarUrl,
+    verified,
+    storeName: verified ? (user.kyc?.storeName ?? null) : null,
+    country: verified ? (user.kyc?.country ?? null) : null,
+    joinedAt: user.createdAt.toISOString(),
+    stats: {
+      activeListings: listings.length,
+      salesCompleted,
+    },
+    listings: listings.map((l) => ({
+      id: l.id,
+      title: l.title,
+      short: l.description?.split("\n")[0] ?? "",
+      price: Number(l.price),
+      category: l.category,
+      condition: l.condition,
+      image: l.images[0] ?? null,
+    })),
+  };
+}
+
 // ---------- Profile ----------
 
 export async function updateMe(userId: string, input: UpdateProfileInput): Promise<PublicUser> {
@@ -16,6 +58,43 @@ export async function updateMe(userId: string, input: UpdateProfileInput): Promi
     },
   });
   return publicUser(user);
+}
+
+// ---------- Vendor blocking ----------
+
+export async function blockVendor(userId: string, username: string, reason: string) {
+  const vendor = await prisma.user.findUnique({ where: { username }, select: { id: true } });
+  if (!vendor) throw ApiError.notFound("User not found");
+  if (vendor.id === userId) throw ApiError.badRequest("You can't block yourself");
+
+  await prisma.vendorBlock.upsert({
+    where: { userId_vendorId: { userId, vendorId: vendor.id } },
+    create: { userId, vendorId: vendor.id, reason },
+    update: { reason },
+  });
+}
+
+export async function unblockVendor(userId: string, username: string) {
+  const vendor = await prisma.user.findUnique({ where: { username }, select: { id: true } });
+  if (!vendor) throw ApiError.notFound("User not found");
+  await prisma.vendorBlock.deleteMany({ where: { userId, vendorId: vendor.id } });
+}
+
+export async function listBlockedVendors(userId: string) {
+  const blocks = await prisma.vendorBlock.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      vendor: { select: { username: true, avatarUrl: true, kyc: { select: { storeName: true, status: true } } } },
+    },
+  });
+  return blocks.map((b) => ({
+    username: b.vendor.username,
+    avatarUrl: b.vendor.avatarUrl,
+    storeName: b.vendor.kyc?.status === "verified" ? b.vendor.kyc.storeName : null,
+    reason: b.reason,
+    blockedAt: b.createdAt.toISOString(),
+  }));
 }
 
 // ---------- Notification preferences (the two checkboxes in Settings) ----------

@@ -80,7 +80,7 @@ export function SellerDashboard() {
           {/* Action Buttons */}
           <div className="flex items-center gap-3 shrink-0">
             <Link
-              to="/user/products"
+              to="/listings"
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-500 px-5 py-3 text-xs sm:text-sm font-bold text-white dark:text-slate-950 shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 dark:hover:bg-emerald-400 transition-all cursor-pointer"
             >
               <Plus size={18} /> Manage Listings
@@ -201,7 +201,7 @@ export function SellerDashboard() {
             <p className="text-xs text-slate-500 dark:text-slate-400">{listings.length} items listed on the P2P marketplace catalog.</p>
           </div>
           <Link
-            to="/user/products"
+            to="/listings"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 dark:text-primary-400 hover:underline"
           >
             <Plus size={14} /> Add Product

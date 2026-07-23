@@ -19,6 +19,30 @@ export const notificationPrefs: RequestSchema = {
   }),
 };
 
+export const usernameParam: RequestSchema = {
+  params: Joi.object({
+    username: Joi.string()
+      .lowercase()
+      .pattern(/^[a-z0-9_]{3,20}$/)
+      .required(),
+  }),
+};
+
+export const blockVendor: RequestSchema = {
+  params: Joi.object({
+    username: Joi.string()
+      .lowercase()
+      .pattern(/^[a-z0-9_]{3,20}$/)
+      .required(),
+  }),
+  body: Joi.object({
+    reason: Joi.string().trim().min(3).max(300).required().messages({
+      "string.min": "Give a short reason for the block (min 3 chars)",
+      "any.required": "A reason for the block is required",
+    }),
+  }),
+};
+
 export const savedListingParam: RequestSchema = {
   params: Joi.object({
     listingId: Joi.string().guid().required(),

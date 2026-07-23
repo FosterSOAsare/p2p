@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, tokenStore, type AuthTokens } from '../../shared/libs/api'
+import { api, ApiError, tokenStore, type AuthTokens } from '../../shared/libs/api'
 
 // ---------- server response shapes ----------
 
@@ -23,6 +23,7 @@ export interface AuthResult {
 
 export interface MeResponse extends AuthUser {
   kycStatus: 'unverified' | 'pending' | 'verified' | 'rejected'
+  prefs: { emailShipmentUpdates: boolean; smsReleaseAlerts: boolean }
   wallets: { currency: 'GHS' | 'TRX'; balance: number }[]
   stats: { activeOrdersCount: number; totalSpent: number; savedItemsCount: number }
 }
@@ -34,12 +35,27 @@ export const authKeys = {
 
 // ---------- queries ----------
 
-/** The logged-in user (undefined while logged out). Auth state = `Boolean(useMe().data)`. */
+/**
+ * The logged-in user (`null` while logged out). Auth state = `Boolean(useMe().data)`.
+ * Always enabled — the queryFn resolves `null` when there's no token, so login/logout
+ * invalidations always reach active subscribers (an `enabled:` gate on localStorage
+ * is not reactive and left the header stuck on the previous auth state).
+ */
 export function useMe() {
-  return useQuery({
+  return useQuery<MeResponse | null>({
     queryKey: authKeys.me,
-    queryFn: () => api<MeResponse>('/api/auth/me'),
-    enabled: tokenStore.isLoggedIn(),
+    queryFn: async () => {
+      if (!tokenStore.isLoggedIn()) return null
+      try {
+        return await api<MeResponse>('/api/auth/me')
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          tokenStore.clear() // session fully expired/revoked — drop the dead tokens
+          return null
+        }
+        throw err
+      }
+    },
     retry: false,
     staleTime: 60_000,
   })
@@ -94,16 +110,27 @@ export function useLogout() {
     },
     onSettled: () => {
       tokenStore.clear()
-      queryClient.removeQueries({ queryKey: authKeys.me })
+      // setQueryData notifies active subscribers immediately (removeQueries does not),
+      // so the header flips to logged-out without waiting for a re-render.
+      queryClient.setQueryData(authKeys.me, null)
     },
   })
 }
 
-export function useVerifyEmail() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (token: string) => api('/api/auth/verify-email', { method: 'POST', body: { token } }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: authKeys.me }),
+/**
+ * Verifies the emailed link. Modeled as a query keyed by the token — NOT a
+ * mutation fired from useEffect, which is unreliable under StrictMode
+ * double-invocation (state can land on the discarded instance, leaving the
+ * rendered hook stuck without success/error). The query runs automatically
+ * when a token is present and never re-posts thanks to staleTime: Infinity.
+ */
+export function useVerifyEmailToken(token: string | null) {
+  return useQuery({
+    queryKey: ['auth', 'verify-email', token],
+    queryFn: () => api<{ ok: boolean }>('/api/auth/verify-email', { method: 'POST', body: { token } }),
+    enabled: Boolean(token),
+    retry: false,
+    staleTime: Infinity,
   })
 }
 

@@ -262,6 +262,10 @@ export async function me(userId: string) {
   return {
     ...publicUser(user),
     kycStatus: user.kyc?.status ?? "unverified",
+    prefs: {
+      emailShipmentUpdates: user.emailShipmentUpdates,
+      smsReleaseAlerts: user.smsReleaseAlerts,
+    },
     wallets: user.wallets.map((w) => ({ currency: w.currency, balance: Number(w.balance) })),
     stats: {
       activeOrdersCount,

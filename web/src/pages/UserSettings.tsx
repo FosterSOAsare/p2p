@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import {
   ShieldCheck,
   User,
@@ -9,26 +11,60 @@ import {
   Bell,
   ArrowLeft,
   CheckCircle2,
+  Clock,
+  XCircle,
   Save,
 } from 'lucide-react'
-import { mockUserProfile } from '../features/user/data/userProfile'
+import { useMe } from '../features/auth/data/authApi'
+import { useUpdateNotificationPrefs, useUpdateProfile } from '../features/user/data/usersApi'
+import { profileSchema, type ProfileForm } from '../features/user/data/schemas'
+import { apiErrorMessage } from '../features/shared/libs/api'
+
+const inputClass =
+  'w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none'
+
+const lockedInputClass =
+  'w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-500 dark:text-slate-400 cursor-not-allowed'
 
 export function UserSettings() {
-  const [profile, setProfile] = useState(mockUserProfile)
-  const [savedSuccess, setSavedSuccess] = useState(false)
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile')
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault()
-    setSavedSuccess(true)
-    setTimeout(() => setSavedSuccess(false), 3000)
-  }
+  const { data: me } = useMe()
+  const updateProfile = useUpdateProfile()
+  const updatePrefs = useUpdateNotificationPrefs()
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<ProfileForm>({
+    resolver: zodResolver(profileSchema),
+    // Prefill from the signed-in user as soon as /me resolves (and stay in sync after saves)
+    values: me ? { fullName: me.fullName, phone: me.phone ?? '' } : undefined,
+  })
+
+  // Auto-hide the success banner
+  useEffect(() => {
+    if (updateProfile.isSuccess) {
+      const timer = setTimeout(() => updateProfile.reset(), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [updateProfile.isSuccess, updateProfile])
+
+  const onSaveProfile = handleSubmit((values) => {
+    updateProfile.mutate({
+      fullName: values.fullName,
+      phone: values.phone === '' ? null : values.phone,
+    })
+  })
+
+  const kycStatus = me?.kycStatus ?? 'unverified'
 
   return (
     <div className="py-4 sm:py-6 space-y-6">
       {/* Back link */}
       <Link
-        to="/user/dashboard"
+        to="/dashboard"
         className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
       >
         <ArrowLeft size={16} />
@@ -44,10 +80,16 @@ export function UserSettings() {
         </p>
       </div>
 
-      {savedSuccess && (
+      {updateProfile.isSuccess && (
         <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 p-3.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2 animate-fade-in">
           <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400" />
           Your account settings have been saved successfully!
+        </div>
+      )}
+
+      {updateProfile.isError && (
+        <div className="rounded-xl bg-rose-50 border border-rose-200 p-3.5 text-xs font-semibold text-rose-700 dark:bg-rose-950/60 dark:border-rose-800 dark:text-rose-300 animate-fade-in">
+          {apiErrorMessage(updateProfile.error)}
         </div>
       )}
 
@@ -63,7 +105,7 @@ export function UserSettings() {
             ].map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
-                onClick={() => setActiveTab(id as any)}
+                onClick={() => setActiveTab(id as 'profile' | 'security' | 'notifications')}
                 className={`w-full flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 transition-all text-left cursor-pointer ${
                   activeTab === id
                     ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-semibold shadow-sm'
@@ -76,27 +118,59 @@ export function UserSettings() {
             ))}
           </div>
 
-          {/* KYC Status Card */}
+          {/* KYC Status Card — live from /me */}
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-5 space-y-3">
             <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white text-xs">
               <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
               KYC Verification Status
             </div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950 px-3 py-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                <CheckCircle2 size={13} /> Level 2 Verified
-              </span>
+              {kycStatus === 'verified' && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950 px-3 py-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  <CheckCircle2 size={13} /> Verified Seller
+                </span>
+              )}
+              {kycStatus === 'pending' && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950 px-3 py-1 text-xs font-bold text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                  <Clock size={13} /> Under Review
+                </span>
+              )}
+              {kycStatus === 'rejected' && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 dark:bg-rose-950 px-3 py-1 text-xs font-bold text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                  <XCircle size={13} /> Rejected
+                </span>
+              )}
+              {kycStatus === 'unverified' && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                  Not Verified
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-              Your government ID and proof of address are verified. You have un-capped escrow purchasing power.
+              {kycStatus === 'verified' &&
+                'Your identity is verified. You can create marketplace listings and receive payouts.'}
+              {kycStatus === 'pending' &&
+                'Your KYC submission is with our review team. You can buy and use escrow deals while you wait.'}
+              {kycStatus === 'rejected' &&
+                'Your submission was rejected. Review the reason and resubmit from the seller verification page.'}
+              {kycStatus === 'unverified' &&
+                'Verify your identity to unlock marketplace selling. Buying and standalone escrow deals need no KYC.'}
             </p>
+            {kycStatus !== 'verified' && kycStatus !== 'pending' && (
+              <Link
+                to="/sell"
+                className="inline-flex items-center gap-1.5 text-[11px] font-bold text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                Start seller verification →
+              </Link>
+            )}
           </div>
         </div>
 
         {/* Right Content Area */}
         <div className="lg:col-span-8">
           {activeTab === 'profile' && (
-            <form onSubmit={handleSave} className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-5 shadow-sm">
+            <form onSubmit={onSaveProfile} className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-5 shadow-sm" noValidate>
               <h3 className="font-display text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-3">
                 Personal Information
               </h3>
@@ -108,48 +182,39 @@ export function UserSettings() {
                 </label>
                 <div className="relative">
                   <User size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="user-fullname"
-                    type="text"
-                    value={profile.fullName}
-                    onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none"
-                  />
+                  <input id="user-fullname" type="text" {...register('fullName')} className={inputClass} />
                 </div>
+                {errors.fullName && (
+                  <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{errors.fullName.message}</p>
+                )}
               </div>
 
-              {/* Username */}
+              {/* Username — immutable */}
               <div className="space-y-1">
                 <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400" htmlFor="user-username">
                   Username
                 </label>
                 <div className="relative">
                   <User size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="user-username"
-                    type="text"
-                    value={profile.username}
-                    onChange={(e) => setProfile({ ...profile, username: e.target.value })}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none"
-                  />
+                  <input id="user-username" type="text" value={me?.username ?? ''} readOnly disabled className={lockedInputClass} />
                 </div>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Usernames are permanent — they identify you on deals and listings.
+                </p>
               </div>
 
-              {/* Email */}
+              {/* Email — immutable */}
               <div className="space-y-1">
                 <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400" htmlFor="user-email">
                   Email Address
                 </label>
                 <div className="relative">
                   <Mail size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="user-email"
-                    type="email"
-                    value={profile.email}
-                    onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none"
-                  />
+                  <input id="user-email" type="email" value={me?.email ?? ''} readOnly disabled className={lockedInputClass} />
                 </div>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Contact support to change the email on your account.
+                </p>
               </div>
 
               {/* Phone */}
@@ -159,21 +224,19 @@ export function UserSettings() {
                 </label>
                 <div className="relative">
                   <Phone size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="user-phone"
-                    type="text"
-                    value={profile.phone}
-                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none"
-                  />
+                  <input id="user-phone" type="text" {...register('phone')} placeholder="+233 24 000 0000" className={inputClass} />
                 </div>
+                {errors.phone && (
+                  <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{errors.phone.message}</p>
+                )}
               </div>
 
               <button
                 type="submit"
-                className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-primary-700 transition-all cursor-pointer shadow-md"
+                disabled={updateProfile.isPending || !me}
+                className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-primary-700 transition-all cursor-pointer shadow-md disabled:opacity-50"
               >
-                <Save size={15} /> Save Changes
+                <Save size={15} /> {updateProfile.isPending ? 'Saving...' : 'Save Changes'}
               </button>
             </form>
           )}
@@ -203,12 +266,42 @@ export function UserSettings() {
               <div className="space-y-3 text-xs">
                 <label className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 cursor-pointer text-slate-800 dark:text-slate-200">
                   <span>Receive Email on order shipment & tracking update</span>
-                  <input type="checkbox" defaultChecked className="rounded text-primary-600" />
+                  <input
+                    type="checkbox"
+                    checked={me?.prefs.emailShipmentUpdates ?? true}
+                    disabled={!me || updatePrefs.isPending}
+                    onChange={(e) =>
+                      updatePrefs.mutate({
+                        emailShipmentUpdates: e.target.checked,
+                        smsReleaseAlerts: me?.prefs.smsReleaseAlerts ?? false,
+                      })
+                    }
+                    className="rounded text-primary-600"
+                  />
                 </label>
                 <label className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 cursor-pointer text-slate-800 dark:text-slate-200">
                   <span>SMS alert when funds are ready for release</span>
-                  <input type="checkbox" defaultChecked className="rounded text-primary-600" />
+                  <input
+                    type="checkbox"
+                    checked={me?.prefs.smsReleaseAlerts ?? false}
+                    disabled={!me || updatePrefs.isPending}
+                    onChange={(e) =>
+                      updatePrefs.mutate({
+                        emailShipmentUpdates: me?.prefs.emailShipmentUpdates ?? true,
+                        smsReleaseAlerts: e.target.checked,
+                      })
+                    }
+                    className="rounded text-primary-600"
+                  />
                 </label>
+                {updatePrefs.isError && (
+                  <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                    {apiErrorMessage(updatePrefs.error)}
+                  </p>
+                )}
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Preferences save automatically when toggled.
+                </p>
               </div>
             </div>
           )}

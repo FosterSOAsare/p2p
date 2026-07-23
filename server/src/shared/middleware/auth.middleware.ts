@@ -42,3 +42,20 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
   if (req.user?.role !== "admin") return next(ApiError.forbidden("Admin access required"));
   next();
 }
+
+/** Use after auth() on seller-only routes (listing management): admins pass, otherwise KYC must be verified. */
+export async function requireSeller(req: Request, _res: Response, next: NextFunction) {
+  try {
+    if (req.user?.role === "admin") return next();
+    const kyc = await prisma.kycProfile.findUnique({
+      where: { userId: req.user!.id },
+      select: { status: true },
+    });
+    if (kyc?.status !== "verified") {
+      throw ApiError.forbidden("Verified sellers only — complete seller verification to manage listings");
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+}

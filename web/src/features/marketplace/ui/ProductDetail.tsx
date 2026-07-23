@@ -14,29 +14,54 @@ import {
   ChevronLeft,
   ChevronRight,
   Maximize2,
+  Loader2,
 } from 'lucide-react'
-import { products } from '../data'
-import { RatingStars } from '../../shared/ui/RatingStars'
 import { Reviews } from './Reviews'
 import { Badge } from '../../shared/ui/Badge'
+import { useListing } from '../data/marketplaceApi'
+import { useMe } from '../../auth/data/authApi'
+import { useSavedListings, useSaveListing, useUnsaveListing, useBlockedVendors } from '../../user/data/usersApi'
+import { formatMoney } from '../../shared/libs/currency'
+import { formatDate } from '../../shared/libs/date'
+import { apiErrorMessage } from '../../shared/libs/api'
 
 export function ProductDetail() {
-  const { id } = useParams()
+  const { id = '' } = useParams()
   const navigate = useNavigate()
-  const product = products.find((p) => p.id === id)
 
-  const [isSaved, setIsSaved] = useState(false)
+  const listingQuery = useListing(id)
+  const { data: me } = useMe()
+
+  // Real save/bookmark state
+  const savedQuery = useSavedListings()
+  const saveListing = useSaveListing()
+  const unsaveListing = useUnsaveListing()
+  const isSaved = (savedQuery.data?.saved ?? []).some((s) => s.id === id)
+
+  // Real vendor-block state (managed on the seller profile page)
+  const blockedQuery = useBlockedVendors()
+
   const [activeSlide, setActiveSlide] = useState(0)
   const [isFullScreen, setIsFullScreen] = useState(false)
-  const [vendorBlocked, setVendorBlocked] = useState(false)
   const [reported, setReported] = useState(false)
-  const [chatOpened, setChatOpened] = useState(false)
 
-  if (!product) {
+  if (listingQuery.isLoading) {
+    return (
+      <div className="py-20 text-center">
+        <Loader2 size={28} className="mx-auto animate-spin text-primary-600 dark:text-primary-400" />
+      </div>
+    )
+  }
+
+  const product = listingQuery.data
+
+  if (listingQuery.isError || !product) {
     return (
       <div className="py-12 text-center space-y-4">
         <h2 className="font-display text-xl font-bold text-slate-900 dark:text-white">Listing Not Found</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">The listing you are looking for may have been sold or removed.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          {listingQuery.error ? apiErrorMessage(listingQuery.error) : 'The listing you are looking for may have been sold or removed.'}
+        </p>
         <Link
           to="/marketplace"
           className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-700"
@@ -48,7 +73,15 @@ export function ProductDetail() {
     )
   }
 
-  if (vendorBlocked) {
+  const toggleSave = () => {
+    if (!me) return navigate('/login')
+    if (isSaved) unsaveListing.mutate(id)
+    else saveListing.mutate(id)
+  }
+
+  const blockEntry = (blockedQuery.data?.blocked ?? []).find((b) => b.username === product.seller.username)
+
+  if (blockEntry) {
     return (
       <div className="py-12 text-center space-y-4">
         <div className="mx-auto h-12 w-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400">
@@ -56,27 +89,31 @@ export function ProductDetail() {
         </div>
         <h2 className="font-display text-xl font-bold text-slate-900 dark:text-white">Vendor Blocked</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-          You have blocked @{product.vendorName}. All listings from this vendor are hidden from your feed per your account preferences.
+          You blocked @{product.seller.username} — "{blockEntry.reason}". Their listings are hidden from your feed.
         </p>
-        <button
-          onClick={() => setVendorBlocked(false)}
-          className="text-xs font-semibold text-primary-600 dark:text-primary-400 underline cursor-pointer"
+        <Link
+          to={`/seller/${product.seller.username}`}
+          className="text-xs font-semibold text-primary-600 dark:text-primary-400 underline"
         >
-          Unblock @{product.vendorName}
-        </button>
+          Manage block on their profile
+        </Link>
       </div>
     )
   }
 
   const slideCount = product.images.length
+  const nextSlide = () => setActiveSlide((prev) => (prev + 1) % slideCount)
+  const prevSlide = () => setActiveSlide((prev) => (prev - 1 + slideCount) % slideCount)
 
-  const nextSlide = () => {
-    setActiveSlide((prev) => (prev + 1) % slideCount)
-  }
-
-  const prevSlide = () => {
-    setActiveSlide((prev) => (prev - 1 + slideCount) % slideCount)
-  }
+  // Server reviews → the Reviews component's display shape
+  const mappedReviews = product.reviews.map((r) => ({
+    id: r.id,
+    name: `@${r.reviewer}`,
+    rating: r.rating,
+    date: formatDate(r.createdAt),
+    comment: r.comment ?? '',
+    verifiedPurchase: true, // reviews only come from completed escrow deals
+  }))
 
   return (
     <div className="py-4 sm:py-6 space-y-6 sm:space-y-8">
@@ -95,7 +132,6 @@ export function ProductDetail() {
       <div className="grid grid-cols-1 gap-6 lg:gap-8 lg:grid-cols-12">
         {/* Left Column: Interactive Image Slider */}
         <div className="lg:col-span-7 space-y-4">
-          {/* Main Slider Container */}
           <div className="group relative h-64 sm:h-[380px] lg:h-[440px] w-full overflow-hidden rounded-3xl bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md">
             {product.images[activeSlide] ? (
               <img
@@ -109,21 +145,20 @@ export function ProductDetail() {
               </div>
             )}
 
-            {/* Category Tag Badge */}
             <div className="absolute left-3 top-3 sm:left-4 sm:top-4">
               <span className="rounded-full bg-slate-900/80 backdrop-blur-md px-2.5 py-0.5 text-[10px] sm:text-xs font-semibold text-white">
                 {product.category}
               </span>
             </div>
 
-            {/* Slide Index Counter Badge */}
-            <div className="absolute right-3 top-3 sm:right-4 sm:top-4">
-              <span className="rounded-full bg-slate-900/80 backdrop-blur-md px-2.5 py-0.5 text-[10px] sm:text-xs font-semibold text-white">
-                {activeSlide + 1} / {slideCount}
-              </span>
-            </div>
+            {slideCount > 0 && (
+              <div className="absolute right-3 top-3 sm:right-4 sm:top-4">
+                <span className="rounded-full bg-slate-900/80 backdrop-blur-md px-2.5 py-0.5 text-[10px] sm:text-xs font-semibold text-white">
+                  {activeSlide + 1} / {slideCount}
+                </span>
+              </div>
+            )}
 
-            {/* Carousel Navigation Arrows */}
             {slideCount > 1 && (
               <>
                 <button
@@ -143,7 +178,6 @@ export function ProductDetail() {
               </>
             )}
 
-            {/* Full Screen View Button */}
             <button
               onClick={() => setIsFullScreen(true)}
               className="absolute right-3 bottom-3 flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900/80 text-white backdrop-blur-md hover:bg-slate-900 cursor-pointer"
@@ -153,10 +187,8 @@ export function ProductDetail() {
             </button>
           </div>
 
-          {/* Carousel Slide Indicators & Thumbnail Strip */}
           {slideCount > 1 && (
             <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
-              {/* Dots */}
               <div className="flex gap-1.5 shrink-0">
                 {product.images.map((_, idx) => (
                   <button
@@ -169,7 +201,6 @@ export function ProductDetail() {
                 ))}
               </div>
 
-              {/* Thumbnails */}
               <div className="flex gap-2 overflow-x-auto shrink-0">
                 {product.images.map((img, idx) => (
                   <button
@@ -189,7 +220,9 @@ export function ProductDetail() {
           {/* Description Section */}
           <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 lg:p-8 space-y-3 mt-4 shadow-sm">
             <h3 className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white">Item Description</h3>
-            <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{product.description}</p>
+            <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+              {product.description ?? 'No description provided.'}
+            </p>
           </div>
         </div>
 
@@ -198,7 +231,7 @@ export function ProductDetail() {
           <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 lg:p-8 shadow-sm space-y-5 sm:space-y-6">
             <div>
               <div className="flex items-center justify-between gap-2 mb-2">
-                <Badge tone="neutral">{product.condition}</Badge>
+                {product.condition && <Badge tone="neutral">{product.condition}</Badge>}
                 <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                   {product.quantity} unit{product.quantity > 1 ? 's' : ''} available
                 </span>
@@ -208,38 +241,44 @@ export function ProductDetail() {
               </h1>
               <div className="mt-3 flex items-baseline gap-2">
                 <span className="font-display text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
-                  ${product.price.toLocaleString()}
+                  {formatMoney(product.price)}
                 </span>
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">USD in Escrow</span>
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">held in Escrow</span>
               </div>
             </div>
 
-            {/* Vendor Panel Card */}
-            <div className="rounded-2xl bg-slate-50 dark:bg-slate-950 p-3.5 sm:p-4 border border-slate-200 dark:border-slate-800 space-y-3">
+            {/* Vendor Panel Card — links to the public seller profile */}
+            <Link
+              to={`/seller/${product.seller.username}`}
+              className="block rounded-2xl bg-slate-50 dark:bg-slate-950 p-3.5 sm:p-4 border border-slate-200 dark:border-slate-800 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
+            >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-950 font-display text-xs font-bold text-primary-700 dark:text-primary-300 shrink-0">
-                    {product.vendorName[0].toUpperCase()}
-                  </div>
+                  {product.seller.avatarUrl ? (
+                    <img src={product.seller.avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover shrink-0" />
+                  ) : (
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-950 font-display text-xs font-bold text-primary-700 dark:text-primary-300 shrink-0 uppercase">
+                      {product.seller.username[0]}
+                    </div>
+                  )}
                   <div>
                     <div className="flex items-center gap-1">
-                      <span className="font-semibold text-slate-900 dark:text-white text-xs sm:text-sm">@{product.vendorName}</span>
-                      {product.vendorVerified && (
+                      <span className="font-semibold text-slate-900 dark:text-white text-xs sm:text-sm">
+                        {product.seller.storeName ?? `@${product.seller.username}`}
+                      </span>
+                      {product.seller.verified && (
                         <span title="KYC Verified Vendor" className="flex shrink-0">
                           <ShieldCheck size={15} className="text-primary-600 dark:text-primary-400" />
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Response time: {product.vendorResponseTime}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      @{product.seller.username} · joined {formatDate(product.seller.joinedAt)} · view profile →
+                    </p>
                   </div>
                 </div>
-                {product.vendorVerified && <Badge tone="success">KYC Verified</Badge>}
               </div>
-
-              <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 pt-1">
-                <RatingStars rating={product.vendorRating} reviewCount={product.reviewCount} />
-              </div>
-            </div>
+            </Link>
 
             {/* Primary Action Buttons */}
             <div className="space-y-3">
@@ -253,7 +292,7 @@ export function ProductDetail() {
 
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => setChatOpened(!chatOpened)}
+                  onClick={() => navigate(me ? `/messages/${product.seller.username}` : '/login')}
                   className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 py-2.5 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                 >
                   <MessageCircle size={15} />
@@ -261,8 +300,9 @@ export function ProductDetail() {
                 </button>
 
                 <button
-                  onClick={() => setIsSaved(!isSaved)}
-                  className={`inline-flex items-center justify-center gap-1.5 rounded-xl border py-2.5 px-3 text-xs font-semibold transition-all cursor-pointer ${
+                  onClick={toggleSave}
+                  disabled={saveListing.isPending || unsaveListing.isPending}
+                  className={`inline-flex items-center justify-center gap-1.5 rounded-xl border py-2.5 px-3 text-xs font-semibold transition-all cursor-pointer disabled:opacity-60 ${
                     isSaved
                       ? 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
                       : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -274,27 +314,6 @@ export function ProductDetail() {
               </div>
             </div>
 
-            {/* Chat Box Drawer Simulation */}
-            {chatOpened && (
-              <div className="rounded-2xl border border-primary-200 dark:border-primary-800 bg-primary-50/50 dark:bg-primary-950/50 p-3.5 space-y-2.5 text-xs animate-fade-in">
-                <div className="flex justify-between items-center font-semibold text-slate-800 dark:text-slate-200">
-                  <span>Pre-Purchase Chat with @{product.vendorName}</span>
-                  <button onClick={() => setChatOpened(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">✕</button>
-                </div>
-                <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 text-[11px]">
-                  Ask vendor questions before placing order. Messages will be recorded into the official order audit trail if you purchase.
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Is this still available for delivery?"
-                    className="flex-1 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
-                  />
-                  <button className="rounded-xl bg-primary-600 px-3 py-1.5 font-semibold text-white cursor-pointer">Send</button>
-                </div>
-              </div>
-            )}
-
             {/* Escrow Guarantee Policy */}
             <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/40 p-3.5 space-y-1.5 text-xs text-emerald-900 dark:text-emerald-300">
               <div className="flex items-center gap-1.5 font-semibold">
@@ -302,7 +321,7 @@ export function ProductDetail() {
                 Escrow Guarantee & Protection Policy
               </div>
               <p className="text-[11px] leading-relaxed text-emerald-800 dark:text-emerald-300">
-                Funds remain safely held in our append-only escrow ledger. The seller is only paid after you confirm delivery and inspect the item.
+                Your GH₵ payment stays locked in escrow. The seller is only paid after you confirm delivery and inspect the item.
               </p>
             </div>
 
@@ -311,15 +330,15 @@ export function ProductDetail() {
               <div className="flex items-start gap-2.5 text-slate-600 dark:text-slate-300">
                 <Truck size={16} className="text-slate-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200 block">Shipping & Delivery</span>
-                  {product.shippingEstimate}
+                  <span className="font-semibold text-slate-800 dark:text-slate-200 block">Location & Delivery</span>
+                  {product.location ?? 'Delivery arranged with the seller after escrow funding.'}
                 </div>
               </div>
               <div className="flex items-start gap-2.5 text-slate-600 dark:text-slate-300">
                 <RotateCcw size={16} className="text-slate-400 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-semibold text-slate-800 dark:text-slate-200 block">Return & Inspection Policy</span>
-                  {product.returnPolicy}
+                  Inspection window before release, with full escrow refund protection if the item isn't as described.
                 </div>
               </div>
             </div>
@@ -334,7 +353,8 @@ export function ProductDetail() {
                 {reported ? 'Listing Reported' : 'Report Listing'}
               </button>
               <button
-                onClick={() => setVendorBlocked(true)}
+                onClick={() => navigate(me ? `/seller/${product.seller.username}` : '/login')}
+                title="Blocking (with a reason) is done from the vendor's profile"
                 className="flex items-center gap-1 hover:text-rose-600 cursor-pointer"
               >
                 <UserX size={13} />
@@ -348,7 +368,7 @@ export function ProductDetail() {
       {/* Customer Reviews Section */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 lg:p-8 space-y-4 shadow-sm">
         <h2 className="font-display text-lg sm:text-xl font-bold text-slate-900 dark:text-white">Buyer Reviews & Ratings</h2>
-        <Reviews reviews={product.reviews} />
+        <Reviews reviews={mappedReviews} />
       </div>
 
       {/* FullScreen Modal View */}

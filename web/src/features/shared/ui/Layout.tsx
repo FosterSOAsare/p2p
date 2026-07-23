@@ -5,6 +5,7 @@ import {
   Handshake,
   Store,
   ShieldCheck,
+  MessageCircle,
   Menu,
   X,
   ShoppingBag,
@@ -19,13 +20,6 @@ import {
   FileText,
 } from 'lucide-react'
 import { Footer } from './Footer'
-
-const primaryNavItems = [
-  { to: '/marketplace', label: 'Marketplace', icon: Store },
-  { to: '/escrow', label: 'Escrow Deals', icon: ShieldCheck },
-  { to: '/sell', label: 'Sell Goods', icon: Store },
-  { to: '/user/orders', label: 'My Orders', icon: ShoppingBag },
-]
 
 const dropdownLinkClass =
   'flex items-center gap-2 rounded-lg px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 hover:text-primary-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
@@ -47,6 +41,25 @@ export function Layout() {
   const { data: me } = useMe()
   const logout = useLogout()
   const isLoggedIn = Boolean(me)
+
+  // Role-aware navigation: admin (account role) > seller (KYC-verified) > buyer.
+  // /dashboard renders the right component per persona, so every role points there.
+  const isAdmin = me?.role === 'admin'
+  const isSeller = !isAdmin && me?.kycStatus === 'verified'
+
+  const primaryNavItems = [
+    { to: '/marketplace', label: 'Marketplace', icon: Store },
+    { to: '/escrow', label: 'Escrow Deals', icon: ShieldCheck },
+    // Third slot depends on persona: admins review, sellers manage listings, buyers can become sellers
+    ...(isAdmin
+      ? [{ to: '/admin/kyc', label: 'KYC Queue', icon: ShieldCheck }]
+      : isSeller
+        ? [{ to: '/listings', label: 'My Listings', icon: Package }]
+        : [{ to: '/sell', label: 'Sell Goods', icon: Store }]),
+    ...(isLoggedIn && !isAdmin
+      ? [{ to: '/user/orders', label: isSeller ? 'My Sales' : 'My Orders', icon: ShoppingBag }]
+      : []),
+  ]
 
   // Apply saved (or system-preferred) theme on first mount
   useEffect(() => {
@@ -137,20 +150,24 @@ export function Layout() {
                         <p className="text-[11px] text-slate-400 truncate">{me?.email}</p>
                       </div>
 
-                      <Link to="/user/dashboard" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
-                        <LayoutDashboard size={15} /> Dashboard Overview
+                      <Link to="/dashboard" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                        <LayoutDashboard size={15} /> Dashboard
                       </Link>
 
-                      <Link to="/user/orders" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
-                        <ShoppingBag size={15} /> My Orders & Sales
-                      </Link>
+                      {!isAdmin && (
+                        <Link to="/user/orders" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                          <ShoppingBag size={15} /> {isSeller ? 'My Sales' : 'My Orders'}
+                        </Link>
+                      )}
 
-                      <Link to="/user/products" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
-                        <Package size={15} /> My Products
-                      </Link>
+                      {isSeller && (
+                        <Link to="/listings" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                          <Package size={15} /> My Listings
+                        </Link>
+                      )}
 
-                      <Link to="/vendor/dashboard" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
-                        <Store size={15} /> Merchant Store Panel
+                      <Link to="/messages" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                        <MessageCircle size={15} /> Messages
                       </Link>
 
                       <Link to="/user/settings" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
@@ -160,6 +177,17 @@ export function Layout() {
                       <Link to="/terms" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                         <FileText size={15} /> Terms & Legal Policy
                       </Link>
+
+                      {me?.role === 'admin' && (
+                        <div className="pt-1 border-t mt-1 border-slate-100 dark:border-slate-800">
+                          <span className="block px-3 pt-1.5 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Admin
+                          </span>
+                          <Link to="/admin/kyc" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <ShieldCheck size={15} /> KYC Review Queue
+                          </Link>
+                        </div>
+                      )}
 
                       <div className="pt-1 border-t mt-1 border-slate-100 dark:border-slate-800">
                         <button
@@ -248,25 +276,36 @@ export function Layout() {
               <div className="pt-2 border-t space-y-1 font-medium border-slate-100 dark:border-slate-800">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3">Account & Support</span>
                 <Link
-                  to="/user/dashboard"
+                  to="/dashboard"
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
                 >
-                  <LayoutDashboard size={16} /> Dashboard Overview
+                  <LayoutDashboard size={16} /> Dashboard
                 </Link>
+                {!isAdmin && (
+                  <Link
+                    to="/user/orders"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+                  >
+                    <ShoppingBag size={16} /> {isSeller ? 'My Sales' : 'My Orders'}
+                  </Link>
+                )}
+                {isSeller && (
+                  <Link
+                    to="/listings"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+                  >
+                    <Package size={16} /> My Listings
+                  </Link>
+                )}
                 <Link
-                  to="/user/orders"
+                  to="/messages"
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
                 >
-                  <ShoppingBag size={16} /> My Orders & Sales
-                </Link>
-                <Link
-                  to="/user/products"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                >
-                  <Package size={16} /> My Products
+                  <MessageCircle size={16} /> Messages
                 </Link>
                 <Link
                   to="/terms"

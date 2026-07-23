@@ -121,10 +121,14 @@ model User {
   wallets          Wallet[]
   listings         Listing[]
   savedListings    SavedListing[]
-  escrowsCreated   Escrow[]      @relation("EscrowCreator")
-  escrowsAsBuyer   Escrow[]      @relation("EscrowBuyer")
-  escrowsAsSeller  Escrow[]      @relation("EscrowSeller")
-  chatMessages     ChatMessage[]
+  blocksMade       VendorBlock[]  @relation("BlocksMade")
+  blocksReceived   VendorBlock[]  @relation("BlocksReceived")
+  escrowsCreated   Escrow[]       @relation("EscrowCreator")
+  escrowsAsBuyer   Escrow[]       @relation("EscrowBuyer")
+  escrowsAsSeller  Escrow[]       @relation("EscrowSeller")
+  conversationsA   Conversation[] @relation("ConversationUserA")
+  conversationsB   Conversation[] @relation("ConversationUserB")
+  messagesSent     Message[]
   escrowEvents     EscrowEvent[]
   disputesOpened   Dispute[]     @relation("DisputeOpener")
   disputesResolved Dispute[]     @relation("DisputeResolver")
@@ -152,9 +156,10 @@ model Session {
 }
 
 /// Lightweight KYC — single submission reviewed by an admin (no tiers, no file uploads).
+/// Payout destinations are optional (at least one): GHS deals pay momo, TRX deals pay the TRX address.
 model KycProfile {
-  id              String     @id @default(uuid(7))
-  userId          String     @unique
+  id              String    @id @default(uuid(7))
+  userId          String    @unique
   legalName       String
   storeName       String
   taxId           String?
@@ -162,9 +167,8 @@ model KycProfile {
   address         String
   idType          String
   idNumber        String
-  payoutRail      EscrowRail
   momoNumber      String? // fiat payout destination (simulated momo)
-  trxAddress      String? // crypto payout destination (Shasta)
+  trxAddress      String? // crypto payout destination (TRX address, Shasta)
   status          KycStatus  @default(pending)
   rejectionReason String?
   reviewedById    String?
@@ -214,6 +218,17 @@ model Transaction {
 
 // ---------- Marketplace ----------
 
+model Category {
+  id        String   @id @default(uuid(7))
+  name      String   @unique
+  slug      String   @unique
+  icon      String? // lucide icon name for the client
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("categories")
+}
+
 model Listing {
   id          String        @id @default(uuid(7))
   sellerId    String
@@ -239,6 +254,22 @@ model Listing {
   @@index([status, category])
   @@index([sellerId])
   @@map("listings")
+}
+
+/// A user blocking a vendor (with a stated reason) — hides the vendor's
+/// listings from them and disables contact.
+model VendorBlock {
+  id        String   @id @default(uuid(7))
+  userId    String // who blocked
+  vendorId  String // who is blocked
+  reason    String
+  createdAt DateTime @default(now())
+
+  user   User @relation("BlocksMade", fields: [userId], references: [id], onDelete: Cascade)
+  vendor User @relation("BlocksReceived", fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, vendorId])
+  @@map("vendor_blocks")
 }
 
 model SavedListing {
@@ -290,7 +321,7 @@ model Escrow {
   buyer        User?         @relation("EscrowBuyer", fields: [buyerId], references: [id])
   seller       User?         @relation("EscrowSeller", fields: [sellerId], references: [id])
   milestones   Milestone[]
-  messages     ChatMessage[]
+  messages     Message[] // deal-linked messages in the parties' conversation
   events       EscrowEvent[]
   dispute      Dispute?
   crypto       CryptoEscrow?
@@ -320,19 +351,40 @@ model Milestone {
   @@map("milestones")
 }
 
-/// Immutable per-deal chat — auto-attached as evidence when a dispute opens.
-model ChatMessage {
+/// One conversation per user pair (Binance-style) — all deals between two users
+/// happen alongside this single thread. userAId < userBId (normalized in service).
+model Conversation {
   id        String   @id @default(uuid(7))
-  escrowId  String
-  senderId  String
-  body      String
+  userAId   String
+  userBId   String
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  escrow Escrow @relation(fields: [escrowId], references: [id], onDelete: Cascade)
-  sender User   @relation(fields: [senderId], references: [id])
+  userA    User      @relation("ConversationUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB    User      @relation("ConversationUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  messages Message[]
 
-  @@index([escrowId, createdAt])
-  @@map("chat_messages")
+  @@unique([userAId, userBId])
+  @@map("conversations")
+}
+
+/// Immutable messages — auto-attached as evidence when a dispute opens.
+/// escrowId links deal-related/system messages to the deal they reference.
+model Message {
+  id             String    @id @default(uuid(7))
+  conversationId String
+  senderId       String
+  body           String
+  escrowId       String?
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id])
+  escrow       Escrow?      @relation(fields: [escrowId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
 }
 
 /// Append-only timeline of every state transition (detail-page stepper + admin oversight).
