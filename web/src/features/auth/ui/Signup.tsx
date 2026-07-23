@@ -85,7 +85,7 @@ export function Signup() {
     <div className="py-4 sm:py-8">
       <div className="mx-auto max-w-5xl overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl grid grid-cols-1 lg:grid-cols-12 min-h-[660px] transition-colors duration-300">
         {/* Left Side: Visual Panel with Light & Dark Mode adaptation */}
-        <div className="relative hidden lg:flex lg:col-span-5 flex-col justify-between p-10 bg-gradient-to-br from-emerald-50 via-white to-primary-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950 text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="relative hidden lg:flex lg:col-span-5 flex-col justify-between p-10 bg-emerald-50 dark:bg-slate-950 text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 overflow-hidden">
           <img
             src="https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1000&auto=format&fit=crop&q=80"
             alt="P2P Escrow Protection"

@@ -29,7 +29,7 @@ export function Escrow() {
   return (
     <div className="py-4 sm:py-6 space-y-6 sm:space-y-8">
       {/* Hero Header Banner with Light & Dark Mode adaptation */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950 p-4 sm:p-8 lg:p-10 text-slate-900 dark:text-white shadow-xl border border-slate-200 dark:border-slate-800 transition-colors duration-300">
+      <div className="relative overflow-hidden rounded-3xl bg-emerald-50 dark:bg-slate-900 p-4 sm:p-8 lg:p-10 text-slate-900 dark:text-white shadow-xl border border-slate-200 dark:border-slate-800 transition-colors duration-300">
         <div className="pointer-events-none absolute -right-12 -top-12 h-64 w-64 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 blur-3xl" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">

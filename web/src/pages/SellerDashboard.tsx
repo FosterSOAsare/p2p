@@ -50,7 +50,7 @@ export function SellerDashboard() {
   return (
     <div className="py-4 sm:py-6 space-y-6 sm:space-y-8">
       {/* Vendor Hero Banner with Light & Dark Mode adaptation */}
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-emerald-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950 p-4 sm:p-8 text-slate-900 dark:text-white shadow-xl space-y-5 transition-colors duration-300">
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-emerald-50 dark:bg-slate-900 p-4 sm:p-8 text-slate-900 dark:text-white shadow-xl space-y-5 transition-colors duration-300">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2.5">

@@ -118,7 +118,7 @@ export function UserDashboard() {
       </div>
 
       {/* Quick Escrow & Orders Banner with Light & Dark adaptation */}
-      <div className="rounded-2xl bg-gradient-to-r from-emerald-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950 p-4 sm:p-6 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md transition-colors duration-300">
+      <div className="rounded-2xl bg-emerald-50 dark:bg-slate-900 p-4 sm:p-6 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md transition-colors duration-300">
         <div className="space-y-1 text-center sm:text-left">
           <h3 className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white">Have an off-market 3rd-party deal?</h3>
           <p className="text-xs text-slate-600 dark:text-slate-300">Create an independent escrow deal for freelance work or domain sales.</p>

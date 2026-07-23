@@ -4,14 +4,7 @@ import { Store, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react'
 export function SellerCtaBanner() {
   return (
     <section className="relative overflow-hidden">
-      <div className="relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-emerald-50 via-white to-primary-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950 p-4 sm:p-8 lg:p-10 text-slate-900 dark:text-white shadow-xl transition-colors duration-300">
-        {/* Background Photography Overlay */}
-        <img
-          src="https://images.unsplash.com/photo-1556742049-0a670f4a4591?w=1600&auto=format&fit=crop&q=80"
-          alt="Seller Recruitment"
-          className="absolute inset-0 h-full w-full object-cover opacity-10 dark:opacity-20 mix-blend-overlay pointer-events-none"
-        />
-
+      <div className="relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-emerald-50 dark:bg-slate-900 p-4 sm:p-8 lg:p-10 text-slate-900 dark:text-white shadow-xl transition-colors duration-300">
         <div className="relative z-10 grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-center">
           <div className="lg:col-span-8 space-y-3.5">
             <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 dark:bg-emerald-950 px-3.5 py-1 text-xs font-semibold text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">

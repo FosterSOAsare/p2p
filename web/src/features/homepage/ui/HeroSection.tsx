@@ -7,7 +7,7 @@ export function HeroSection() {
   const [dealState, setDealState] = useState<'funded' | 'shipped' | 'released'>('funded')
 
   return (
-    <section className="relative overflow-hidden w-full pt-6 pb-10 sm:pt-12 sm:pb-16 lg:py-20 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-emerald-50/90 via-sky-50/80 to-primary-50/90 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950 text-slate-900 dark:text-white transition-colors duration-300">
+    <section className="relative overflow-hidden w-full pt-6 pb-10 sm:pt-12 sm:pb-16 lg:py-20 border-b border-slate-200 dark:border-slate-800 bg-emerald-50 dark:bg-slate-950 text-slate-900 dark:text-white transition-colors duration-300">
       {/* Full-Width Edge-to-Edge Background Photography Image */}
       <img
         src="https://images.unsplash.com/photo-1556740758-90de374c12ad?w=1600&auto=format&fit=crop&q=80"
@@ -15,9 +15,8 @@ export function HeroSection() {
         className="absolute inset-0 h-full w-full object-cover opacity-35 dark:opacity-45 transition-opacity duration-500 pointer-events-none"
       />
 
-      {/* Light & Dark Ambient Gradient Overlay */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/80 via-white/60 to-emerald-50/65 dark:from-slate-950/85 dark:via-slate-950/70 dark:to-emerald-950/80" />
-      <div className="pointer-events-none absolute -top-24 left-1/2 -z-10 h-[450px] w-[600px] -translate-x-1/2 rounded-full bg-gradient-to-tr from-primary-400/20 via-sky-300/20 to-emerald-400/20 dark:from-primary-600/30 dark:via-sky-500/20 dark:to-emerald-500/30 blur-3xl opacity-70" />
+      {/* Light & Dark Ambient Overlay */}
+      <div className="pointer-events-none absolute inset-0 bg-white/70 dark:bg-slate-950/75" />
 
       <div className="relative z-10 mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-center">
         {/* Left Column: Copy & Actions */}
@@ -30,7 +29,7 @@ export function HeroSection() {
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.12]">
-            The <span className="bg-gradient-to-r from-primary-600 via-sky-600 to-emerald-600 dark:from-primary-400 dark:via-sky-400 dark:to-emerald-400 bg-clip-text text-transparent">Trust-First</span> P2P Marketplace & Escrow Engine.
+            The <span className="text-primary-600 dark:text-primary-400">Trust-First</span> P2P Marketplace & Escrow Engine.
           </h1>
 
           <p className="text-base sm:text-lg text-slate-700 dark:text-slate-300 max-w-2xl leading-relaxed font-normal">
