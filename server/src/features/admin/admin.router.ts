@@ -23,3 +23,5 @@ adminRouter.get("/users/:id", validate(adminValidation.userParam), adminControll
 adminRouter.patch("/users/:id/status", validate(adminValidation.userStatus), adminController.setUserStatus);
 
 adminRouter.get("/escrows", validate(adminValidation.escrowList), adminController.listEscrows);
+
+adminRouter.get("/stats", adminController.getStats);

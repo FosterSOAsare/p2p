@@ -22,7 +22,7 @@ export function Dashboard() {
   }
 
   if (!me) return <Navigate to="/login" replace />
-  if (me.role === 'admin') return <Navigate to="/admin/kyc" replace />
+  if (me.role === 'admin') return <Navigate to="/admin" replace />
   if (dashboard?.persona === 'seller' || me.kycStatus === 'verified') {
     return <SellerDashboard dashboardData={dashboard} />
   }

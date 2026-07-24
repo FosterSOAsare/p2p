@@ -54,6 +54,7 @@ export function Layout() {
   // Admins get a dedicated review surface only — no marketplace/escrow/buyer chrome.
   const primaryNavItems = isAdmin
     ? [
+        { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
         { to: '/admin/kyc', label: 'KYC Queue', icon: ShieldCheck },
         { to: '/admin/disputes', label: 'Disputes', icon: Scale },
         { to: '/admin/users', label: 'Users', icon: Users },
@@ -104,6 +105,7 @@ export function Layout() {
               <NavLink
                 key={to}
                 to={to}
+                end={to === '/admin'}
                 className={({ isActive }) =>
                   `flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
                     isActive
@@ -217,6 +219,9 @@ export function Layout() {
                           <span className="block px-3 pt-1.5 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                             Admin
                           </span>
+                          <Link to="/admin" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <LayoutDashboard size={15} /> Dashboard
+                          </Link>
                           <Link to="/admin/kyc" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                             <ShieldCheck size={15} /> KYC Review Queue
                           </Link>
@@ -294,6 +299,7 @@ export function Layout() {
                 <NavLink
                   key={to}
                   to={to}
+                  end={to === '/admin'}
                   onClick={() => setMobileMenuOpen(false)}
                   className={({ isActive }) =>
                     `flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-semibold ${

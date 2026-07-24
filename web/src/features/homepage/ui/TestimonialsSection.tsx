@@ -26,7 +26,7 @@ const reviews = [
     avatarImg: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
     type: 'Standalone Escrow User',
     comment:
-      'I use standalone escrow for my client web dev projects using USDC. Both sides agree on milestone release terms, and neither party has to worry.',
+      'I use standalone escrow deals for my client web dev projects. Both sides agree on the release terms upfront, so neither of us has to worry about getting stiffed.',
     rating: 5,
   },
 ]

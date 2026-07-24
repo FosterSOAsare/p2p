@@ -12,10 +12,10 @@ export function TrustMetrics() {
               Protected Deals
             </div>
             <p className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
-              18,500+
+              2,400+
             </p>
             <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
-              Transactions processed with zero buyer capital loss.
+              Escrow deals completed with zero buyer capital loss.
             </p>
           </div>
 
@@ -26,10 +26,10 @@ export function TrustMetrics() {
               Volume Locked
             </div>
             <p className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
-              $6.4M+
+              GH₵ 1.8M+
             </p>
             <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
-              Total value held securely across Fiat & Crypto rails.
+              Total value held in escrow until delivery is confirmed.
             </p>
           </div>
 
@@ -43,7 +43,7 @@ export function TrustMetrics() {
               99.6%
             </p>
             <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
-              Successful resolutions via Senior Admin dispute desk.
+              Disputes settled fairly by the admin arbitration desk.
             </p>
           </div>
 
@@ -54,10 +54,10 @@ export function TrustMetrics() {
               KYC Vendors
             </div>
             <p className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
-              1,240+
+              320+
             </p>
             <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
-              Verified merchants with Level 2 identity approval.
+              Verified merchants cleared through identity KYC.
             </p>
           </div>
         </div>

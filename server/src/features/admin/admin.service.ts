@@ -423,3 +423,40 @@ export async function listEscrows(params: {
     pages: Math.max(1, Math.ceil(total / limit)),
   };
 }
+
+// ---------- Platform stats (admin dashboard) ----------
+
+export async function getStats() {
+  const [users, suspendedUsers, activeListings, kycPending, openDisputes, dealGroups, volume] =
+    await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { status: "suspended" } }),
+      prisma.listing.count({ where: { status: "active" } }),
+      prisma.kycProfile.count({ where: { status: "pending" } }),
+      prisma.dispute.count({ where: { status: "open" } }),
+      prisma.escrow.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.escrow.aggregate({ _sum: { amount: true }, where: { status: "disbursed" } }),
+    ]);
+
+  const dealsByStatus: Record<EscrowStatus, number> = {
+    created: 0,
+    funded: 0,
+    delivered: 0,
+    disbursed: 0,
+    disputed: 0,
+  };
+  for (const g of dealGroups) dealsByStatus[g.status] = g._count._all;
+  const totalDeals = Object.values(dealsByStatus).reduce((a, b) => a + b, 0);
+
+  return {
+    users,
+    suspendedUsers,
+    activeListings,
+    kycPending,
+    openDisputes,
+    totalDeals,
+    dealsByStatus,
+    // Completed (disbursed) GHS volume — the only "settled" money in the simulated fiat rail.
+    ghsVolume: Number(volume._sum.amount ?? 0),
+  };
+}

@@ -37,7 +37,7 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 
 ## Buyer
 
-- [x] `GET /api/listings` — search/category/condition/maxPrice/sort/paginate · `GET /:id` (detail + reviews) · `GET /api/categories`
+- [x] `GET /api/listings` — search/category/condition/maxPrice/sort (`featured|newest|price_asc|price_desc|rating`)/paginate; cards carry avg `rating` · `GET /:id` (detail + reviews) · `GET /api/categories`
 - [x] `GET/POST/DELETE /api/users/me/saved[/:listingId]` — bookmarks
 - [x] `GET /api/users/me/blocked` · `POST/DELETE /api/users/:username/block` — vendor block (+reason)
 - [x] `GET /api/users/me/dashboard` — buyer stats (active orders, total spent, saved, recent)
@@ -65,7 +65,7 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 - [x] **Disputes** `GET /disputes?status=open|resolved|all` · `GET /disputes/:id` (deal + timeline + full chat evidence) · `POST /disputes/:id/resolve {outcome:release|refund|split, buyerRefund?, rulingNote}` → moves money, records ruling, posts verdict, 409 if resolved
 - [x] **Users** `GET /users` (search/role/status/paginate) · `GET /users/:id` · `PATCH /users/:id/status` (suspend/reinstate; can't change own)
 - [x] **Deals oversight** `GET /escrows?status=&search=&paginate` (read-only; parties + open-dispute flag)
-- [ ] `GET /stats` — KPIs dashboard (users, deals per status, GHS volume, open disputes, KYC pending)
+- [x] `GET /stats` — KPIs dashboard (users + suspended, active listings, KYC pending, open disputes, deals per status, settled GHS volume). Client: AdminDashboard (`/admin`).
 - [ ] Listings moderation (browse all incl. drafts, takedown w/ reason)
 - [ ] Deals **force-override** (manual hold / release / refund) + oversight detail endpoint
 - [ ] Dispute **appeals** (one per dispute, senior/different admin) · audit log · support tickets
@@ -77,7 +77,7 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 - [ ] **TRX crypto rail** (TRON Shasta / TronGrid): `GET /:id/crypto`, `POST /:id/crypto/check`, on-chain fund/payout/refund. Standalone TRX deals can be *created* but `fund`/`payout`/`refund` throw 501. `CryptoEscrow` model unused.
 - [ ] **Real payments** — buyer actually pays before funding (currently simulated)
 - [ ] **Email/SMS notifications** — a `mailService.send()` that logs `[mail:simulated]` on each lifecycle event (verify/reset already simulated to console)
-- [ ] **Background jobs** — auto-release (`delivered` past `autoReleaseAt`) and dispute auto-resolve — **disabled by decision**; `sweepAutoRelease()` exists, unscheduled
+- [x] ~~Background jobs / time-locks~~ **dropped** — the platform is fully manual (no auto-release, no dispute auto-resolve). `autoReleaseAt`/`autoResolveAt` are nulled on transition; `sweepAutoRelease()` remains in code but is never scheduled. Re-add only if timed release is ever wanted.
 - [ ] **Milestones** — `Milestone` model defined but unused (digital-goods/service split funding)
 - [ ] `GET /api/escrows/:id/qr` — QR data-URL for the share link
 - [ ] Tidy: standalone-deal validation accepts dead `rail`/`feeSplit`/`type` (always 50/50); JWT secrets default `""` (no startup guard)

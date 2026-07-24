@@ -92,18 +92,19 @@ Server has a full 1:1 thread per user pair (`/api/messages`: list / thread / sen
 ---
 
 ## 10. Admin console ✅
-`AdminGuard`; role-based nav hides all buyer/seller chrome. Four sections:
-- **7.1 KYC review** (`/admin/kyc`) — pending/verified/rejected tabs → applicant detail → approve (`→verified`) / reject `{reason}` (`→rejected`); pending-only, records reviewer + timestamp.
+`AdminGuard`; role-based nav hides all buyer/seller chrome. Five sections:
+- **Dashboard** (`/admin`) — `GET /api/admin/stats`: KPI cards (users + suspended, active listings, KYC pending, open disputes, total deals, settled GHS volume) + deals-by-status breakdown. The admin landing target (`/dashboard` → `/admin`).
+- **KYC review** (`/admin/kyc`) — pending/verified/rejected tabs → applicant detail → approve (`→verified`) / reject `{reason}` (`→rejected`); pending-only, records reviewer + timestamp.
 - **Disputes** (`/admin/disputes`) — see §7.
 - **Users** (`/admin/users`) — search + role/status filters + pagination (all URL params); detail drawer (phone, wallets, deal/listing counts); **suspend / reinstate** (`PATCH /users/:id/status`; enforced at login; can't change own account).
 - **Deals oversight** (admin `/deals` → all deals) — status/search/pagination in URL params; read-only; disputed rows jump to arbitration.
 
-⛔ **Not built:** stats dashboard (`GET /api/admin/stats`), listings moderation, deals force-override, audit log, support tickets.
+⛔ **Not built:** listings moderation, deals force-override, audit log, support tickets.
 
 ---
 
 ## 11. Routing & dashboards ✅
-`/dashboard` role-routes: admin → `/admin/kyc`, verified seller → SellerDashboard, else buyer UserDashboard. `/deals` role-routes: admin → all deals, buyer/seller → own deals (scoped server-side + endpoint is admin-only, so role is enforced twice). No user-specific route prefixes — access is decided by role.
+`/dashboard` role-routes: admin → `/admin` (stats dashboard), verified seller → SellerDashboard, else buyer UserDashboard. `/deals` role-routes: admin → all deals, buyer/seller → own deals (scoped server-side + endpoint is admin-only, so role is enforced twice). No user-specific route prefixes — access is decided by role.
 
 ---
 

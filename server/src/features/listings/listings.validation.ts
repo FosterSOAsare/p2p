@@ -7,7 +7,7 @@ export const list: RequestSchema = {
     category: Joi.string().trim().max(60),
     condition: Joi.string().trim().max(30),
     maxPrice: Joi.number().positive(),
-    sort: Joi.string().valid("featured", "newest", "price_asc", "price_desc").default("featured"),
+    sort: Joi.string().valid("featured", "newest", "price_asc", "price_desc", "rating").default("featured"),
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(48).default(12),
   }),

@@ -17,6 +17,7 @@ export interface ListingCard {
   views: number
   sellerUsername: string
   sellerVerified: boolean
+  rating: number | null
   reviewCount: number
   createdAt: string
 }

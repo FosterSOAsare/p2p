@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom'
-import { ShieldCheck, Scale, Users, Handshake } from 'lucide-react'
+import { LayoutDashboard, ShieldCheck, Scale, Users, Handshake } from 'lucide-react'
 
 const items = [
+  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/admin/kyc', label: 'KYC Reviews', icon: ShieldCheck },
   { to: '/admin/disputes', label: 'Disputes', icon: Scale },
   { to: '/admin/users', label: 'Users', icon: Users },
@@ -16,6 +17,7 @@ export function AdminSectionNav() {
         <NavLink
           key={to}
           to={to}
+          end={to === '/admin'}
           className={({ isActive }) =>
             `inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl whitespace-nowrap transition-all ${
               isActive

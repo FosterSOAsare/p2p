@@ -12,8 +12,8 @@ Legend: `[x]` done & wired · `[ ]` not done · ⚠️ built but non-functional.
 - [x] Routes: `/settings`, `/deals` (role-aware), `/wallet`, `/escrow/new`, `/escrow/:id`, marketplace, admin console
 - [x] Auth state via always-enabled `useMe`; transparent 401→refresh; `apiErrorMessage` normalization
 - [x] Theme toggle (light/dark), `SimulationNotice`, `ConfirmDialog`, `StarRatingInput`, `AdminSectionNav`
-- [ ] Old bookmarked URLs (`/escrow`, `/user/orders`, `/user/settings`) fall through to 404 — no redirects
-- [ ] Homepage still hardcoded: Featured Listings, TrustMetrics, Testimonials (mock)
+- [x] Legacy URLs (`/escrow`, `/user/orders`, `/user/settings`, `/seller/wallet`) fully migrated to `/deals`, `/settings`, `/wallet`; a proper **404 page** (`NotFound`) catches anything unmatched
+- [x] Homepage **Featured Listings** now real (top 6 by rating via `sort=rating`); **TrustMetrics + Testimonials** intentionally static (copy updated to match features — GHS, no crypto/tiers)
 
 ## ⚠️ Cross-cutting gap — deal messaging
 
@@ -59,7 +59,7 @@ Legend: `[x]` done & wired · `[ ]` not done · ⚠️ built but non-functional.
 - [x] **Disputes** (`/admin/disputes`) — queue + detail drawer + release/refund/split ruling (wired end-to-end; status tab in URL params). Ruling moves money + releases frozen funds
 - [x] **Users** (`/admin/users`) — search + role/status filters + pagination (all URL params); detail drawer; suspend/reinstate
 - [x] **Deals oversight** (`/deals` as admin → `AdminDealsList`) — status/search/paginate in URL params; read-only; disputed rows link to arbitration
-- [ ] Admin **stats dashboard** (`/admin`) — needs `GET /api/admin/stats`; becomes admin dashboard target
+- [x] Admin **stats dashboard** (`/admin`) — KPI cards (users, listings, KYC pending, open disputes, total deals, settled volume) + deals-by-status; admin landing target (`/dashboard` → `/admin`)
 - [ ] Listings moderation view · deals force-override actions · dispute appeals · audit log
 - [ ] Evidence chat transcript renders empty until messaging is wired (see cross-cutting gap)
 

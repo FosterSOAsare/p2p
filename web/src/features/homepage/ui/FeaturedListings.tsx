@@ -1,18 +1,13 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Sparkles } from 'lucide-react'
+import { ArrowRight, Sparkles, Loader2, PackageOpen } from 'lucide-react'
 import { ListingCard } from '../../shared/ui/ListingCard'
-import { products } from '../../marketplace/data'
+import { useListings } from '../../marketplace/data/marketplaceApi'
+import { formatMoney } from '../../shared/libs/currency'
 
-const categories = ['All', 'Electronics', 'Collectibles', 'Home & Office', 'Fashion']
-
+/** Top 6 marketplace listings by average review rating (real API data). */
 export function FeaturedListings() {
-  const [selectedCategory, setSelectedCategory] = useState('All')
-
-  const filtered =
-    selectedCategory === 'All'
-      ? products.slice(0, 8)
-      : products.filter((item) => item.category === selectedCategory).slice(0, 8)
+  const { data, isLoading } = useListings('sort=rating&limit=6')
+  const listings = data?.listings ?? []
 
   return (
     <section className="relative overflow-hidden">
@@ -20,54 +15,53 @@ export function FeaturedListings() {
         <div>
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary-600 dark:text-primary-400 mb-1">
             <Sparkles size={14} />
-            KYC Verified Vendors
+            Top Rated · KYC Verified Vendors
           </div>
-          <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-900 dark:text-white">Featured Marketplace Listings</h2>
-          <p className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm mt-1">Explore physical goods available with escrow protection.</p>
+          <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-900 dark:text-white">
+            Featured Marketplace Listings
+          </h2>
+          <p className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm mt-1">
+            The highest-rated physical goods on the platform — every purchase is escrow protected.
+          </p>
         </div>
+      </div>
 
-        {/* Category Filters */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`rounded-xl px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                selectedCategory === cat
-                  ? 'bg-primary-600 text-white shadow-sm'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              {cat}
-            </button>
+      {isLoading ? (
+        <div className="py-16 text-center">
+          <Loader2 size={26} className="mx-auto animate-spin text-primary-600 dark:text-primary-400" />
+        </div>
+      ) : listings.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-12 text-center space-y-3">
+          <PackageOpen size={28} className="mx-auto text-slate-400" />
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            No listings yet — check back soon.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {listings.map((item) => (
+            <ListingCard
+              key={item.id}
+              id={item.id}
+              imageUrl={item.image ?? undefined}
+              title={item.title}
+              price={formatMoney(item.price, item.currency)}
+              location={item.location ?? ''}
+              vendorName={item.sellerUsername}
+              vendorVerified={item.sellerVerified}
+              rating={item.rating ?? 0}
+              reviewCount={item.reviewCount}
+            />
           ))}
         </div>
-      </div>
-
-      {/* Grid: 4 items per row on large screens */}
-      <div className="grid grid-cols-1 gap-4 sm:gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {filtered.map((item) => (
-          <ListingCard
-            key={item.id}
-            id={item.id}
-            imageUrl={item.images[0]}
-            title={item.title}
-            price={`$${item.price.toLocaleString()}`}
-            location={item.location}
-            vendorName={item.vendorName}
-            vendorVerified={item.vendorVerified}
-            rating={item.rating}
-            reviewCount={item.reviewCount}
-          />
-        ))}
-      </div>
+      )}
 
       <div className="mt-8 text-center">
         <Link
           to="/marketplace"
           className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-3.5 text-xs sm:text-sm font-bold text-slate-800 dark:text-white shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
         >
-          View All Marketplace Listings ({products.length} Total)
+          View All Marketplace Listings
           <ArrowRight size={16} />
         </Link>
       </div>

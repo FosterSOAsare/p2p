@@ -30,6 +30,8 @@ import { AdminKycList } from './pages/AdminKycList'
 import { AdminKycDetail } from './pages/AdminKycDetail'
 import { AdminDisputesList } from './pages/AdminDisputesList'
 import { AdminUsersList } from './pages/AdminUsersList'
+import { AdminDashboard } from './pages/AdminDashboard'
+import { NotFound } from './pages/NotFound'
 import { Terms } from './pages/Terms'
 import { Privacy } from './pages/Privacy'
 
@@ -63,6 +65,7 @@ function App() {
         <Route path="wallet" element={<SellerWallet />} />
         {/* Admin console — AdminGuard layout */}
         <Route element={<AdminGuard />}>
+          <Route path="admin" element={<AdminDashboard />} />
           <Route path="admin/kyc" element={<AdminKycList />} />
           <Route path="admin/kyc/:id" element={<AdminKycDetail />} />
           <Route path="admin/disputes" element={<AdminDisputesList />} />
@@ -76,7 +79,7 @@ function App() {
         <Route path="forgot-password" element={<ForgotPassword />} />
         <Route path="reset-password" element={<ResetPassword />} />
         <Route path="change-password" element={<ChangePassword />} />
-        <Route path="*" element={<div className="py-12 text-center text-slate-600 dark:text-slate-400">Page not found</div>} />
+        <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
   )

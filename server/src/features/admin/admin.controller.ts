@@ -56,3 +56,8 @@ export const listEscrows = asyncHandler(async (req, res) => {
   const result = await adminService.listEscrows(req.query as any);
   res.json(result);
 });
+
+export const getStats = asyncHandler(async (_req, res) => {
+  const stats = await adminService.getStats();
+  res.json(stats);
+});

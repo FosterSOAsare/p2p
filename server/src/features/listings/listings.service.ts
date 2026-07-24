@@ -7,14 +7,14 @@ export interface ListQuery {
   category?: string;
   condition?: string;
   maxPrice?: number;
-  sort: "featured" | "newest" | "price_asc" | "price_desc";
+  sort: "featured" | "newest" | "price_asc" | "price_desc" | "rating";
   page: number;
   limit: number;
 }
 
 const cardInclude = {
   seller: { select: { username: true, kyc: { select: { status: true } } } },
-  _count: { select: { reviews: true } },
+  reviews: { select: { rating: true } },
 } satisfies Prisma.ListingInclude;
 
 type ListingWithSeller = Prisma.ListingGetPayload<{ include: typeof cardInclude }>;
@@ -33,6 +33,22 @@ export async function list(params: ListQuery) {
       ],
     }),
   };
+
+  // Rating sort: Prisma can't order by a related aggregate (avg rating), so rank
+  // the matching set in memory then paginate. Fine at marketplace scale.
+  if (params.sort === "rating") {
+    const rows = await prisma.listing.findMany({ where, include: cardInclude });
+    const cards = rows
+      .map(toCard)
+      .sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1) || b.reviewCount - a.reviewCount);
+    const start = (params.page - 1) * params.limit;
+    return {
+      listings: cards.slice(start, start + params.limit),
+      total: cards.length,
+      page: params.page,
+      pages: Math.max(1, Math.ceil(cards.length / params.limit)),
+    };
+  }
 
   const orderBy: Prisma.ListingOrderByWithRelationInput =
     params.sort === "price_asc"
@@ -238,7 +254,11 @@ function toCard(l: ListingWithSeller) {
     views: l.views,
     sellerUsername: l.seller.username,
     sellerVerified: l.seller.kyc?.status === "verified",
-    reviewCount: l._count.reviews,
+    rating: (() => {
+      const ratings = l.reviews.map((r) => r.rating);
+      return ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
+    })(),
+    reviewCount: l.reviews.length,
     createdAt: l.createdAt.toISOString(),
   };
 }
