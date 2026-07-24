@@ -24,7 +24,7 @@ Legend: `[x]` done & wired · `[ ]` not done · ⚠️ built but non-functional.
 ## Buyer
 
 - [x] Auth screens: signup (live username check), login, verify-email, forgot/reset/change password
-- [x] `/settings` — profile, phone, notification prefs (auto-save), KYC status card
+- [x] `/settings` — profile, phone, **profile photo upload** (Cloudinary → `avatarUrl`), notification prefs (auto-save), KYC status card
 - [x] Marketplace: URL-driven search/category/sort/paginate, listing detail, 27 categories
 - [x] Saved listings (bookmarks), seller profiles, vendor blocking (+reason)
 - [x] **Checkout** (`/checkout?listing=`): quantity, simulated momo/card, live fee breakdown → funded escrow

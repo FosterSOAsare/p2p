@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -14,9 +14,13 @@ import {
   Clock,
   XCircle,
   Save,
+  Camera,
+  Loader2,
+  Trash2,
 } from 'lucide-react'
 import { useMe } from '../features/auth/data/authApi'
 import { useUpdateNotificationPrefs, useUpdateProfile } from '../features/user/data/usersApi'
+import { useUploadSingleFile } from '../features/upload/data/uploadApi'
 import { profileSchema, type ProfileForm } from '../features/user/data/schemas'
 import { apiErrorMessage } from '../features/shared/libs/api'
 
@@ -32,6 +36,8 @@ export function UserSettings() {
   const { data: me } = useMe()
   const updateProfile = useUpdateProfile()
   const updatePrefs = useUpdateNotificationPrefs()
+  const uploadAvatar = useUploadSingleFile()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const {
     register,
@@ -57,6 +63,19 @@ export function UserSettings() {
       phone: values.phone === '' ? null : values.phone,
     })
   })
+
+  // Upload the picked image to Cloudinary, then persist its URL on the profile.
+  const onAvatarSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // let the same file be re-picked later
+    if (!file) return
+    uploadAvatar.mutate(file, {
+      onSuccess: (res) => updateProfile.mutate({ avatarUrl: res.url }),
+    })
+  }
+
+  const removeAvatar = () => updateProfile.mutate({ avatarUrl: null })
+  const avatarBusy = uploadAvatar.isPending || updateProfile.isPending
 
   const kycStatus = me?.kycStatus ?? 'unverified'
 
@@ -174,6 +193,67 @@ export function UserSettings() {
               <h3 className="font-display text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-3">
                 Personal Information
               </h3>
+
+              {/* Profile photo */}
+              <div className="flex items-center gap-4">
+                <div className="relative shrink-0">
+                  {me?.avatarUrl ? (
+                    <img
+                      src={me.avatarUrl}
+                      alt="Your profile photo"
+                      className="h-20 w-20 rounded-2xl object-cover border border-slate-200 dark:border-slate-700"
+                    />
+                  ) : (
+                    <span className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary-600 text-2xl font-bold text-white uppercase">
+                      {me?.username.charAt(0) ?? '?'}
+                    </span>
+                  )}
+                  {avatarBusy && (
+                    <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-slate-950/50">
+                      <Loader2 size={20} className="animate-spin text-white" />
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={avatarBusy || !me}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer disabled:opacity-50"
+                    >
+                      <Camera size={14} /> {me?.avatarUrl ? 'Change photo' : 'Upload photo'}
+                    </button>
+                    {me?.avatarUrl && (
+                      <button
+                        type="button"
+                        onClick={removeAvatar}
+                        disabled={avatarBusy}
+                        className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer disabled:opacity-50"
+                      >
+                        <Trash2 size={14} /> Remove
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                    JPG or PNG, up to 10MB. Shown on your profile, listings, and deals.
+                  </p>
+                  {uploadAvatar.isError && (
+                    <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                      {apiErrorMessage(uploadAvatar.error)}
+                    </p>
+                  )}
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={onAvatarSelected}
+                  className="hidden"
+                />
+              </div>
 
               {/* Full Name */}
               <div className="space-y-1">
