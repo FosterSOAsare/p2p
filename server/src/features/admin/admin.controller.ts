@@ -21,3 +21,18 @@ export const rejectKyc = asyncHandler(async (req, res) => {
   const submission = await adminService.rejectKyc(req.user!.id, req.params.id as string, req.body.reason);
   res.json(submission);
 });
+
+export const listDisputes = asyncHandler(async (req, res) => {
+  const disputes = await adminService.listDisputes((req.query.status as any) || "open");
+  res.json({ disputes });
+});
+
+export const getDispute = asyncHandler(async (req, res) => {
+  const dispute = await adminService.getDispute(req.params.id as string);
+  res.json(dispute);
+});
+
+export const resolveDispute = asyncHandler(async (req, res) => {
+  const dispute = await adminService.resolveDispute(req.user!.id, req.params.id as string, req.body);
+  res.json(dispute);
+});

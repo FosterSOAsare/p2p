@@ -63,6 +63,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   return request<T>(path, options, true)
 }
 
+export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  return uploadRequest<T>(path, formData, true)
+}
+
 async function request<T>(path: string, options: RequestOptions, allowRefresh: boolean): Promise<T> {
   const { method = 'GET', body } = options
   const headers: Record<string, string> = {}
@@ -80,6 +84,30 @@ async function request<T>(path: string, options: RequestOptions, allowRefresh: b
   if (res.status === 401 && allowRefresh && access && tokenStore.getRefresh() && path !== '/api/auth/refresh') {
     const refreshed = await refreshTokens()
     if (refreshed) return request<T>(path, options, false)
+  }
+
+  const data = res.status === 204 ? null : await res.json().catch(() => null)
+  if (!res.ok) {
+    throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? res.statusText, (data as { details?: unknown } | null)?.details)
+  }
+  return data as T
+}
+
+async function uploadRequest<T>(path: string, formData: FormData, allowRefresh: boolean): Promise<T> {
+  const headers: Record<string, string> = {}
+  const access = tokenStore.getAccess()
+  if (access) headers.Authorization = `Bearer ${access}`
+
+  // Do NOT set Content-Type header when sending FormData — fetch auto-sets multipart boundary
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  })
+
+  if (res.status === 401 && allowRefresh && access && tokenStore.getRefresh() && path !== '/api/auth/refresh') {
+    const refreshed = await refreshTokens()
+    if (refreshed) return uploadRequest<T>(path, formData, false)
   }
 
   const data = res.status === 204 ? null : await res.json().catch(() => null)

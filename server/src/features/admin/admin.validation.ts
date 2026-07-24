@@ -23,3 +23,28 @@ export const kycReject: RequestSchema = {
     }),
   }),
 };
+
+export const disputeList: RequestSchema = {
+  query: Joi.object({
+    status: Joi.string().valid("open", "resolved", "all").default("open"),
+  }),
+};
+
+export const disputeParam: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+};
+
+export const disputeResolve: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+  body: Joi.object({
+    outcome: Joi.string().valid("release", "refund", "split").required(),
+    buyerRefund: Joi.number().min(0).optional(),
+    rulingNote: Joi.string().trim().min(5).max(1000).required().messages({
+      "string.min": "Provide a clear ruling explanation note (min 5 chars)",
+    }),
+  }),
+};

@@ -29,6 +29,7 @@ import { VendorKyc } from './pages/VendorKyc'
 import { SellerProfile } from './pages/SellerProfile'
 import { AdminKycList } from './pages/AdminKycList'
 import { AdminKycDetail } from './pages/AdminKycDetail'
+import { AdminDisputesList } from './pages/AdminDisputesList'
 import { Terms } from './pages/Terms'
 import { Privacy } from './pages/Privacy'
 
@@ -65,6 +66,7 @@ function App() {
         <Route element={<AdminGuard />}>
           <Route path="admin/kyc" element={<AdminKycList />} />
           <Route path="admin/kyc/:id" element={<AdminKycDetail />} />
+          <Route path="admin/disputes" element={<AdminDisputesList />} />
         </Route>
         <Route path="terms" element={<Terms />} />
         <Route path="privacy" element={<Privacy />} />

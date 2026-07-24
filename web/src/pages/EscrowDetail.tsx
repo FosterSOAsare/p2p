@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   Lock,
   AlertTriangle,
+  AlertCircle,
+  Clock,
   CheckCircle2,
   FileText,
   Truck,
@@ -12,7 +14,9 @@ import {
   Copy,
   Check,
   Star,
+  Upload,
 } from 'lucide-react'
+import { useUploadSingleFile } from '../features/upload/data/uploadApi'
 import {
   useDeal,
   useFundDeal,
@@ -47,6 +51,7 @@ export function EscrowDetail() {
   const release = useReleaseDeal()
   const dispute = useDisputeDeal()
   const review = useReviewDeal()
+  const uploadSingle = useUploadSingleFile()
 
   const [confirmRelease, setConfirmRelease] = useState(false)
   const [deliverOpen, setDeliverOpen] = useState(false)
@@ -56,6 +61,17 @@ export function EscrowDetail() {
   const [disputeOpen, setDisputeOpen] = useState(false)
   const [disputeReason, setDisputeReason] = useState('not_delivered')
   const [disputeDesc, setDisputeDesc] = useState('')
+
+  const handleDisputeProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    uploadSingle.mutate(file, {
+      onSuccess: (uploaded) => {
+        setDisputeDesc((prev) => `${prev}\n\n📷 Photo Evidence: ${uploaded.url}`.trim())
+      },
+    })
+  }
   const [copied, setCopied] = useState(false)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
@@ -163,8 +179,19 @@ export function EscrowDetail() {
               })}
             </div>
             {isDisputed && (
-              <div className="mt-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 p-3 text-[11px] font-semibold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
-                <AlertTriangle size={13} /> This deal is disputed — funds are frozen pending admin review.
+              <div className="mt-4 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/60 p-4 space-y-2 text-xs text-amber-900 dark:text-amber-200">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 font-bold text-amber-900 dark:text-amber-200 text-xs sm:text-sm">
+                    <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400" />
+                    Formal Dispute Under Active Admin Review
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-200 dark:bg-amber-900/80 px-2.5 py-0.5 text-[10px] font-bold text-amber-900 dark:text-amber-100">
+                    <Clock size={11} /> Admin Arbitrating
+                  </span>
+                </div>
+                <p className="text-slate-700 dark:text-amber-300/90 leading-relaxed text-[11px]">
+                  Escrow funds are frozen safely. Both <strong>buyer and seller</strong> should submit evidence, delivery receipts, photos, or explanations in the deal chat below for the admin to inspect before ruling.
+                </p>
               </div>
             )}
           </div>
@@ -286,17 +313,81 @@ export function EscrowDetail() {
             )}
 
             {has('DISPUTE') && disputeOpen && (
-              <div className="space-y-2.5 rounded-xl border border-rose-200 dark:border-rose-800 p-3.5">
-                <p className="text-[11px] font-semibold uppercase text-rose-600 dark:text-rose-400">Open a dispute</p>
-                <select value={disputeReason} onChange={(e) => setDisputeReason(e.target.value)} className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:border-rose-500 focus:outline-none cursor-pointer">
-                  {DISPUTE_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              <div className="space-y-3 rounded-xl border border-rose-200 dark:border-rose-800 p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                  Open a Formal Dispute
+                </p>
+
+                {/* Pre-Dispute Communication Warning Notice */}
+                <div className="rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/60 p-3 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
+                  <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 leading-relaxed">
+                    <p className="font-bold">Contact Counterparty First</p>
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300/90">
+                      Please make sure you have attempted to message the other party via the deal chat below. Submit a formal dispute only if they are uncooperative, unresponsive, or refusing to resolve the issue.
+                    </p>
+                  </div>
+                </div>
+
+                <select
+                  value={disputeReason}
+                  onChange={(e) => setDisputeReason(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-white focus:border-rose-500 focus:outline-none cursor-pointer"
+                >
+                  {DISPUTE_REASONS.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
                 </select>
-                <textarea value={disputeDesc} onChange={(e) => setDisputeDesc(e.target.value)} rows={3} placeholder="Explain the problem (min 10 chars)..." className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-rose-500 focus:outline-none resize-none" />
-                <div className="flex gap-2">
-                  <button onClick={submitDispute} disabled={dispute.isPending || disputeDesc.trim().length < 10} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 py-2.5 text-xs font-semibold text-white hover:bg-rose-700 cursor-pointer disabled:opacity-50">
-                    {dispute.isPending ? <Loader2 size={13} className="animate-spin" /> : <AlertTriangle size={14} />} Submit Dispute
+
+                <div className="space-y-1">
+                  <textarea
+                    value={disputeDesc}
+                    onChange={(e) => setDisputeDesc(e.target.value)}
+                    rows={3}
+                    placeholder="Explain the problem clearly (min 10 chars)..."
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-rose-500 focus:outline-none resize-none"
+                  />
+
+                  <div className="flex items-center justify-end">
+                    <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white cursor-pointer bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                      {uploadSingle.isPending ? (
+                        <Loader2 size={13} className="animate-spin text-rose-600" />
+                      ) : (
+                        <Upload size={13} className="text-slate-500" />
+                      )}
+                      {uploadSingle.isPending ? 'Uploading Photo...' : 'Attach Photo Evidence'}
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                        disabled={uploadSingle.isPending}
+                        onChange={handleDisputeProofUpload}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={submitDispute}
+                    disabled={dispute.isPending || disputeDesc.trim().length < 10}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 py-2.5 text-xs font-bold text-white hover:bg-rose-700 cursor-pointer disabled:opacity-50 shadow-sm"
+                  >
+                    {dispute.isPending ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <AlertTriangle size={14} />
+                    )}
+                    Submit Dispute
                   </button>
-                  <button onClick={() => setDisputeOpen(false)} className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">Cancel</button>
+                  <button
+                    onClick={() => setDisputeOpen(false)}
+                    className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
             )}
@@ -348,8 +439,18 @@ export function EscrowDetail() {
             )}
 
             {counterparty && (
-              <Link to={`/messages/${counterparty.username}?redirect=/escrow/${id}`} className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all">
-                <MessageCircle size={15} /> Message @{counterparty.username}
+              <Link
+                to={`/messages/${counterparty.username}?redirect=/escrow/${id}`}
+                className={`w-full inline-flex items-center justify-center gap-1.5 rounded-xl py-3 text-xs font-bold transition-all cursor-pointer ${
+                  deal.status === 'disputed'
+                    ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-md shadow-amber-500/20'
+                    : 'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                <MessageCircle size={15} />
+                {deal.status === 'disputed'
+                  ? 'Open Dispute Chat & Submit Evidence'
+                  : `Message @${counterparty.username}`}
               </Link>
             )}
 

@@ -12,6 +12,7 @@ import { categoriesRouter, listingsRouter } from "./features/listings/listings.r
 import { messagesRouter } from "./features/messages/messages.router";
 import { walletRouter } from "./features/wallet/wallet.router";
 import { escrowsRouter } from "./features/escrows/escrows.router";
+import { uploadRouter } from "./features/upload/upload.router";
 
 export function createApp() {
   const app = express();
@@ -30,6 +31,7 @@ export function createApp() {
   app.use("/api/messages", messagesRouter);
   app.use("/api/wallet", walletRouter);
   app.use("/api/escrows", escrowsRouter);
+  app.use("/api/upload", uploadRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

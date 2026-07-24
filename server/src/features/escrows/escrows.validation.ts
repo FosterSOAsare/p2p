@@ -28,12 +28,14 @@ export const createStandalone: RequestSchema = {
   body: Joi.object({
     title: Joi.string().trim().min(3).max(120).required(),
     description: Joi.string().trim().max(2000).allow("", null),
-    counterpartyUsername: Joi.string()
-      .lowercase()
-      .pattern(/^[a-z0-9_]{3,20}$/),
+    counterpartyUsername: Joi.string().trim().allow("", null),
+    invitedUsername: Joi.string().trim().allow("", null),
     role: Joi.string().valid("buyer", "seller").required(),
     amount: Joi.number().positive().max(10_000_000).required(),
     currency: Joi.string().valid("GHS", "TRX").required(),
+    rail: Joi.string().valid("fiat", "crypto").optional(),
+    feeSplit: Joi.string().valid("BUYER", "SELLER", "SPLIT").optional(),
+    type: Joi.string().valid("PHYSICAL", "DIGITAL", "SERVICE", "CRYPTO").optional(),
   }),
 };
 

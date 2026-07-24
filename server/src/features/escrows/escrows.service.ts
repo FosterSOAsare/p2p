@@ -124,8 +124,9 @@ export async function checkoutFromListing(buyerId: string, input: CheckoutInput)
 
 export interface CreateStandaloneInput {
   title: string;
-  description?: string | null;
+  description?: string;
   counterpartyUsername?: string;
+  invitedUsername?: string;
   role: "buyer" | "seller";
   amount: number;
   currency: "GHS" | "TRX";
@@ -136,12 +137,21 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
   const amountP = toPesewas(input.amount);
   const feeP = computeFeeP(amountP, rail === "crypto" ? CRYPTO_FEE : FIAT_FEE);
 
-  // Optional invite — unresolved usernames are fine, the deal stays joinable by code
+  const rawCounterparty = (input.counterpartyUsername || input.invitedUsername || "").replace(/^@/, "").trim().toLowerCase();
+
   let invitedUserId: string | null = null;
-  if (input.counterpartyUsername) {
-    const invited = await prisma.user.findUnique({ where: { username: input.counterpartyUsername } });
-    if (invited?.id === creatorId) throw ApiError.badRequest("You can't deal with yourself");
-    invitedUserId = invited?.id ?? null;
+  let cleanCounterpartyUsername: string | null = null;
+
+  if (rawCounterparty) {
+    const invited = await prisma.user.findUnique({ where: { username: rawCounterparty } });
+    if (!invited) {
+      throw ApiError.badRequest(`User @${rawCounterparty} was not found on P2P Market. Please verify the username and try again.`);
+    }
+    if (invited.id === creatorId) {
+      throw ApiError.badRequest("You cannot create an escrow deal with yourself");
+    }
+    invitedUserId = invited.id;
+    cleanCounterpartyUsername = invited.username;
   }
 
   const escrow = await prisma.$transaction(async (tx) => {
@@ -155,7 +165,7 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
         creatorRole: input.role,
         buyerId: input.role === "buyer" ? creatorId : invitedUserId,
         sellerId: input.role === "seller" ? creatorId : invitedUserId,
-        invitedUsername: input.counterpartyUsername ?? null,
+        invitedUsername: cleanCounterpartyUsername,
         amount: fromPesewas(amountP),
         feeAmount: fromPesewas(feeP),
         currency: input.currency,
@@ -481,12 +491,24 @@ export async function leaveReview(userId: string, escrowId: string, input: { rat
 // ---------- Queries ----------
 
 export async function list(userId: string, params: { role?: "buyer" | "seller"; status?: EscrowStatus; page: number; limit: number }) {
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { username: true } });
+  const myUsername = me?.username;
+
+  const userOrInvitedFilter: Prisma.EscrowWhereInput[] = [
+    { buyerId: userId },
+    { sellerId: userId },
+    { creatorId: userId },
+  ];
+  if (myUsername) {
+    userOrInvitedFilter.push({ invitedUsername: myUsername });
+  }
+
   const where: Prisma.EscrowWhereInput = {
     ...(params.role === "buyer"
-      ? { buyerId: userId }
+      ? { OR: [{ buyerId: userId }, ...(myUsername ? [{ invitedUsername: myUsername, creatorRole: "seller" as const }] : [])] }
       : params.role === "seller"
-        ? { sellerId: userId }
-        : { OR: [{ buyerId: userId }, { sellerId: userId }, { creatorId: userId }] }),
+        ? { OR: [{ sellerId: userId }, ...(myUsername ? [{ invitedUsername: myUsername, creatorRole: "buyer" as const }] : [])] }
+        : { OR: userOrInvitedFilter }),
     ...(params.status && { status: params.status }),
   };
   const [total, rows] = await prisma.$transaction([

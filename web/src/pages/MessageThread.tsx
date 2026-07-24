@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, SendHorizonal, ShieldCheck, Lock } from 'lucide-react'
+import { ArrowLeft, SendHorizonal, ShieldCheck, Lock, Paperclip, Loader2 } from 'lucide-react'
 import { useSellerProfile } from '../features/user/data/usersApi'
+import { useUploadSingleFile } from '../features/upload/data/uploadApi'
 
 interface LocalMessage {
   id: number
@@ -10,21 +11,15 @@ interface LocalMessage {
   at: string
 }
 
-/**
- * 1:1 message thread — UI shell only (messages live in local state).
- * TODO(websocket): wire to GET/POST /api/messages/:username + Socket.IO events;
- * deal-linked system messages (escrow created/funded/released) render inline here.
- */
 export function MessageThread() {
   const { username = '' } = useParams()
   const [searchParams] = useSearchParams()
-  // Where "Back" returns to — passed by the caller (a deal, a profile, a listing).
-  // Only accept in-app paths (must start with "/") to avoid open-redirects.
   const redirectParam = searchParams.get('redirect')
   const backTo = redirectParam && redirectParam.startsWith('/') ? redirectParam : `/seller/${username}`
 
   const profileQuery = useSellerProfile(username)
   const counterparty = profileQuery.data
+  const uploadSingle = useUploadSingleFile()
 
   const [messages, setMessages] = useState<LocalMessage[]>([])
   const [draft, setDraft] = useState('')
@@ -33,6 +28,25 @@ export function MessageThread() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
+
+  const handleChatFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    uploadSingle.mutate(file, {
+      onSuccess: (uploaded) => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: prev.length + 1,
+            body: `📷 Attached Evidence / Proof File:\n${uploaded.url}`,
+            mine: true,
+            at: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+          },
+        ])
+      },
+    })
+  }
 
   const send = (e: React.FormEvent) => {
     e.preventDefault()
@@ -111,6 +125,22 @@ export function MessageThread() {
 
         {/* Composer */}
         <form onSubmit={send} className="flex items-center gap-2 border-t border-slate-100 dark:border-slate-800 px-4 py-3">
+          {/* Cloudinary File Attachment Button */}
+          <label className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer shrink-0" title="Attach Photo or Document Proof">
+            {uploadSingle.isPending ? (
+              <Loader2 size={16} className="animate-spin text-primary-600" />
+            ) : (
+              <Paperclip size={16} />
+            )}
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              disabled={uploadSingle.isPending}
+              onChange={handleChatFileUpload}
+            />
+          </label>
+
           <input
             type="text"
             value={draft}

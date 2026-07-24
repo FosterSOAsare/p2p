@@ -166,3 +166,30 @@ export function useReviewDeal() {
     },
   })
 }
+
+export function useCreateStandaloneEscrow() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ invitedUsername, ...rest }: {
+      title: string
+      description?: string
+      amount: number
+      currency?: 'GHS' | 'TRX'
+      rail?: 'fiat' | 'crypto'
+      role?: 'buyer' | 'seller'
+      invitedUsername?: string
+      feeSplit?: 'BUYER' | 'SELLER' | 'SPLIT'
+    }) =>
+      api<{ deal: DealDetail }>('/api/escrows', {
+        method: 'POST',
+        body: {
+          ...rest,
+          counterpartyUsername: invitedUsername,
+          invitedUsername,
+        },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deals'] })
+    },
+  })
+}

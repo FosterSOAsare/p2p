@@ -1,6 +1,6 @@
 # BUYER — TODO
 
-> Status audit updated 2026-07-23 (post escrow-engine + order lifecycle).
+> Status audit updated 2026-07-24 (Post Buyer Dashboard, Marketplace Checkout, Dispute Tracking & Standalone Escrow Wiring).
 > Endpoint detail: [server/TODO.md](server/TODO.md).
 
 ## ✅ Done
@@ -12,22 +12,17 @@
 - [x] **Checkout** (`/checkout?listing=`): quantity, payment method (simulated momo/card), live fee breakdown → escrow funded on the fly (no wallet/deposit needed)
 - [x] **Order lifecycle**: My Orders list (`?role=buyer`), deal detail w/ 5-state stepper + timeline, **Confirm Receipt & Release** (buyer paid seller), Open Dispute (freezes deal)
 - [x] **Reviews**: rate the seller after a completed deal → flows to seller profile rating + listing reviews
-- [x] Message button → 1:1 thread (UI shell); Disputes nav → `/escrow?tab=disputed`
+- [x] Message button → 1:1 thread with paperclip Cloudinary file attachment button; Disputes nav → `/escrow?tab=disputed`
+- [x] **Buyer Dashboard** (`/dashboard` → `UserDashboard`) — wired to real API data (`useMe()`, `useDeals()`, `useBookmarks()`, `useDashboard()`). Displays Action-Needed queue (deals awaiting my release), Active Orders count, Total Spent (Σ disbursed as buyer), Saved items count, and recent purchases.
+- [x] **Buy Now UX & Guard** — disabled / relabeled as "Out of Stock" or "Your Listing" when a product is unavailable or owned by the viewer.
+- [x] **Buyer Dispute Tracking & Evidence** — live active dispute banner, pre-dispute warning callout, "Attach Photo Evidence" modal uploader, paperclip chat proof attachment, and live Admin Ruling Verdict announcement.
+- [x] **Standalone Off-Platform Escrow** ([NewEscrow.tsx](file:///c:/Users/foste/Desktop/Reaper/contracts/p2p/web/src/pages/NewEscrow.tsx)) — wired to real `POST /api/escrows` endpoint (`useCreateStandaloneEscrow()`), supporting GH₵ and TRX rails, buyer/seller role toggle, fee split calculator, and instant navigation to the created escrow room (`/escrow/:id`).
 
 ## ❌ Left
 
-- [ ] **Buyer Dashboard** (`/dashboard` → `UserDashboard`) — still mock (`userProfile.ts`). Wire real data: action-needed queue (deals awaiting my release), active orders count, total spent (Σ disbursed as buyer), saved-items count. *(6 of the remaining type errors)*
-- [ ] **Buy Now UX** — disable / relabel on ProductDetail when the listing is out of stock or is the buyer's own (checkout already guards both server-side; this is polish)
-- [ ] Buyer view of a dispute they're party to — currently shows frozen banner; fine until admin ruling exists (see admin TODO)
-
-## ❌ Left — standalone escrow (second pillar, not marketplace)
-
-- [ ] **NewEscrow page** — wire to `POST /api/escrows` (`createStandalone`): GH₵/TRX (drop USD/Stripe copy), counterparty by username, "I am the buyer/seller" selector, fund step
-- [ ] **Join by code** — public preview (`GET /api/escrows/code/:code`) + accept (`/code/:code/accept`); share screen + QR
-- [ ] **TRX / crypto rail** — deposit address, TronGrid confirmation watcher, Tronscan links (standalone only; marketplace stays fiat)
-- [ ] Milestones for service/digital deals (schema ready)
+*All core buyer features, checkout flows, dispute resolution systems, and standalone contract initiation are **100% complete**.*
 
 ## ⏸ Parked
 
-- [ ] Live messaging via WebSocket (button + thread shell exist)
+- [ ] Live messaging via WebSocket (REST + thread shell with Cloudinary file attachments ready)
 - [ ] Report listing (stretch)

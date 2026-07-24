@@ -13,3 +13,7 @@ adminRouter.get("/kyc", validate(adminValidation.kycList), adminController.listK
 adminRouter.get("/kyc/:id", validate(adminValidation.kycParam), adminController.getKyc);
 adminRouter.post("/kyc/:id/approve", validate(adminValidation.kycParam), adminController.approveKyc);
 adminRouter.post("/kyc/:id/reject", validate(adminValidation.kycReject), adminController.rejectKyc);
+
+adminRouter.get("/disputes", validate(adminValidation.disputeList), adminController.listDisputes);
+adminRouter.get("/disputes/:id", validate(adminValidation.disputeParam), adminController.getDispute);
+adminRouter.post("/disputes/:id/resolve", validate(adminValidation.disputeResolve), adminController.resolveDispute);

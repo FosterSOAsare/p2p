@@ -41,16 +41,36 @@ export function AdminKycList() {
     <>
       <div className="py-4 sm:py-6 space-y-6">
         <div className="border-b border-slate-200 dark:border-slate-800 pb-5 space-y-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 px-3 py-1 rounded-full border border-primary-200 dark:border-primary-800">
-            <ShieldCheck size={14} />
-            Admin Console
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 px-3 py-1 rounded-full border border-primary-200 dark:border-primary-800">
+                <ShieldCheck size={14} />
+                Admin Console
+              </div>
+              <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">
+                KYC Review Queue
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                Review seller identity submissions. Approving unlocks marketplace listing for the applicant.
+              </p>
+            </div>
+
+            {/* Section Sub-Navigation */}
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
+              <Link
+                to="/admin/kyc"
+                className="px-3.5 py-1.5 rounded-xl font-bold bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm transition-all"
+              >
+                KYC Reviews
+              </Link>
+              <Link
+                to="/admin/disputes"
+                className="px-3.5 py-1.5 rounded-xl font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
+              >
+                Disputes Arbitration
+              </Link>
+            </div>
           </div>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-            KYC Review Queue
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-            Review seller identity submissions. Approving unlocks marketplace listing for the applicant.
-          </p>
         </div>
 
         {/* Status tabs */}
