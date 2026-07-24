@@ -39,6 +39,19 @@ export const createStandalone: RequestSchema = {
   }),
 };
 
+export const updateDeal: RequestSchema = {
+  params: Joi.object({ id: Joi.string().guid().required() }),
+  body: Joi.object({
+    title: Joi.string().trim().min(3).max(120).optional(),
+    description: Joi.string().trim().max(2000).allow("", null).optional(),
+    counterpartyUsername: Joi.string().trim().allow("", null).optional(),
+    invitedUsername: Joi.string().trim().allow("", null).optional(),
+    role: Joi.string().valid("buyer", "seller").optional(),
+    amount: Joi.number().positive().max(10_000_000).optional(),
+    currency: Joi.string().valid("GHS", "TRX").optional(),
+  }),
+};
+
 export const deliver: RequestSchema = {
   params: Joi.object({ id: Joi.string().guid().required() }),
   body: Joi.object({
