@@ -107,7 +107,7 @@ export function SellerDashboard({ dashboardData }: { dashboardData?: DashboardRe
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
             <Link
-              to="/seller/wallet"
+              to="/wallet"
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-slate-100 px-4 py-3 text-xs sm:text-sm font-bold text-white dark:text-slate-900 shadow-md hover:bg-slate-800 dark:hover:bg-slate-200 transition-all cursor-pointer"
             >
               <Wallet size={18} /> Payout Wallet
@@ -138,7 +138,7 @@ export function SellerDashboard({ dashboardData }: { dashboardData?: DashboardRe
           </div>
 
           <Link
-            to="/seller/wallet"
+            to="/wallet"
             className="group p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-300 dark:hover:border-sky-700 transition-all space-y-1 block cursor-pointer"
           >
             <div className="flex items-center justify-between">

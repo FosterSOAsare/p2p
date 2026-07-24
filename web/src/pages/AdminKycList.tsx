@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ShieldCheck, Clock, CheckCircle2, XCircle, ArrowRight, Inbox, Loader2 } from 'lucide-react'
 import { useAdminKycList } from '../features/admin/data/adminApi'
+import { AdminSectionNav } from '../features/admin/ui/AdminSectionNav'
 import { apiErrorMessage } from '../features/shared/libs/api'
 import { formatDate } from '../features/shared/libs/date'
 
@@ -56,20 +57,7 @@ export function AdminKycList() {
             </div>
 
             {/* Section Sub-Navigation */}
-            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
-              <Link
-                to="/admin/kyc"
-                className="px-3.5 py-1.5 rounded-xl font-bold bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm transition-all"
-              >
-                KYC Reviews
-              </Link>
-              <Link
-                to="/admin/disputes"
-                className="px-3.5 py-1.5 rounded-xl font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
-              >
-                Disputes Arbitration
-              </Link>
-            </div>
+            <AdminSectionNav />
           </div>
         </div>
 

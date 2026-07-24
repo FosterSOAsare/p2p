@@ -12,6 +12,11 @@ export const createStandalone = asyncHandler(async (req, res) => {
   res.status(201).json({ deal });
 });
 
+export const updateDeal = asyncHandler(async (req, res) => {
+  const deal = await escrowsService.updateDeal(req.user!.id, req.params.id as string, req.body);
+  res.json({ deal });
+});
+
 export const list = asyncHandler(async (req, res) => {
   const result = await escrowsService.list(
     req.user!.id,

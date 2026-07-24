@@ -193,3 +193,26 @@ export function useCreateStandaloneEscrow() {
     },
   })
 }
+
+export function useUpdateEscrow() {
+  const invalidate = useInvalidateDeals()
+  return useMutation({
+    mutationFn: ({ id, ...body }: {
+      id: string
+      title?: string
+      description?: string
+      amount?: number
+      currency?: 'GHS' | 'TRX'
+      role?: 'buyer' | 'seller'
+      invitedUsername?: string
+    }) =>
+      api<{ deal: DealDetail }>(`/api/escrows/${id}`, {
+        method: 'PATCH',
+        body: {
+          ...body,
+          counterpartyUsername: body.invitedUsername,
+        },
+      }),
+    onSuccess: (_d, { id }) => invalidate(id),
+  })
+}

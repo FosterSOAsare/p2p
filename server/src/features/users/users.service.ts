@@ -240,6 +240,8 @@ export async function getDashboard(userId: string) {
     }),
   ]);
 
+  // Admin-resolved disputes skip the 24h hold — those funds were released by ruling and
+  // clear straight to available balance (only non-disputed payouts are held).
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const pendingClearanceDeals = await prisma.escrow.findMany({
     where: {
@@ -247,6 +249,7 @@ export async function getDashboard(userId: string) {
       rail: "fiat",
       status: "disbursed",
       disbursedAt: { gte: twentyFourHoursAgo },
+      dispute: { is: null },
     },
     select: { amount: true, feeAmount: true },
   });

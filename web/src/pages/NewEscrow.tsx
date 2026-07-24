@@ -56,7 +56,7 @@ export function NewEscrow() {
       {/* Back link */}
       <div>
         <Link
-          to="/user/orders"
+          to="/deals"
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
         >
           <ArrowLeft size={16} />

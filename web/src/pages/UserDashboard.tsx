@@ -83,13 +83,13 @@ export function UserDashboard({ dashboardData }: { dashboardData?: DashboardResp
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <Link
-            to="/user/orders"
+            to="/deals"
             className="w-full sm:w-auto text-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shadow-sm"
           >
             My Orders
           </Link>
           <Link
-            to="/user/settings"
+            to="/settings"
             className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 dark:bg-white px-4 py-2.5 text-xs font-semibold text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 transition-all shadow-sm"
           >
             <Settings size={14} /> Profile Settings
@@ -165,7 +165,7 @@ export function UserDashboard({ dashboardData }: { dashboardData?: DashboardResp
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg sm:text-xl font-bold text-slate-900 dark:text-white">Recent Marketplace Orders</h2>
-          <Link to="/user/orders" className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:underline">
+          <Link to="/deals" className="text-xs font-semibold text-primary-600 dark:text-primary-400 hover:underline">
             View All Orders →
           </Link>
         </div>

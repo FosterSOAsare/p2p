@@ -20,6 +20,8 @@ import {
   FileText,
   Heart,
   Wallet,
+  Scale,
+  Users,
 } from 'lucide-react'
 import { Footer } from './Footer'
 
@@ -49,19 +51,23 @@ export function Layout() {
   const isAdmin = me?.role === 'admin'
   const isSeller = !isAdmin && me?.kycStatus === 'verified'
 
-  const primaryNavItems = [
-    { to: '/marketplace', label: 'Marketplace', icon: Store },
-    { to: '/escrow', label: 'Escrow Deals', icon: ShieldCheck },
-    // Third slot depends on persona: admins review, sellers manage listings, buyers can become sellers
-    ...(isAdmin
-      ? [{ to: '/admin/kyc', label: 'KYC Queue', icon: ShieldCheck }]
-      : isSeller
-        ? [{ to: '/listings', label: 'My Listings', icon: Package }]
-        : [{ to: '/sell', label: 'Sell Goods', icon: Store }]),
-    ...(isLoggedIn && !isAdmin
-      ? [{ to: '/user/orders', label: isSeller ? 'My Sales' : 'My Orders', icon: ShoppingBag }]
-      : []),
-  ]
+  // Admins get a dedicated review surface only — no marketplace/escrow/buyer chrome.
+  const primaryNavItems = isAdmin
+    ? [
+        { to: '/admin/kyc', label: 'KYC Queue', icon: ShieldCheck },
+        { to: '/admin/disputes', label: 'Disputes', icon: Scale },
+        { to: '/admin/users', label: 'Users', icon: Users },
+        { to: '/deals', label: 'Deals', icon: Handshake },
+      ]
+    : [
+        { to: '/marketplace', label: 'Marketplace', icon: Store },
+        // One unified deals list — a buyer/seller sees their own deals (scoped server-side)
+        ...(isLoggedIn ? [{ to: '/deals', label: 'My Deals', icon: ShieldCheck }] : []),
+        // Sellers manage listings, buyers can become sellers
+        ...(isSeller
+          ? [{ to: '/listings', label: 'My Listings', icon: Package }]
+          : [{ to: '/sell', label: 'Sell Goods', icon: Store }]),
+      ]
 
   // Apply saved (or system-preferred) theme on first mount
   useEffect(() => {
@@ -115,17 +121,19 @@ export function Layout() {
           {/* Action Links, Theme Toggle & Profile Dropdown */}
           <div className="flex items-center gap-2">
             <div className="hidden sm:flex items-center gap-2">
-              {/* + New Escrow Deal CTA Button */}
-              <Link
-                to="/escrow/new"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-primary-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:bg-primary-700 transition-all cursor-pointer"
-              >
-                <PlusCircle size={15} /> New Deal
-              </Link>
-
-              {isLoggedIn && (
+              {/* + New Escrow Deal CTA Button — buyer/seller only */}
+              {!isAdmin && (
                 <Link
-                  to="/seller/wallet"
+                  to="/escrow/new"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:bg-primary-700 transition-all cursor-pointer"
+                >
+                  <PlusCircle size={15} /> New Deal
+                </Link>
+              )}
+
+              {isLoggedIn && !isAdmin && (
+                <Link
+                  to="/wallet"
                   className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-sm"
                   title="Payout Wallet & Balances"
                 >
@@ -162,18 +170,20 @@ export function Layout() {
                         <p className="text-[11px] text-slate-400 truncate">{me?.email}</p>
                       </div>
 
-                      <Link to="/dashboard" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
-                        <LayoutDashboard size={15} /> Dashboard
-                      </Link>
-
-                      <Link to="/seller/wallet" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
-                        <Wallet size={15} /> Payout Wallet
-                      </Link>
-
                       {!isAdmin && (
-                        <Link to="/user/orders" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
-                          <ShoppingBag size={15} /> {isSeller ? 'My Sales' : 'My Orders'}
-                        </Link>
+                        <>
+                          <Link to="/dashboard" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <LayoutDashboard size={15} /> Dashboard
+                          </Link>
+
+                          <Link to="/wallet" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <Wallet size={15} /> Payout Wallet
+                          </Link>
+
+                          <Link to="/deals" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <ShoppingBag size={15} /> {isSeller ? 'My Sales' : 'My Orders'}
+                          </Link>
+                        </>
                       )}
 
                       {!isSeller && !isAdmin && (
@@ -188,11 +198,13 @@ export function Layout() {
                         </Link>
                       )}
 
-                      <Link to="/escrow?tab=disputed" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
-                        <AlertTriangle size={15} /> Disputes
-                      </Link>
+                      {!isAdmin && (
+                        <Link to="/deals?tab=disputed" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                          <AlertTriangle size={15} /> Disputes
+                        </Link>
+                      )}
 
-                      <Link to="/user/settings" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                      <Link to="/settings" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                         <Settings size={15} /> Account Settings
                       </Link>
 
@@ -207,6 +219,15 @@ export function Layout() {
                           </span>
                           <Link to="/admin/kyc" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                             <ShieldCheck size={15} /> KYC Review Queue
+                          </Link>
+                          <Link to="/admin/disputes" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <Scale size={15} /> Disputes Arbitration
+                          </Link>
+                          <Link to="/admin/users" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <Users size={15} /> User Management
+                          </Link>
+                          <Link to="/deals" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <Handshake size={15} /> Escrow Deals Oversight
                           </Link>
                         </div>
                       )}
@@ -287,33 +308,39 @@ export function Layout() {
                 </NavLink>
               ))}
 
-              <Link
-                to="/escrow/new"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3 text-xs font-bold text-white shadow-md my-2"
-              >
-                <PlusCircle size={16} /> Create New Escrow Deal
-              </Link>
+              {!isAdmin && (
+                <Link
+                  to="/escrow/new"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3 text-xs font-bold text-white shadow-md my-2"
+                >
+                  <PlusCircle size={16} /> Create New Escrow Deal
+                </Link>
+              )}
 
               <div className="pt-2 border-t space-y-1 font-medium border-slate-100 dark:border-slate-800">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3">Account & Support</span>
-                <Link
-                  to="/dashboard"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                >
-                  <LayoutDashboard size={16} /> Dashboard
-                </Link>
-                <Link
-                  to="/seller/wallet"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                >
-                  <Wallet size={16} /> Payout Wallet
-                </Link>
+                {!isAdmin && (
+                  <>
+                    <Link
+                      to="/dashboard"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+                    >
+                      <LayoutDashboard size={16} /> Dashboard
+                    </Link>
+                    <Link
+                      to="/wallet"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+                    >
+                      <Wallet size={16} /> Payout Wallet
+                    </Link>
+                  </>
+                )}
                 {!isAdmin && (
                   <Link
-                    to="/user/orders"
+                    to="/deals"
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
                   >
@@ -338,13 +365,15 @@ export function Layout() {
                     <Package size={16} /> My Listings
                   </Link>
                 )}
-                <Link
-                  to="/escrow?tab=disputed"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                >
-                  <AlertTriangle size={16} /> Disputes
-                </Link>
+                {!isAdmin && (
+                  <Link
+                    to="/deals?tab=disputed"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+                  >
+                    <AlertTriangle size={16} /> Disputes
+                  </Link>
+                )}
                 <Link
                   to="/terms"
                   onClick={() => setMobileMenuOpen(false)}

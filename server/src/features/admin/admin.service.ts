@@ -1,6 +1,13 @@
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
-import type { DisputeOutcome, KycStatus, Prisma } from "../../generated/prisma/client";
+import type {
+  AccountStatus,
+  DisputeOutcome,
+  EscrowStatus,
+  KycStatus,
+  Prisma,
+  UserRole,
+} from "../../generated/prisma/client";
 import { transition } from "../escrows/escrows.service";
 import { postDealMessage } from "../messages/messages.service";
 
@@ -248,4 +255,171 @@ export async function resolveDispute(
   }
 
   return getDispute(updated.id);
+}
+
+// ---------- User management ----------
+
+const userRowSelect = {
+  id: true,
+  username: true,
+  email: true,
+  fullName: true,
+  avatarUrl: true,
+  role: true,
+  status: true,
+  emailVerifiedAt: true,
+  createdAt: true,
+  kyc: { select: { status: true } },
+  _count: { select: { escrowsAsBuyer: true, escrowsAsSeller: true, listings: true } },
+} satisfies Prisma.UserSelect;
+
+type UserRow = Prisma.UserGetPayload<{ select: typeof userRowSelect }>;
+
+function toAdminUserRow(u: UserRow) {
+  return {
+    id: u.id,
+    username: u.username,
+    email: u.email,
+    fullName: u.fullName,
+    avatarUrl: u.avatarUrl,
+    role: u.role,
+    status: u.status,
+    kycStatus: u.kyc?.status ?? "unverified",
+    emailVerified: Boolean(u.emailVerifiedAt),
+    dealsAsBuyer: u._count.escrowsAsBuyer,
+    dealsAsSeller: u._count.escrowsAsSeller,
+    listingsCount: u._count.listings,
+    joinedAt: u.createdAt.toISOString(),
+  };
+}
+
+export async function listUsers(params: {
+  search?: string;
+  role?: UserRole;
+  status?: AccountStatus;
+  page: number;
+  limit: number;
+}) {
+  const { search, role, status, page, limit } = params;
+  const where: Prisma.UserWhereInput = {
+    ...(role ? { role } : {}),
+    ...(status ? { status } : {}),
+    ...(search
+      ? {
+          OR: [
+            { username: { contains: search, mode: "insensitive" } },
+            { email: { contains: search, mode: "insensitive" } },
+            { fullName: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const [rows, total] = await prisma.$transaction([
+    prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: userRowSelect,
+    }),
+    prisma.user.count({ where }),
+  ]);
+
+  return {
+    users: rows.map(toAdminUserRow),
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  };
+}
+
+export async function getUser(id: string) {
+  const u = await prisma.user.findUnique({
+    where: { id },
+    select: { ...userRowSelect, phone: true, wallets: { select: { currency: true, balance: true } } },
+  });
+  if (!u) throw ApiError.notFound("User not found");
+  return {
+    ...toAdminUserRow(u),
+    phone: u.phone,
+    wallets: u.wallets.map((w) => ({ currency: w.currency, balance: Number(w.balance) })),
+  };
+}
+
+export async function setUserStatus(adminId: string, id: string, status: AccountStatus) {
+  if (id === adminId) throw ApiError.badRequest("You cannot change your own account status");
+  const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+  if (!target) throw ApiError.notFound("User not found");
+  const updated = await prisma.user.update({ where: { id }, data: { status }, select: userRowSelect });
+  return toAdminUserRow(updated);
+}
+
+// ---------- Escrow deals oversight (read-only) ----------
+
+const dealPartySelect = { id: true, username: true, avatarUrl: true } satisfies Prisma.UserSelect;
+
+export async function listEscrows(params: {
+  status?: EscrowStatus;
+  search?: string;
+  page: number;
+  limit: number;
+}) {
+  const { status, search, page, limit } = params;
+  const where: Prisma.EscrowWhereInput = {
+    ...(status ? { status } : {}),
+    ...(search
+      ? {
+          OR: [
+            { code: { contains: search, mode: "insensitive" } },
+            { title: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const [rows, total] = await prisma.$transaction([
+    prisma.escrow.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: {
+        id: true,
+        code: true,
+        title: true,
+        amount: true,
+        feeAmount: true,
+        currency: true,
+        rail: true,
+        status: true,
+        createdAt: true,
+        buyer: { select: dealPartySelect },
+        seller: { select: dealPartySelect },
+        dispute: { select: { id: true, status: true } },
+      },
+    }),
+    prisma.escrow.count({ where }),
+  ]);
+
+  return {
+    deals: rows.map((d) => ({
+      id: d.id,
+      code: d.code,
+      title: d.title,
+      amount: Number(d.amount),
+      feeAmount: Number(d.feeAmount),
+      currency: d.currency,
+      rail: d.rail,
+      status: d.status,
+      createdAt: d.createdAt.toISOString(),
+      buyer: d.buyer,
+      seller: d.seller,
+      hasOpenDispute: d.dispute?.status === "open",
+      disputeId: d.dispute?.id ?? null,
+    })),
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  };
 }

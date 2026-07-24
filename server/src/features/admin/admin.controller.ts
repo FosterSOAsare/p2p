@@ -36,3 +36,23 @@ export const resolveDispute = asyncHandler(async (req, res) => {
   const dispute = await adminService.resolveDispute(req.user!.id, req.params.id as string, req.body);
   res.json(dispute);
 });
+
+export const listUsers = asyncHandler(async (req, res) => {
+  const result = await adminService.listUsers(req.query as any);
+  res.json(result);
+});
+
+export const getUser = asyncHandler(async (req, res) => {
+  const user = await adminService.getUser(req.params.id as string);
+  res.json({ user });
+});
+
+export const setUserStatus = asyncHandler(async (req, res) => {
+  const user = await adminService.setUserStatus(req.user!.id, req.params.id as string, req.body.status);
+  res.json({ user });
+});
+
+export const listEscrows = asyncHandler(async (req, res) => {
+  const result = await adminService.listEscrows(req.query as any);
+  res.json(result);
+});

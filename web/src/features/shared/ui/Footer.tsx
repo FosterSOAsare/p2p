@@ -43,7 +43,7 @@ export function Footer() {
                   </Link>
                 </li>
                 <li>
-                  <Link to="/escrow" className="hover:text-white transition-colors">
+                  <Link to="/deals" className="hover:text-white transition-colors">
                     Standalone Escrow Deals
                   </Link>
                 </li>

@@ -15,6 +15,8 @@ import {
   Check,
   Star,
   Upload,
+  Pencil,
+  X,
 } from 'lucide-react'
 import { useUploadSingleFile } from '../features/upload/data/uploadApi'
 import {
@@ -24,6 +26,7 @@ import {
   useReleaseDeal,
   useDisputeDeal,
   useReviewDeal,
+  useUpdateEscrow,
   type EscrowAction,
 } from '../features/escrow/data/ordersApi'
 import { Badge } from '../features/shared/ui/Badge'
@@ -51,6 +54,7 @@ export function EscrowDetail() {
   const release = useReleaseDeal()
   const dispute = useDisputeDeal()
   const review = useReviewDeal()
+  const updateEscrow = useUpdateEscrow()
   const uploadSingle = useUploadSingleFile()
 
   const [confirmRelease, setConfirmRelease] = useState(false)
@@ -61,6 +65,45 @@ export function EscrowDetail() {
   const [disputeOpen, setDisputeOpen] = useState(false)
   const [disputeReason, setDisputeReason] = useState('not_delivered')
   const [disputeDesc, setDisputeDesc] = useState('')
+
+  // Edit deal state
+  const [editOpen, setEditOpen] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editAmount, setEditAmount] = useState(0)
+  const [editCurrency, setEditCurrency] = useState<'GHS' | 'TRX'>('GHS')
+  const [editRole, setEditRole] = useState<'buyer' | 'seller'>('buyer')
+  const [editCounterparty, setEditCounterparty] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+
+  const openEditModal = () => {
+    if (!deal) return
+    setEditTitle(deal.title)
+    setEditAmount(deal.amount)
+    setEditCurrency(deal.currency)
+    setEditRole(deal.myRole === 'seller' ? 'seller' : 'buyer')
+    setEditCounterparty(deal.invitedUsername || deal.buyer?.username || deal.seller?.username || '')
+    setEditDesc(deal.description || '')
+    setEditOpen(true)
+  }
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!id || !editTitle.trim() || editAmount <= 0) return
+    updateEscrow.mutate(
+      {
+        id,
+        title: editTitle.trim(),
+        amount: editAmount,
+        currency: editCurrency,
+        role: editRole,
+        invitedUsername: editCounterparty.trim() || undefined,
+        description: editDesc.trim() || undefined,
+      },
+      {
+        onSuccess: () => setEditOpen(false),
+      },
+    )
+  }
 
   const handleDisputeProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -88,7 +131,7 @@ export function EscrowDetail() {
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {dealQuery.error ? apiErrorMessage(dealQuery.error) : "This deal may not exist or you're not a party to it."}
         </p>
-        <Link to="/escrow" className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-700">
+        <Link to="/deals" className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-700">
           <ArrowLeft size={16} /> Back to Deals
         </Link>
       </div>
@@ -130,7 +173,7 @@ export function EscrowDetail() {
 
   return (
     <div className="py-4 sm:py-6 space-y-6">
-      <Link to="/escrow" className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
+      <Link to="/deals" className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
         <ArrowLeft size={16} /> Back to Deals
       </Link>
 
@@ -246,6 +289,16 @@ export function EscrowDetail() {
               <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-[11px] font-semibold text-rose-700 dark:bg-rose-950/60 dark:border-rose-800 dark:text-rose-300">
                 {apiErrorMessage(actionError)}
               </div>
+            )}
+
+            {deal.status === 'created' && (
+              <button
+                onClick={openEditModal}
+                disabled={busy}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 py-3 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-sm"
+              >
+                <Pencil size={15} /> Edit Deal Terms
+              </button>
             )}
 
             {has('FUND') && (
@@ -399,8 +452,9 @@ export function EscrowDetail() {
               </div>
             )}
 
-            {/* Review — available after completion, one per party */}
-            {deal.status === 'disbursed' && counterparty && (
+            {/* Review — available after a normal completion, one per party.
+                Admin-resolved (disputed) deals don't get reviews — the outcome was arbitrated. */}
+            {deal.status === 'disbursed' && counterparty && !deal.dispute && (
               deal.myReview ? (
                 <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-1.5">
                   <p className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">Your review</p>
@@ -464,6 +518,138 @@ export function EscrowDetail() {
           </div>
         </div>
       </div>
+
+      {/* Edit Deal Modal */}
+      {editOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h3 className="font-display text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Pencil size={18} className="text-primary-600" />
+                Edit Deal Terms
+              </h3>
+              <button
+                onClick={() => setEditOpen(false)}
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {updateEscrow.isError && (
+              <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs font-semibold text-rose-700 dark:bg-rose-950/60 dark:border-rose-800 dark:text-rose-300">
+                {apiErrorMessage(updateEscrow.error)}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">My Role in this Contract</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditRole('buyer')}
+                    className={`rounded-xl py-2 px-3 text-xs font-bold border transition-all cursor-pointer ${
+                      editRole === 'buyer'
+                        ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    🛒 I am Buyer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditRole('seller')}
+                    className={`rounded-xl py-2 px-3 text-xs font-bold border transition-all cursor-pointer ${
+                      editRole === 'seller'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    📦 I am Seller
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Title</label>
+                <input
+                  type="text"
+                  required
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Amount</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    step="0.01"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Currency</label>
+                  <select
+                    value={editCurrency}
+                    onChange={(e) => setEditCurrency(e.target.value as any)}
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="GHS">GH₵ (Fiat)</option>
+                    <option value="TRX">TRX (Crypto)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Invited Counterparty</label>
+                <input
+                  type="text"
+                  value={editCounterparty}
+                  onChange={(e) => setEditCounterparty(e.target.value)}
+                  placeholder="Username of other party..."
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400">Deliverables & Description</label>
+                <textarea
+                  rows={3}
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 p-3 text-xs text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={updateEscrow.isPending}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary-600 py-2.5 text-xs font-bold text-white hover:bg-primary-700 transition-all cursor-pointer disabled:opacity-50 shadow-md"
+                >
+                  {updateEscrow.isPending && <Loader2 size={14} className="animate-spin" />} Save Terms
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditOpen(false)}
+                  className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={confirmRelease}

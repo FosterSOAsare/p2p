@@ -83,7 +83,9 @@ export async function getWallet(userId: string) {
     0,
   );
 
-  // Pending Clearance = payouts released to seller within the last 24h safety holding window
+  // Pending Clearance = payouts released to seller within the last 24h safety holding window.
+  // Admin-resolved disputes skip the hold — the funds were released by admin ruling, so they
+  // clear straight to available balance (no dispute → subject to the 24h hold).
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const pendingClearanceDeals = await prisma.escrow.findMany({
     where: {
@@ -91,6 +93,7 @@ export async function getWallet(userId: string) {
       rail: "fiat",
       status: "disbursed",
       disbursedAt: { gte: twentyFourHoursAgo },
+      dispute: { is: null },
     },
     select: { amount: true, feeAmount: true },
   });

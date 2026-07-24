@@ -48,3 +48,37 @@ export const disputeResolve: RequestSchema = {
     }),
   }),
 };
+
+export const userList: RequestSchema = {
+  query: Joi.object({
+    search: Joi.string().trim().allow("").optional(),
+    role: Joi.string().valid("user", "admin").optional(),
+    status: Joi.string().valid("active", "suspended").optional(),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20),
+  }),
+};
+
+export const userParam: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+};
+
+export const userStatus: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+  body: Joi.object({
+    status: Joi.string().valid("active", "suspended").required(),
+  }),
+};
+
+export const escrowList: RequestSchema = {
+  query: Joi.object({
+    status: Joi.string().valid("created", "funded", "delivered", "disbursed", "disputed").optional(),
+    search: Joi.string().trim().allow("").optional(),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20),
+  }),
+};

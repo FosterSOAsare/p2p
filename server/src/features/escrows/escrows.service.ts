@@ -191,6 +191,85 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
   return getDetail({ id: creatorId }, escrow.id);
 }
 
+export interface UpdateDealInput {
+  title?: string;
+  description?: string;
+  counterpartyUsername?: string;
+  invitedUsername?: string;
+  role?: "buyer" | "seller";
+  amount?: number;
+  currency?: "GHS" | "TRX";
+}
+
+/** Update terms of an unfunded deal (status === 'created') */
+export async function updateDeal(userId: string, escrowId: string, input: UpdateDealInput) {
+  const current = await prisma.escrow.findUnique({ where: { id: escrowId } });
+  if (!current) throw ApiError.notFound("Deal not found");
+
+  if (current.creatorId !== userId && current.buyerId !== userId && current.sellerId !== userId) {
+    throw ApiError.forbidden("Only parties to this deal can edit its terms");
+  }
+
+  if (current.status !== "created") {
+    throw ApiError.badRequest("Deals can only be edited before funding");
+  }
+
+  const rawCounterparty = (input.counterpartyUsername || input.invitedUsername || "").replace(/^@/, "").trim().toLowerCase();
+
+  let invitedUserId: string | null = null;
+  let cleanCounterpartyUsername: string | null = current.invitedUsername;
+
+  if (rawCounterparty) {
+    const invited = await prisma.user.findUnique({ where: { username: rawCounterparty } });
+    if (!invited) {
+      throw ApiError.badRequest(`User @${rawCounterparty} was not found on P2P Market. Please verify the username and try again.`);
+    }
+    if (invited.id === userId) {
+      throw ApiError.badRequest("You cannot create an escrow deal with yourself");
+    }
+    invitedUserId = invited.id;
+    cleanCounterpartyUsername = invited.username;
+  }
+
+  const newRole = input.role || current.creatorRole;
+  const newCurrency = input.currency || current.currency;
+  const newRail = newCurrency === "TRX" ? "crypto" : "fiat";
+  const newAmount = input.amount || Number(current.amount);
+  const amountP = toPesewas(newAmount);
+  const feeP = computeFeeP(amountP, newRail === "crypto" ? CRYPTO_FEE : FIAT_FEE);
+
+  const updatedBuyerId = newRole === "buyer" ? (current.creatorId === userId ? userId : current.buyerId) : (invitedUserId || (current.creatorId === userId ? current.buyerId : userId));
+  const updatedSellerId = newRole === "seller" ? (current.creatorId === userId ? userId : current.sellerId) : (invitedUserId || (current.creatorId === userId ? current.sellerId : userId));
+
+  await prisma.escrow.update({
+    where: { id: escrowId },
+    data: {
+      ...(input.title && { title: input.title }),
+      ...(input.description !== undefined && { description: input.description }),
+      amount: fromPesewas(amountP),
+      feeAmount: fromPesewas(feeP),
+      currency: newCurrency,
+      rail: newRail,
+      creatorRole: newRole,
+      buyerId: updatedBuyerId,
+      sellerId: updatedSellerId,
+      ...(cleanCounterpartyUsername !== null && { invitedUsername: cleanCounterpartyUsername }),
+    },
+  });
+
+  await prisma.escrowEvent.create({
+    data: {
+      escrowId,
+      actorId: userId,
+      actorRole: current.buyerId === userId ? "buyer" : "seller",
+      event: "updated",
+      detail: JSON.parse(JSON.stringify(input)),
+    },
+  });
+
+  return getDetail({ id: userId }, escrowId);
+}
+
 /** Public share-link preview — no auth, no party details beyond usernames. */
 export async function getPublicByCode(code: string) {
   const escrow = await prisma.escrow.findUnique({

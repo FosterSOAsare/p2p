@@ -12,11 +12,10 @@ import { VerifyEmail } from './features/auth/ui/VerifyEmail'
 import { ForgotPassword } from './features/auth/ui/ForgotPassword'
 import { ResetPassword } from './features/auth/ui/ResetPassword'
 import { ChangePassword } from './features/auth/ui/ChangePassword'
-import { Escrow } from './pages/Escrow'
+import { Deals } from './pages/Deals'
 import { NewEscrow } from './pages/NewEscrow'
 import { EscrowDetail } from './pages/EscrowDetail'
 import { Dashboard } from './pages/Dashboard'
-import { UserOrders } from './pages/UserOrders'
 import { UserSettings } from './pages/UserSettings'
 import { Bookmarks } from './pages/Bookmarks'
 import { SellerWallet } from './pages/SellerWallet'
@@ -30,6 +29,7 @@ import { SellerProfile } from './pages/SellerProfile'
 import { AdminKycList } from './pages/AdminKycList'
 import { AdminKycDetail } from './pages/AdminKycDetail'
 import { AdminDisputesList } from './pages/AdminDisputesList'
+import { AdminUsersList } from './pages/AdminUsersList'
 import { Terms } from './pages/Terms'
 import { Privacy } from './pages/Privacy'
 
@@ -44,7 +44,8 @@ function App() {
         <Route path="checkout" element={<Checkout />} />
         <Route path="seller/:username" element={<SellerProfile />} />
         <Route path="messages/:username" element={<MessageThread />} />
-        <Route path="escrow" element={<Escrow />} />
+        {/* Unified deals list — role-aware (buyer/seller → own deals, admin → all) */}
+        <Route path="deals" element={<Deals />} />
         <Route path="escrow/new" element={<NewEscrow />} />
         <Route path="escrow/:id" element={<EscrowDetail />} />
         <Route path="sell" element={<VendorKyc />} />
@@ -57,16 +58,15 @@ function App() {
           <Route path="listings/new" element={<ListingNew />} />
           <Route path="listings/:id" element={<ListingDetail />} />
         </Route>
-        <Route path="user/orders" element={<UserOrders />} />
-        <Route path="user/settings" element={<UserSettings />} />
+        <Route path="settings" element={<UserSettings />} />
         <Route path="bookmarks" element={<Bookmarks />} />
         <Route path="wallet" element={<SellerWallet />} />
-        <Route path="seller/wallet" element={<SellerWallet />} />
         {/* Admin console — AdminGuard layout */}
         <Route element={<AdminGuard />}>
           <Route path="admin/kyc" element={<AdminKycList />} />
           <Route path="admin/kyc/:id" element={<AdminKycDetail />} />
           <Route path="admin/disputes" element={<AdminDisputesList />} />
+          <Route path="admin/users" element={<AdminUsersList />} />
         </Route>
         <Route path="terms" element={<Terms />} />
         <Route path="privacy" element={<Privacy />} />

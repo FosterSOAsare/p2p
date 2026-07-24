@@ -2,11 +2,25 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../shared/libs/api'
 import { dashboardKeys } from '../../user/data/usersApi'
 
+export type DisputeReason =
+  | 'not_delivered'
+  | 'not_as_described'
+  | 'wrong_item'
+  | 'service_not_done'
+  | 'other'
+
+export interface DisputeParty {
+  id: string
+  username: string
+  avatarUrl: string | null
+}
+
+/** List-row shape — server: `GET /api/admin/disputes` → `{ disputes: [...] }`. */
 export interface AdminDispute {
   id: string
   escrowId: string
   status: 'open' | 'resolved'
-  reason: string
+  reason: DisputeReason | string
   description: string
   outcome: 'release' | 'refund' | 'split' | null
   ruledAmountBuyer: number | null
@@ -21,8 +35,8 @@ export interface AdminDispute {
     amount: number
     currency: string
     status: string
-    buyer: { id: string; username: string; avatarUrl: string | null } | null
-    seller: { id: string; username: string; avatarUrl: string | null } | null
+    buyer: DisputeParty | null
+    seller: DisputeParty | null
     messageCount: number
   }
   openedBy: { id: string; username: string }
@@ -33,15 +47,36 @@ export interface DisputeMessage {
   id: string
   body: string
   createdAt: string
-  sender: { id: string; username: string; avatarUrl: string | null }
+  sender: DisputeParty
 }
 
-export interface AdminDisputeDetail extends AdminDispute {
-  escrow: AdminDispute['escrow'] & {
+export interface DisputeEvent {
+  id: string
+  event: string
+  actorRole: string
+  createdAt: string
+}
+
+/**
+ * Detail shape — server: `GET /api/admin/disputes/:id` returns the object
+ * directly (no envelope). Detail parties carry `email`, and the escrow adds
+ * the fee, the full chat transcript, and the event timeline.
+ */
+export interface AdminDisputeDetail extends Omit<AdminDispute, 'escrow' | 'openedBy'> {
+  escrow: {
+    id: string
+    code: string
+    title: string
+    amount: number
     feeAmount: number
+    currency: string
+    status: string
+    buyer: (DisputeParty & { email: string }) | null
+    seller: (DisputeParty & { email: string }) | null
     messages: DisputeMessage[]
-    events: Array<{ id: string; event: string; createdAt: string }>
+    events: DisputeEvent[]
   }
+  openedBy: DisputeParty
 }
 
 export const adminDisputeKeys = {
@@ -53,29 +88,25 @@ export const adminDisputeKeys = {
 export function useAdminDisputes(status: 'open' | 'resolved' | 'all' = 'open') {
   return useQuery({
     queryKey: adminDisputeKeys.list(status),
-    queryFn: async () => {
-      const res = await api.get<{ disputes: AdminDispute[] }>(`/api/admin/disputes?status=${status}`)
-      return res.data.disputes
-    },
+    queryFn: () =>
+      api<{ disputes: AdminDispute[] }>(`/api/admin/disputes?status=${status}`).then((r) => r.disputes),
+    retry: false,
   })
 }
 
 export function useAdminDisputeDetail(id: string | null) {
   return useQuery({
     queryKey: adminDisputeKeys.detail(id ?? ''),
-    queryFn: async () => {
-      if (!id) return null
-      const res = await api.get<AdminDisputeDetail>(`/api/admin/disputes/${id}`)
-      return res.data
-    },
+    queryFn: () => api<AdminDisputeDetail>(`/api/admin/disputes/${id}`),
     enabled: Boolean(id),
+    retry: false,
   })
 }
 
 export function useResolveDispute() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({
+    mutationFn: ({
       id,
       outcome,
       buyerRefund,
@@ -85,17 +116,19 @@ export function useResolveDispute() {
       outcome: 'release' | 'refund' | 'split'
       buyerRefund?: number
       rulingNote: string
-    }) => {
-      const res = await api.post<AdminDisputeDetail>(`/api/admin/disputes/${id}/resolve`, {
-        outcome,
-        buyerRefund,
-        rulingNote,
-      })
-      return res.data
-    },
-    onSuccess: () => {
+    }) =>
+      api<AdminDisputeDetail>(`/api/admin/disputes/${id}/resolve`, {
+        method: 'POST',
+        body: { outcome, buyerRefund, rulingNote },
+      }),
+    onSuccess: (updated) => {
+      qc.setQueryData(adminDisputeKeys.detail(updated.id), updated)
       qc.invalidateQueries({ queryKey: adminDisputeKeys.all })
+      // A ruling moves wallet money and flips the deal to `disbursed`, so the
+      // dashboards, deal lists, and wallet balances all need to refresh.
       qc.invalidateQueries({ queryKey: dashboardKeys.data })
+      qc.invalidateQueries({ queryKey: ['escrows'] })
+      qc.invalidateQueries({ queryKey: ['wallet'] })
     },
   })
 }
