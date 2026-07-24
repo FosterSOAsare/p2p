@@ -69,9 +69,13 @@ export async function getWallet(userId: string) {
     update: {},
   });
 
-  // Escrow-locked = Σ fundingTotal of my active fiat deals as buyer (held "inside" the escrow rows)
+  // Escrow-locked = Σ fundingTotal of active fiat deals as buyer or seller (funded, delivered, disputed)
   const active = await prisma.escrow.findMany({
-    where: { buyerId: userId, rail: "fiat", status: { in: ["funded", "delivered", "disputed"] } },
+    where: {
+      OR: [{ buyerId: userId }, { sellerId: userId }],
+      rail: "fiat",
+      status: { in: ["created", "funded", "delivered", "disputed"] },
+    },
     select: { amount: true, feeAmount: true },
   });
   const escrowLockedP = active.reduce(
@@ -79,9 +83,30 @@ export async function getWallet(userId: string) {
     0,
   );
 
+  // Pending Clearance = payouts released to seller within the last 24h safety holding window
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const pendingClearanceDeals = await prisma.escrow.findMany({
+    where: {
+      sellerId: userId,
+      rail: "fiat",
+      status: "disbursed",
+      disbursedAt: { gte: twentyFourHoursAgo },
+    },
+    select: { amount: true, feeAmount: true },
+  });
+  const pendingClearanceP = pendingClearanceDeals.reduce((sum, e) => {
+    const money = feeMathP(toPesewas(Number(e.amount)), toPesewas(Number(e.feeAmount)));
+    return sum + money.sellerPayoutP;
+  }, 0);
+
+  const pendingClearance = fromPesewas(pendingClearanceP);
+  const totalDbBalance = Number(wallet.balance);
+  const clearedAvailableBalance = Math.max(0, totalDbBalance - pendingClearance);
+
   return {
     currency: "GHS" as const,
-    balance: Number(wallet.balance),
+    balance: clearedAvailableBalance,
+    pendingClearance,
     escrowLocked: fromPesewas(escrowLockedP),
   };
 }
@@ -96,6 +121,13 @@ export async function deposit(userId: string, amount: number) {
 
 /** Simulated momo payout — instant settle at this scope. */
 export async function withdraw(userId: string, amount: number, destination: string) {
+  const walletState = await getWallet(userId);
+  if (walletState.balance < amount) {
+    throw ApiError.badRequest(
+      `Insufficient cleared balance — you have GH₵ ${walletState.balance.toFixed(2)} available (GH₵ ${walletState.pendingClearance.toFixed(2)} is pending 24h clearance).`
+    );
+  }
+
   await prisma.$transaction((tx) =>
     debitGuarded(tx, userId, amount, "withdrawal", `Mobile money payout to ${destination} (simulated)`),
   );

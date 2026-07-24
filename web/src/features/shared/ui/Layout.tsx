@@ -19,6 +19,7 @@ import {
   PlusCircle,
   FileText,
   Heart,
+  Wallet,
 } from 'lucide-react'
 import { Footer } from './Footer'
 
@@ -122,6 +123,16 @@ export function Layout() {
                 <PlusCircle size={15} /> New Deal
               </Link>
 
+              {isLoggedIn && (
+                <Link
+                  to="/seller/wallet"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-sm"
+                  title="Payout Wallet & Balances"
+                >
+                  <Wallet size={16} />
+                </Link>
+              )}
+
               {isLoggedIn ? (
                 /* Logged-In User Profile Pill & Dropdown */
                 <div className="relative">
@@ -153,6 +164,10 @@ export function Layout() {
 
                       <Link to="/dashboard" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                         <LayoutDashboard size={15} /> Dashboard
+                      </Link>
+
+                      <Link to="/seller/wallet" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                        <Wallet size={15} /> Payout Wallet
                       </Link>
 
                       {!isAdmin && (
@@ -288,6 +303,13 @@ export function Layout() {
                   className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
                 >
                   <LayoutDashboard size={16} /> Dashboard
+                </Link>
+                <Link
+                  to="/seller/wallet"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+                >
+                  <Wallet size={16} /> Payout Wallet
                 </Link>
                 {!isAdmin && (
                   <Link

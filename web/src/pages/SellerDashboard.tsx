@@ -13,6 +13,7 @@ import {
   ExternalLink,
   AlertTriangle,
   RotateCcw,
+  Wallet,
 } from 'lucide-react'
 import { useDashboard, type DashboardResponse } from '../features/user/data/usersApi'
 import { useDeliverDeal } from '../features/escrow/data/ordersApi'
@@ -104,10 +105,16 @@ export function SellerDashboard({ dashboardData }: { dashboardData?: DashboardRe
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
+            <Link
+              to="/seller/wallet"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-slate-100 px-4 py-3 text-xs sm:text-sm font-bold text-white dark:text-slate-900 shadow-md hover:bg-slate-800 dark:hover:bg-slate-200 transition-all cursor-pointer"
+            >
+              <Wallet size={18} /> Payout Wallet
+            </Link>
             <Link
               to="/listings"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-500 px-5 py-3 text-xs sm:text-sm font-bold text-white dark:text-slate-950 shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 dark:hover:bg-emerald-400 transition-all cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-500 px-5 py-3 text-xs sm:text-sm font-bold text-white dark:text-slate-950 shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 dark:hover:bg-emerald-400 transition-all cursor-pointer"
             >
               <Store size={18} /> View All Listings
             </Link>
@@ -130,12 +137,21 @@ export function SellerDashboard({ dashboardData }: { dashboardData?: DashboardRe
             </span>
           </div>
 
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-            <span className="text-slate-500 dark:text-slate-400 block font-medium">Available Payout Balance</span>
-            <span className="font-display text-lg sm:text-xl font-bold text-sky-600 dark:text-sky-400">
+          <Link
+            to="/seller/wallet"
+            className="group p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-sky-300 dark:hover:border-sky-700 transition-all space-y-1 block cursor-pointer"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 dark:text-slate-400 font-medium group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+                Available Payout Balance
+              </span>
+              <ExternalLink size={13} className="text-slate-400 group-hover:text-sky-500" />
+            </div>
+            <span className="font-display text-lg sm:text-xl font-bold text-sky-600 dark:text-sky-400 block">
               GH₵{stats.availablePayoutBalance.toLocaleString()}
             </span>
-          </div>
+            <span className="text-[10px] text-slate-400 group-hover:underline">Click to withdraw →</span>
+          </Link>
         </div>
       </div>
 

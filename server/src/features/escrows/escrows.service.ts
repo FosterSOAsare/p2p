@@ -391,7 +391,7 @@ async function payout(tx: Tx, escrow: Escrow, sellerAmount: number) {
     escrow.sellerId!,
     sellerAmount,
     "escrow_release",
-    `Escrow released — ${escrow.title} (${escrow.code})`,
+    `Escrow payout released — ${escrow.title}`,
     escrow.id,
   );
 }
@@ -403,7 +403,7 @@ async function refundBuyer(tx: Tx, escrow: Escrow, refundAmount: number) {
     escrow.buyerId!,
     refundAmount,
     "escrow_refund",
-    `Escrow refunded — ${escrow.title} (${escrow.code})`,
+    `Escrow refunded — ${escrow.title}`,
     escrow.id,
   );
 }

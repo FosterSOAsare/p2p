@@ -5,6 +5,7 @@ import { authKeys } from '../../auth/data/authApi'
 export interface Wallet {
   currency: 'GHS'
   balance: number
+  pendingClearance: number
   escrowLocked: number
 }
 

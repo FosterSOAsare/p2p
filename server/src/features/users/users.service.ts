@@ -3,6 +3,7 @@ import { ApiError } from "../../shared/lib/errors";
 import { publicUser } from "../auth/auth.service";
 import type { PublicUser } from "../auth/auth.model";
 import type { NotificationPrefsInput, SavedListingCard, UpdateProfileInput } from "./users.model";
+import { feeMathP, toPesewas, fromPesewas } from "../escrows/money";
 
 // ---------- Public seller profile ----------
 
@@ -190,11 +191,11 @@ export async function getDashboard(userId: string) {
     sellerListings,
   ] = await Promise.all([
     prisma.escrow.count({
-      where: { buyerId: userId, status: { in: ["created", "funded", "delivered"] } },
+      where: { buyerId: userId, status: { in: ["created", "funded", "delivered", "disputed"] } },
     }),
     prisma.escrow.aggregate({
       _sum: { amount: true },
-      where: { buyerId: userId, status: { in: ["created", "funded", "delivered"] } },
+      where: { buyerId: userId, status: { in: ["created", "funded", "delivered", "disputed"] } },
     }),
     prisma.escrow.aggregate({
       _sum: { amount: true },
@@ -221,7 +222,7 @@ export async function getDashboard(userId: string) {
     }),
     prisma.escrow.aggregate({
       _sum: { amount: true },
-      where: { sellerId: userId, status: { in: ["created", "funded", "delivered"] } },
+      where: { sellerId: userId, status: { in: ["created", "funded", "delivered", "disputed"] } },
     }),
     prisma.escrow.findMany({
       where: { sellerId: userId },
@@ -239,8 +240,25 @@ export async function getDashboard(userId: string) {
     }),
   ]);
 
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const pendingClearanceDeals = await prisma.escrow.findMany({
+    where: {
+      sellerId: userId,
+      rail: "fiat",
+      status: "disbursed",
+      disbursedAt: { gte: twentyFourHoursAgo },
+    },
+    select: { amount: true, feeAmount: true },
+  });
+  const pendingClearanceP = pendingClearanceDeals.reduce((sum, e) => {
+    const money = feeMathP(toPesewas(Number(e.amount)), toPesewas(Number(e.feeAmount)));
+    return sum + money.sellerPayoutP;
+  }, 0);
+  const pendingClearance = fromPesewas(pendingClearanceP);
+
   const ghsWallet = user.wallets.find((w) => w.currency === "GHS");
-  const availablePayoutBalance = ghsWallet ? Number(ghsWallet.balance) : 0;
+  const totalDbBalance = ghsWallet ? Number(ghsWallet.balance) : 0;
+  const availablePayoutBalance = Math.max(0, totalDbBalance - pendingClearance);
 
   const profile = {
     fullName: user.fullName,

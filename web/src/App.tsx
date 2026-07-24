@@ -19,6 +19,7 @@ import { Dashboard } from './pages/Dashboard'
 import { UserOrders } from './pages/UserOrders'
 import { UserSettings } from './pages/UserSettings'
 import { Bookmarks } from './pages/Bookmarks'
+import { SellerWallet } from './pages/SellerWallet'
 import { MyListings } from './pages/MyListings'
 import { ListingNew } from './pages/ListingNew'
 import { ListingDetail } from './pages/ListingDetail'
@@ -58,6 +59,8 @@ function App() {
         <Route path="user/orders" element={<UserOrders />} />
         <Route path="user/settings" element={<UserSettings />} />
         <Route path="bookmarks" element={<Bookmarks />} />
+        <Route path="wallet" element={<SellerWallet />} />
+        <Route path="seller/wallet" element={<SellerWallet />} />
         {/* Admin console — AdminGuard layout */}
         <Route element={<AdminGuard />}>
           <Route path="admin/kyc" element={<AdminKycList />} />
