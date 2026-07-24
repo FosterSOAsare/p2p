@@ -53,62 +53,77 @@ Out of scope (client shows but proposal drops): Google OAuth buttons → remove 
 - [x] `GET /` — `search` (title/description/@seller), `category`, `condition`, `verifiedOnly`, `maxPrice`, `sort (featured|newest|price_asc|price_desc)`, `page`/`limit` pagination → `{ listings, total, page, pages }`
 - [x] `GET /:id` — full detail + seller card (username, storeName, verified, joinedAt) + reviews + avg rating; increments `views`
 - [x] `GET /api/categories` — Category table (27 seeded), ordered by position
-- [ ] `POST /` 🔒 (KYC-verified sellers) — `{ title, price, quantity, category, condition?, description?, images[] (URLs — no upload infra), location? }`
-- [ ] `PATCH /:id` 🔒 (owner) — edit-listing modal fields; `DELETE /:id` 🔒 (owner)
-- [ ] `GET /mine` 🔒 — seller's listings with `views`, `status (active|out_of_stock|draft)`
+- [x] `POST /` 🔒 (`requireSeller`) — `{ title, price, quantity, category, condition?, description?, images[] (URLs), location? }`; forces `currency: GHS`
+- [x] `PATCH /:id` · `DELETE /:id` 🔒 (owner-or-admin) — edit / delete
+- [x] `GET /mine` 🔒 — seller's own listings (any status), paginated + status filter
 - [x] `POST /api/escrows/:id/review` 🔒 — `{ rating 1-5, comment? }` after disbursed; one per party; buyer→seller reviews surface on the listing + seller profile rating. Listing detail already returns reviews + avg rating.
 
-## 6. Escrow — the core (`/api/escrows`) — client: Escrow list, NewEscrow, EscrowDetail, EscrowMessages, UserOrders, UserDashboard
+## 6. Escrow — the core (`/api/escrows`) — client: Escrow list, NewEscrow, EscrowDetail, UserOrders
+
+> Engine ported from TaaS into the 5-state model (`created → funded → delivered → disbursed | disputed`).
+> Single `transition()` gateway + static machine table (status whitelist + allowed actor), status-guarded update, money moves in the same DB transaction. Fee: fiat 1.5% (min GH₵2, cap GH₵150) / crypto 1.0%, stored once; 50/50 split; invariant `fundingTotal === sellerPayout + fee`. **Payment is simulated** (no buyer wallet/charge — see §7b).
 
 ### CRUD + join
-- [ ] `POST /` 🔒 — `{ title, description?, counterpartyUsername?, role (buyer|seller — creator's side), amount, currency (GHS|TRX), milestones?: [{ title, amount }] }` → `{ deal, code, shareUrl }`; unknown username ⇒ still created, joinable by code; response feeds `navigate('/escrow/:id')`
-- [ ] `POST /from-listing` 🔒 — `{ listingId, quantity? }` → escrow prefilled from listing (buyer = caller, seller = vendor) — backs the missing `/checkout?listing=:id` page
-- [ ] `GET /` 🔒 — my deals; filters: `tab (all|active|disbursed|disputed)` (active = created+funded+delivered), `role (buyer|seller)`, `search`; include summary stats (total volume, active count)
-- [ ] `GET /:id` 🔒 (party only) — full detail: parties (usernames), status, amounts, fee breakdown, timeline events, milestones, tracking info, dispute, crypto panel
-- [ ] `GET /code/:code` — **public** share-link preview (title, amount, currency, creator, status) for the join screen
-- [ ] `POST /code/:code/accept` 🔒 — join as counterparty → fills empty buyer/seller side
-- [ ] `GET /:id/qr` 🔒 — QR data-URL of the share link (`qrcode` pkg)
+- [x] `POST /from-listing` 🔒 — checkout: `{ listingId, quantity, paymentMethod }` → creates escrow already `funded` (simulated payment), decrements stock, notifies seller in-app. Backs `/checkout`.
+- [x] `POST /` 🔒 — standalone: `{ title, description?, counterpartyUsername?, role, amount, currency }` → `created`; unknown username ⇒ joinable by code. *(client NewEscrow not yet wired)*
+- [x] `GET /` 🔒 — my deals; `role (buyer|seller)`, `status`, `page`/`limit`; `serialize()` incl. `availableActions` per role
+- [x] `GET /:id` 🔒 (party only) — full detail: parties, status, fee breakdown, timeline events, tracking, dispute, `myReview`
+- [x] `GET /code/:code` — **public** share-link preview (`creatorIsBuyer`, `joinable`)
+- [x] `POST /code/:code/accept` 🔒 — join as counterparty → fills the empty side
+- [ ] `GET /:id/qr` 🔒 — QR data-URL of the share link (`qrcode` pkg) *(standalone-share pillar)*
 
-### State machine (one transition endpoint each; enforce role + current-state guards; append EscrowEvent on every transition)
-- [ ] `POST /:id/fund` 🔒 (buyer) — `created → funded`. GHS: debit simulated wallet into escrow lock. TRX: returns `{ depositAddress, expectedTrx }` and stays `created` until watcher confirms deposit
-- [ ] `POST /:id/deliver` 🔒 (seller) — `funded → delivered`; optional `{ note?, carrier?, trackingNumber? }` (the client's "Enter Tracking & Dispatch" modal: carrier DHL/FedEx/UPS + tracking code); sets `autoReleaseAt = now + AUTO_RELEASE_HOURS`
-- [ ] `POST /:id/release` 🔒 (buyer) — `funded|delivered → disbursed`; GHS: credit seller wallet minus fee; TRX: sign + broadcast Shasta transfer to seller address, store txid ("Confirm Receipt & Release" buttons)
-- [ ] `POST /:id/dispute` 🔒 (either party) — `funded|delivered → disputed`; `{ reason, description }`; freezes auto-release
-- [ ] Milestones (digital goods = milestone markers): `POST /:id/milestones/:mid/deliver` 🔒 (seller), `POST /:id/milestones/:mid/release` 🔒 (buyer) — statuses `pending → delivered → disbursed`
+### State machine (one endpoint per event; role + current-state guarded; appends EscrowEvent + in-app deal message)
+- [x] `POST /:id/fund` 🔒 (buyer) — `created → funded` (simulated; standalone deals). TRX funding not yet wired (fiat only for now).
+- [x] `POST /:id/deliver` 🔒 (seller) — `funded → delivered`; `{ carrier?, trackingNumber?, note? }` (courier/rider name, tracking or phone, optional details; "Online" for digital)
+- [x] `POST /:id/release` 🔒 (buyer) — `delivered → disbursed`; credits seller wallet (− seller fee). **Only after delivery** (no early release).
+- [x] `POST /:id/dispute` 🔒 (either party) — `funded|delivered → disputed`; `{ reason, description }`; freezes the deal
+- [x] `POST /:id/review` 🔒 — `{ rating, comment? }` after disbursed (see §5)
+- [ ] Milestones — `POST /:id/milestones/:mid/deliver|release` *(digital-goods pillar; schema ready)*
 
-### Chat (per-deal, immutable — becomes dispute evidence)
-- [ ] `GET /:id/messages` 🔒 (party only)
-- [ ] `POST /:id/messages` 🔒 — `{ message }` (attachments = `[Attachment: name]` text convention for now, matching client)
+### Crypto rail (TRX Shasta via TronGrid) — NOT STARTED
+- [ ] `GET /:id/crypto` 🔒 — deposit address, expected/received TRX, confirmations, txids + Tronscan links
+- [ ] `POST /:id/crypto/check` 🔒 — poll TronGrid; flips `created → funded` on confirmed deposit
 
-### Crypto rail (TRX Shasta via TronGrid)
-- [ ] `GET /:id/crypto` 🔒 — `{ depositAddress, expectedTrx, receivedTrx, confirmations, depositTxid?, releaseTxid?, refundTxid? }` + Tronscan links
-- [ ] `POST /:id/crypto/check` 🔒 — poll TronGrid now; flips `created → funded` when deposit confirmed
+## 7. Admin (`/api/admin`) 👑
 
-## 7. Admin (`/api/admin`) 👑 — monitoring dashboard + dispute ruling (no client screens yet — FE to build `/admin`)
-
-- [ ] `GET /stats` — KPIs: users, deals per status, GHS/TRX volume, open disputes, KYC pending
-- [ ] `GET /users` — search/list; `PATCH /users/:id` — `{ status: active|suspended }`
-- [ ] `GET /escrows` — all deals, filter by status (oversight table)
-- [ ] `GET /disputes?status=open` — queue with deal + chat/evidence context
-- [ ] `POST /disputes/:id/rule` — `{ outcome: release|refund|split, buyerAmount?, sellerAmount?, note }` → moves money, escrow → `disbursed`, records ruling
-- [x] `GET /kyc?status=` — review queue (+ `GET /kyc/:id` detail); `POST /kyc/:id/approve` · `POST /kyc/:id/reject { reason }` (pending-only guard; records reviewer + timestamp)
+- [x] `GET /kyc?status=` (+ `GET /kyc/:id`); `POST /kyc/:id/approve` · `POST /kyc/:id/reject { reason }` (pending-only guard; records reviewer + timestamp)
+- [ ] **Dispute resolution (HIGH PRIORITY)** — disputes freeze but no admin can rule → funds stuck. Money logic already in `escrows.service.ts` (`RESOLVE_RELEASE/REFUND/PARTIAL`, partial pro-rata):
+  - [ ] `GET /disputes?status=open` — queue with deal + parties + reason context
+  - [ ] `GET /disputes/:id` — detail (deal, timeline, amounts)
+  - [ ] `POST /disputes/:id/rule` — `{ outcome: release|refund|split, buyerRefund?, note }` → `transition(RESOLVE_*)`, moves money, records ruling
+- [ ] `GET /stats` — KPIs: users, deals per status, GHS volume, open disputes, KYC pending
+- [ ] `GET /users` (search/paginate) · `PATCH /users/:id { status }` (suspend/unsuspend — already enforced at auth)
+- [ ] `GET /escrows` — oversight table, filter by status
 
 ## 7b. Payments & notifications (deferred)
 
 - [ ] [BE] **Real payment step** — buyer actually pays for the order before it's marked funded. Right now checkout SIMULATES payment (no wallet, no charge): `POST /from-listing` creates the escrow `funded` immediately. `escrows.service.ts` + `applyEffects` FUND both have `TODO(payments)` markers.
 - [ ] [BE] **Mock email notifications** — a `mailService.send()` that `console.log`s `[mail:simulated] To <email>: ...` on each lifecycle event (order placed → seller, delivered → buyer, released → both, dispute opened → both, review received). Mirror the existing simulated verify/reset email pattern. Only the **in-app** conversation message exists today (`postDealMessage`). Real email/push (Resend) is later. `TODO(notifications)`.
 
-## 8. Background jobs (not endpoints — simple `setInterval` workers are fine at this scope)
+## 8. Background jobs (simple `setInterval` workers)
 
-- [ ] Auto-release: `delivered` + `autoReleaseAt` passed + no dispute → auto `disbursed` (time-locked resolution, per Terms copy: 14-day timer — make `AUTO_RELEASE_HOURS` env-configurable)
-- [ ] Dispute auto-resolution: `disputed` + no admin ruling by `autoResolveAt` → default ruling (configurable outcome)
-- [ ] TRX deposit watcher: poll TronGrid for pending crypto escrows → confirm funding
+> **Auto-release & auto-resolve are DISABLED by decision — everything is manual for now.** `sweepAutoRelease()` exists in `escrows.service.ts` but is not started; `autoReleaseAt`/`autoResolveAt` are set to null on deliver/dispute. To re-enable, start the interval in `index.ts` and restore the deadline columns.
+
+- [ ] Auto-release: `delivered` + `autoReleaseAt` passed + no dispute → auto `disbursed` *(disabled)*
+- [ ] Dispute auto-resolution: `disputed` past `autoResolveAt` → default ruling *(disabled)*
+- [ ] TRX deposit watcher: poll TronGrid for pending crypto escrows → confirm funding *(with crypto rail)*
 
 ---
 
-## Client alignment notes (for FE, surfaced by the audit — keep server canonical)
+## Client alignment notes
 
-1. **Currency**: NewEscrow/Calculator/KYC use `USD | USDC | USDT` + "Stripe" copy → switch to `GHS | TRX` (deals data + `currency.ts` already correct).
-2. **Statuses**: UI invents `released`, `completed`, `shipped`, `awaiting_shipment` → map to the 5 canonical states (`released/completed → disbursed`; `awaiting_shipment → funded`; `shipped → delivered`).
-3. **Missing pages to build**: `/checkout?listing=:id`, escrow join-by-code (+ show code/QR on detail/share screen), `/admin`, wallet page, review-submission form, dispute button on marketplace orders.
-4. Render `SimulationNotice` (exists, never mounted) on all fiat money screens; wire real auth state in `Layout.tsx` (currently hard-coded `isLoggedIn = true`).
+- [x] Real auth state in `Layout.tsx` (was hard-coded `isLoggedIn = true`)
+- [x] `SimulationNotice` mounted on checkout
+- [x] `/checkout`, order pages (deals/orders/detail), review form — all wired to real API
+- [x] Statuses collapsed to the 5 canonical states; KYC/marketplace on `GHS`
+- [ ] **NewEscrow** still uses `USD | USDC | USDT` + Stripe copy — rework to `GHS | TRX` + wire to `POST /api/escrows` (standalone pillar)
+- [ ] Still to build: escrow join-by-code + code/QR share screen, `/admin` dashboard + dispute workspace, **wallet page**, buyer/seller **dashboards** (still mock)
+
+---
+
+## Remaining highlights (see TODO-BUYER / TODO-SELLER / TODO-ADMIN)
+
+1. **Admin dispute resolution** — highest priority; disputed funds are stuck without it (server logic ready).
+2. **Wallet/withdraw page + seller dashboard** — server ready, no UI.
+3. **Buyer dashboard** — still mock.
+4. Standalone-escrow pillar (NewEscrow, join-by-code, QR) + **TRX crypto rail**.

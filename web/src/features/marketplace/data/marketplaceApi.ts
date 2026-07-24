@@ -1,5 +1,6 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../shared/libs/api'
+
 
 // Marketplace listings are fiat-only (GH₵) — crypto/TRX exists only on standalone escrow deals.
 export interface ListingCard {
@@ -92,3 +93,15 @@ export function useCategories() {
     staleTime: 5 * 60_000,
   })
 }
+
+export function useDeleteListing() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api(`/api/listings/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users', 'dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['listings'] })
+    },
+  })
+}
+

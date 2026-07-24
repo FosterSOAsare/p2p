@@ -162,3 +162,167 @@ export async function saveListing(userId: string, listingId: string): Promise<vo
 export async function unsaveListing(userId: string, listingId: string): Promise<void> {
   await prisma.savedListing.deleteMany({ where: { userId, listingId } });
 }
+
+// ---------- Unified User & Seller Dashboard ----------
+
+export async function getDashboard(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      kyc: { select: { status: true, storeName: true, country: true } },
+      wallets: true,
+    },
+  });
+  if (!user) throw ApiError.notFound("User not found");
+
+  const isVerifiedSeller = user.kyc?.status === "verified";
+
+  const [
+    buyerActiveCount,
+    buyerLockedSum,
+    buyerSpentSum,
+    savedItemsCount,
+    recentOrders,
+    sellerRatingAgg,
+    sellerEarningsSum,
+    sellerLockedSum,
+    salesOrders,
+    sellerListings,
+  ] = await Promise.all([
+    prisma.escrow.count({
+      where: { buyerId: userId, status: { in: ["created", "funded", "delivered"] } },
+    }),
+    prisma.escrow.aggregate({
+      _sum: { amount: true },
+      where: { buyerId: userId, status: { in: ["created", "funded", "delivered"] } },
+    }),
+    prisma.escrow.aggregate({
+      _sum: { amount: true },
+      where: { buyerId: userId, status: "disbursed" },
+    }),
+    prisma.savedListing.count({ where: { userId } }),
+    prisma.escrow.findMany({
+      where: { buyerId: userId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: {
+        seller: { select: { username: true } },
+        listing: { select: { images: true, title: true } },
+      },
+    }),
+    prisma.review.aggregate({
+      _avg: { rating: true },
+      _count: true,
+      where: { revieweeId: userId },
+    }),
+    prisma.escrow.aggregate({
+      _sum: { amount: true },
+      where: { sellerId: userId, status: "disbursed" },
+    }),
+    prisma.escrow.aggregate({
+      _sum: { amount: true },
+      where: { sellerId: userId, status: { in: ["created", "funded", "delivered"] } },
+    }),
+    prisma.escrow.findMany({
+      where: { sellerId: userId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: {
+        buyer: { select: { username: true } },
+        listing: { select: { images: true, title: true } },
+      },
+    }),
+    prisma.listing.findMany({
+      where: { sellerId: userId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+  ]);
+
+  const ghsWallet = user.wallets.find((w) => w.currency === "GHS");
+  const availablePayoutBalance = ghsWallet ? Number(ghsWallet.balance) : 0;
+
+  const profile = {
+    fullName: user.fullName,
+    username: user.username,
+    avatarUrl: user.avatarUrl ?? `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`,
+    joinedDate: user.createdAt.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+    isKycVerified: isVerifiedSeller,
+    kycStatus: user.kyc?.status ?? "unverified",
+  };
+
+  const buyerData = {
+    stats: {
+      activeOrdersCount: buyerActiveCount,
+      escrowLockedBalance: Number(buyerLockedSum._sum.amount ?? 0),
+      totalSpent: Number(buyerSpentSum._sum.amount ?? 0),
+      savedItemsCount,
+    },
+    recentOrders: recentOrders.map((ord) => ({
+      id: ord.id,
+      code: ord.code,
+      status: ord.status,
+      orderDate: ord.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      vendorName: ord.seller?.username ?? ord.invitedUsername ?? "Seller",
+      title: ord.title,
+      price: Number(ord.amount),
+      currency: ord.currency,
+      imageUrl: ord.listing?.images[0] ?? "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60",
+      productId: ord.listingId ?? undefined,
+      trackingCode: ord.trackingNumber ?? undefined,
+      shippingCarrier: ord.carrier ?? undefined,
+    })),
+  };
+
+  const sellerData = {
+    stats: {
+      storeName: user.kyc?.storeName ?? `${user.username}'s Store`,
+      storeHandle: user.username,
+      rating: sellerRatingAgg._avg.rating ? Number(sellerRatingAgg._avg.rating.toFixed(1)) : 5.0,
+      reviewCount: sellerRatingAgg._count,
+      totalEarnings: Number(sellerEarningsSum._sum.amount ?? 0),
+      escrowLockedBalance: Number(sellerLockedSum._sum.amount ?? 0),
+      availablePayoutBalance,
+      actionRequiredCount: salesOrders.filter((o) => o.status === "funded").length,
+    },
+    salesOrders: salesOrders.map((ord) => ({
+      id: ord.id,
+      code: ord.code,
+      status:
+        ord.status === "funded"
+          ? "awaiting_shipment"
+          : ord.status === "delivered"
+          ? "shipped"
+          : ord.status === "disbursed"
+          ? "released"
+          : ord.status,
+      rawStatus: ord.status,
+      buyerUsername: ord.buyer?.username ?? "Buyer",
+      date: ord.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      title: ord.title,
+      amount: Number(ord.amount),
+      currency: ord.currency,
+      carrier: ord.carrier ?? undefined,
+      trackingNumber: ord.trackingNumber ?? undefined,
+    })),
+    listings: sellerListings.map((l) => ({
+      id: l.id,
+      title: l.title,
+      price: Number(l.price),
+      currency: l.currency,
+      category: l.category,
+      stock: l.quantity,
+      views: l.views,
+      imageUrl: l.images[0] ?? "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60",
+      status: l.status,
+    })),
+  };
+
+  return {
+    persona: isVerifiedSeller ? ("seller" as const) : ("buyer" as const),
+    profile,
+    buyer: buyerData,
+    seller: sellerData,
+  };
+}
+

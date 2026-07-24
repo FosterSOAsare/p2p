@@ -20,6 +20,8 @@ usersRouter.get("/me/blocked", usersController.listBlockedVendors);
 usersRouter.post("/:username/block", validate(usersValidation.blockVendor), usersController.blockVendor);
 usersRouter.delete("/:username/block", validate(usersValidation.usernameParam), usersController.unblockVendor);
 
+usersRouter.get("/me/dashboard", usersController.getDashboard);
 usersRouter.get("/me/saved", usersController.getSavedListings);
 usersRouter.post("/me/saved/:listingId", validate(usersValidation.savedListingParam), usersController.saveListing);
 usersRouter.delete("/me/saved/:listingId", validate(usersValidation.savedListingParam), usersController.unsaveListing);
+

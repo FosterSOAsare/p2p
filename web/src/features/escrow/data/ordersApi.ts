@@ -76,6 +76,7 @@ function useInvalidateDeals() {
     queryClient.invalidateQueries({ queryKey: ['escrows'] })
     queryClient.invalidateQueries({ queryKey: ['wallet'] })
     queryClient.invalidateQueries({ queryKey: authKeys.me })
+    queryClient.invalidateQueries({ queryKey: ['users', 'dashboard'] })
     if (id) queryClient.invalidateQueries({ queryKey: dealKeys.detail(id) })
   }
 }

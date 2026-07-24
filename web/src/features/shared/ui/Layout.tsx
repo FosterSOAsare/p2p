@@ -18,6 +18,7 @@ import {
   Moon,
   PlusCircle,
   FileText,
+  Heart,
 } from 'lucide-react'
 import { Footer } from './Footer'
 
@@ -160,6 +161,12 @@ export function Layout() {
                         </Link>
                       )}
 
+                      {!isSeller && !isAdmin && (
+                        <Link to="/bookmarks" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                          <Heart size={15} className="text-rose-500" /> My Bookmarks
+                        </Link>
+                      )}
+
                       {isSeller && (
                         <Link to="/listings" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                           <Package size={15} /> My Listings
@@ -289,6 +296,15 @@ export function Layout() {
                     className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
                   >
                     <ShoppingBag size={16} /> {isSeller ? 'My Sales' : 'My Orders'}
+                  </Link>
+                )}
+                {!isSeller && !isAdmin && (
+                  <Link
+                    to="/bookmarks"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+                  >
+                    <Heart size={16} className="text-rose-500" /> My Bookmarks
                   </Link>
                 )}
                 {isSeller && (

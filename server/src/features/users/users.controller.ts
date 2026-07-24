@@ -45,3 +45,9 @@ export const unsaveListing = asyncHandler(async (req, res) => {
   await usersService.unsaveListing(req.user!.id, req.params.listingId as string);
   res.json({ ok: true });
 });
+
+export const getDashboard = asyncHandler(async (req, res) => {
+  const dashboard = await usersService.getDashboard(req.user!.id);
+  res.json(dashboard);
+});
+

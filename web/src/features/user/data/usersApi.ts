@@ -128,6 +128,7 @@ export function useSaveListing() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: userKeys.saved })
       queryClient.invalidateQueries({ queryKey: authKeys.me }) // savedItemsCount stat
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.data })
     },
   })
 }
@@ -139,6 +140,7 @@ export function useUnsaveListing() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: userKeys.saved })
       queryClient.invalidateQueries({ queryKey: authKeys.me })
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.data })
     },
   })
 }
@@ -160,3 +162,97 @@ export function useUpdateNotificationPrefs() {
     onError: () => queryClient.invalidateQueries({ queryKey: authKeys.me }),
   })
 }
+
+// ---------- Unified Dashboard ----------
+
+export interface DashboardOrder {
+  id: string
+  code: string
+  status: string
+  orderDate: string
+  vendorName: string
+  title: string
+  price: number
+  currency: string
+  imageUrl: string
+  productId?: string
+  trackingCode?: string
+  shippingCarrier?: string
+}
+
+export interface SellerSaleOrder {
+  id: string
+  code: string
+  status: string
+  rawStatus: string
+  buyerUsername: string
+  date: string
+  title: string
+  amount: number
+  currency: string
+  carrier?: string
+  trackingNumber?: string
+}
+
+export interface SellerProductListing {
+  id: string
+  title: string
+  price: number
+  currency: string
+  category: string
+  stock: number
+  views: number
+  imageUrl: string
+  status: string
+}
+
+export interface DashboardResponse {
+  persona: 'buyer' | 'seller'
+  profile: {
+    fullName: string
+    username: string
+    avatarUrl: string
+    joinedDate: string
+    isKycVerified: boolean
+    kycStatus: 'unverified' | 'pending' | 'verified' | 'rejected'
+  }
+  buyer: {
+    stats: {
+      activeOrdersCount: number
+      escrowLockedBalance: number
+      totalSpent: number
+      savedItemsCount: number
+    }
+    recentOrders: DashboardOrder[]
+  }
+  seller: {
+    stats: {
+      storeName: string
+      storeHandle: string
+      rating: number
+      reviewCount: number
+      totalEarnings: number
+      escrowLockedBalance: number
+      availablePayoutBalance: number
+      actionRequiredCount: number
+    }
+    salesOrders: SellerSaleOrder[]
+    listings: SellerProductListing[]
+  }
+}
+
+export const dashboardKeys = {
+  data: ['users', 'dashboard'] as const,
+}
+
+export function useDashboard() {
+  return useQuery({
+    queryKey: dashboardKeys.data,
+    queryFn: async () => {
+      if (!tokenStore.isLoggedIn()) return null
+      return api<DashboardResponse>('/api/users/me/dashboard')
+    },
+    staleTime: 30_000,
+  })
+}
+

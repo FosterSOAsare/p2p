@@ -52,6 +52,7 @@ export function EscrowDetail() {
   const [deliverOpen, setDeliverOpen] = useState(false)
   const [carrier, setCarrier] = useState('')
   const [tracking, setTracking] = useState('')
+  const [note, setNote] = useState('')
   const [disputeOpen, setDisputeOpen] = useState(false)
   const [disputeReason, setDisputeReason] = useState('not_delivered')
   const [disputeDesc, setDisputeDesc] = useState('')
@@ -97,10 +98,11 @@ export function EscrowDetail() {
 
   const submitDeliver = () => {
     deliver.mutate(
-      { id, carrier: carrier || undefined, trackingNumber: tracking || undefined },
+      { id, carrier: carrier || undefined, trackingNumber: tracking || undefined, note: note || undefined },
       { onSuccess: () => setDeliverOpen(false) },
     )
   }
+
 
   const submitDispute = () => {
     if (disputeDesc.trim().length < 10) return
@@ -232,11 +234,37 @@ export function EscrowDetail() {
             )}
 
             {has('DELIVER') && deliverOpen && (
-              <div className="space-y-2.5 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5">
-                <p className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">Delivery details (optional)</p>
-                <input value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="Carrier (e.g. DHL Express)" className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none" />
-                <input value={tracking} onChange={(e) => setTracking(e.target.value)} placeholder="Tracking number" className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none" />
-                <div className="flex gap-2">
+              <div className="space-y-3 rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 shadow-sm">
+                <p className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">Dispatch & Delivery Details</p>
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">Shipping Carrier / Method</label>
+                  <input
+                    value={carrier}
+                    onChange={(e) => setCarrier(e.target.value)}
+                    placeholder="e.g. DHL Express, FedEx, Local Rider, Online"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">Tracking Code / Phone Number</label>
+                  <input
+                    value={tracking}
+                    onChange={(e) => setTracking(e.target.value)}
+                    placeholder="e.g. DHL-GH-99201 or Courier Phone"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2 text-xs font-mono text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">Delivery Note & Instructions (Optional)</label>
+                  <textarea
+                    rows={2}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="e.g. Courier contact name, rider phone number, or digital item instructions"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none resize-none"
+                  />
+                </div>
+                <div className="flex gap-2 pt-1">
                   <button onClick={submitDeliver} disabled={deliver.isPending} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary-600 py-2.5 text-xs font-semibold text-white hover:bg-primary-700 cursor-pointer disabled:opacity-50">
                     {deliver.isPending ? <Loader2 size={13} className="animate-spin" /> : <Truck size={14} />} Confirm Delivery
                   </button>

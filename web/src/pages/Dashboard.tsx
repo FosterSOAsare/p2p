@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useMe } from '../features/auth/data/authApi'
+import { useDashboard } from '../features/user/data/usersApi'
 import { UserDashboard } from './UserDashboard'
 import { SellerDashboard } from './SellerDashboard'
 
@@ -9,9 +10,10 @@ import { SellerDashboard } from './SellerDashboard'
  * admin → admin console · KYC-verified seller → seller dashboard · everyone else → buyer dashboard.
  */
 export function Dashboard() {
-  const { data: me, isLoading } = useMe()
+  const { data: me, isLoading: meLoading } = useMe()
+  const { data: dashboard, isLoading: dashLoading } = useDashboard()
 
-  if (isLoading) {
+  if (meLoading || dashLoading) {
     return (
       <div className="py-20 text-center">
         <Loader2 size={28} className="mx-auto animate-spin text-primary-600 dark:text-primary-400" />
@@ -21,6 +23,9 @@ export function Dashboard() {
 
   if (!me) return <Navigate to="/login" replace />
   if (me.role === 'admin') return <Navigate to="/admin/kyc" replace />
-  if (me.kycStatus === 'verified') return <SellerDashboard />
-  return <UserDashboard />
+  if (dashboard?.persona === 'seller' || me.kycStatus === 'verified') {
+    return <SellerDashboard dashboardData={dashboard} />
+  }
+  return <UserDashboard dashboardData={dashboard} />
 }
+

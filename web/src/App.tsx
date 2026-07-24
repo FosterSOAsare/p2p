@@ -18,6 +18,7 @@ import { EscrowDetail } from './pages/EscrowDetail'
 import { Dashboard } from './pages/Dashboard'
 import { UserOrders } from './pages/UserOrders'
 import { UserSettings } from './pages/UserSettings'
+import { Bookmarks } from './pages/Bookmarks'
 import { MyListings } from './pages/MyListings'
 import { ListingNew } from './pages/ListingNew'
 import { ListingDetail } from './pages/ListingDetail'
@@ -56,6 +57,7 @@ function App() {
         </Route>
         <Route path="user/orders" element={<UserOrders />} />
         <Route path="user/settings" element={<UserSettings />} />
+        <Route path="bookmarks" element={<Bookmarks />} />
         {/* Admin console — AdminGuard layout */}
         <Route element={<AdminGuard />}>
           <Route path="admin/kyc" element={<AdminKycList />} />
