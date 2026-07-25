@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { loginSchema, type LoginForm } from '../data/schemas'
 import { useLogin } from '../data/authApi'
-import { apiErrorMessage } from '../../shared/libs/api'
+import { ApiError, apiErrorMessage } from '../../shared/libs/api'
 
 const inputClass =
   'w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all'
@@ -43,7 +43,17 @@ export function Login() {
   const onSubmit = handleSubmit((values) => {
     login.mutate(
       { identifier: values.identifier, password: values.password },
-      { onSuccess: () => navigate('/marketplace') },
+      {
+        onSuccess: () => navigate('/marketplace'),
+        onError: (err) => {
+          // Unverified email → server re-sent the link; route to the verify screen.
+          const details =
+            err instanceof ApiError ? (err.details as { code?: string; email?: string } | undefined) : undefined
+          if (details?.code === 'email_unverified') {
+            navigate('/verify-email', { state: { email: details.email, resent: true } })
+          }
+        },
+      },
     )
   })
 

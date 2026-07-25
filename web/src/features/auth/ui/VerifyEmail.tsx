@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { MailCheck, ArrowRight, RefreshCw, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { authKeys, useMe, useResendVerification, useVerifyEmailToken } from '../data/authApi'
@@ -10,8 +10,12 @@ export function VerifyEmail() {
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
+  const location = useLocation()
+  // Signup / unverified-login route here with the email (the user isn't logged in yet).
+  const navState = location.state as { email?: string; resent?: boolean } | null
 
   const { data: me } = useMe()
+  const displayEmail = me?.email ?? navState?.email
   // Runs automatically when a ?token= is present — no effect/ref needed.
   const verify = useVerifyEmailToken(token)
   const resend = useResendVerification()
@@ -100,14 +104,20 @@ export function VerifyEmail() {
         <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Check your email</h1>
         <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-sm mx-auto">
           We sent a verification link to{' '}
-          {me?.email ? (
-            <strong className="text-slate-800 dark:text-slate-200">{me.email}</strong>
+          {displayEmail ? (
+            <strong className="text-slate-800 dark:text-slate-200">{displayEmail}</strong>
           ) : (
             'your email address'
           )}
-          . Please click the link to confirm your account.
+          . Click the link to activate your account, then sign in.
         </p>
       </div>
+
+      {navState?.resent && (
+        <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 p-3 text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center justify-center gap-1.5 animate-fade-in">
+          <CheckCircle2 size={16} className="shrink-0" /> We re-sent your verification link — check your inbox.
+        </div>
+      )}
 
       {token && verify.isError && (
         <div className="rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 p-3 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center justify-center gap-1.5 animate-fade-in">
@@ -130,28 +140,38 @@ export function VerifyEmail() {
 
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-4 text-xs">
         <p className="text-slate-500 dark:text-slate-400">
-          Email confirmation ensures you receive order status updates and escrow release alerts. You can still browse while unverified.
+          Email confirmation activates your account so you can sign in and receive order & escrow release alerts.
         </p>
         <p className="text-[11px] text-slate-400 dark:text-slate-500">
           Prototype note: email delivery is simulated — the verification link is printed in the API server console.
         </p>
 
         <div className="pt-2 flex flex-col gap-2">
-          <button
-            onClick={() => resend.mutate()}
-            disabled={resend.isPending}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 py-2.5 px-4 font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw size={14} className={resend.isPending ? 'animate-spin' : ''} />
-            {resend.isPending ? 'Sending...' : 'Resend Verification Link'}
-          </button>
-
-          <Link
-            to="/marketplace"
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary-600 py-2.5 px-4 font-semibold text-white hover:bg-primary-700 transition-all"
-          >
-            Continue to Marketplace <ArrowRight size={14} />
-          </Link>
+          {me ? (
+            <>
+              <button
+                onClick={() => resend.mutate()}
+                disabled={resend.isPending}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 py-2.5 px-4 font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={resend.isPending ? 'animate-spin' : ''} />
+                {resend.isPending ? 'Sending...' : 'Resend Verification Link'}
+              </button>
+              <Link
+                to="/marketplace"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary-600 py-2.5 px-4 font-semibold text-white hover:bg-primary-700 transition-all"
+              >
+                Continue to Marketplace <ArrowRight size={14} />
+              </Link>
+            </>
+          ) : (
+            <Link
+              to="/login"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary-600 py-2.5 px-4 font-semibold text-white hover:bg-primary-700 transition-all"
+            >
+              Back to Sign In <ArrowRight size={14} />
+            </Link>
+          )}
         </div>
       </div>
     </div>

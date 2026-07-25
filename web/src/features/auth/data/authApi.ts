@@ -76,14 +76,11 @@ export function useUsernameAvailable(username: string) {
 // ---------- mutations ----------
 
 export function useSignup() {
-  const queryClient = useQueryClient()
+  // No auto-login: signup creates the account and sends a verification email.
+  // The user must verify, then log in — the Signup screen routes to /verify-email.
   return useMutation({
     mutationFn: (input: { username: string; email: string; password: string; fullName: string }) =>
-      api<AuthResult>('/api/auth/signup', { method: 'POST', body: input }),
-    onSuccess: ({ tokens }) => {
-      tokenStore.set(tokens)
-      queryClient.invalidateQueries({ queryKey: authKeys.me })
-    },
+      api<{ user: AuthUser }>('/api/auth/signup', { method: 'POST', body: input }),
   })
 }
 

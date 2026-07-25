@@ -10,8 +10,8 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 ## Shared — every authenticated account
 
 ### Auth (`/api/auth`)
-- [x] `POST /signup` `{username,email,password,fullName}` → `{user,tokens}`; 409 on taken; reserved-username check; simulated verify email
-- [x] `POST /login` `{identifier(email|username),password}`; generic errors, timing-equalized
+- [x] `POST /signup` `{username,email,password,fullName}` → `{user}` (**no auto-login**); 409 on taken; reserved-username check; sends simulated verify email → user must verify then log in
+- [x] `POST /login` `{identifier(email|username),password}`; generic errors, timing-equalized; **blocks unverified email** — re-sends the link + returns 403 `details.code:email_unverified` (checked after password) so the client routes to `/verify-email`. Dev unblock: `npx tsx scripts/verify-email.ts <username>`
 - [x] `POST /refresh` — rotate; reuse of a revoked token revokes the whole session family
 - [x] `POST /logout` · `GET /username-available?u=`
 - [x] `POST /verify-email` `{token}` (link-based) · `POST /resend-verification` 🔒

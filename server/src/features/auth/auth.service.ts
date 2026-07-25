@@ -35,7 +35,7 @@ interface EmailTokenPayload {
 
 // ---------- Signup & email verification ----------
 
-export async function signup(input: SignupInput, ctx: RequestContext): Promise<AuthResult> {
+export async function signup(input: SignupInput): Promise<{ user: PublicUser }> {
   const [usernameTaken, emailTaken] = await Promise.all([
     prisma.user.findUnique({ where: { username: input.username } }),
     prisma.user.findUnique({ where: { email: input.email } }),
@@ -64,8 +64,8 @@ export async function signup(input: SignupInput, ctx: RequestContext): Promise<A
     });
 
   sendVerificationEmail(user);
-  const tokens = await startSession(user, ctx);
-  return { user: publicUser(user), tokens };
+  // No auto-login — the user must verify their email, then sign in.
+  return { user: publicUser(user) };
 }
 
 function sendVerificationEmail(user: User): void {
@@ -116,6 +116,18 @@ export async function login(input: LoginInput, ctx: RequestContext): Promise<Aut
 
   const ok = await argon2.verify(user.passwordHash, input.password);
   if (!ok) throw ApiError.unauthorized("Invalid credentials");
+
+  // Email must be verified before login. Checked AFTER the password so we never
+  // reveal an account's verification state to anyone who doesn't own it. On an
+  // unverified attempt we re-send a fresh link and tag the error so the client
+  // can route the user to the verification screen.
+  if (!user.emailVerifiedAt) {
+    sendVerificationEmail(user);
+    throw new ApiError(403, "Please verify your email — we've re-sent the verification link to your inbox.", {
+      code: "email_unverified",
+      email: user.email,
+    });
+  }
 
   const tokens = await startSession(user, ctx);
   return { user: publicUser(user), tokens };

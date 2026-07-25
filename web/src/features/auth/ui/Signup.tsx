@@ -59,7 +59,7 @@ export function Signup() {
         password: values.password,
         fullName: values.fullName,
       },
-      { onSuccess: () => navigate('/verify-email') },
+      { onSuccess: () => navigate('/verify-email', { state: { email: values.email } }) },
     )
   })
 

@@ -8,7 +8,7 @@ function ctx(req: Request): RequestContext {
 }
 
 export const signup = asyncHandler(async (req, res) => {
-  const result = await authService.signup(req.body, ctx(req));
+  const result = await authService.signup(req.body);
   res.status(201).json(result);
 });
 
