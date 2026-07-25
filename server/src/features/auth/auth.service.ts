@@ -4,6 +4,7 @@ import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
 import { env } from "../../shared/config/env";
 import type { User } from "../../generated/prisma/client";
+import { mailer } from "../../shared/mail/mail.service";
 import * as tokenService from "./token.service";
 import type {
   AuthResult,
@@ -73,7 +74,10 @@ function sendVerificationEmail(user: User): void {
     expiresIn: "24h",
   });
   const link = `${env.WEB_ORIGIN}/verify-email?token=${token}`;
+  // Console link is kept for dev (the launcher surfaces it); the templated email
+  // is the real channel once MAIL_DRIVER=smtp.
   console.log(`[mail:simulated] Email verification for ${user.email}: ${link}`);
+  void mailer.verifyAccount(user.email, user.fullName, link);
 }
 
 /** Idempotent — clicking an already-used (but unexpired) link still succeeds. */
@@ -118,6 +122,7 @@ export async function login(input: LoginInput, ctx: RequestContext): Promise<Aut
   if (!ok) throw ApiError.unauthorized("Invalid credentials");
 
   const tokens = await startSession(user, ctx);
+  void mailer.loginAlert(user.email, user.fullName, new Date().toUTCString(), ctx.ip ?? "unknown");
   return { user: publicUser(user), tokens };
 }
 
@@ -189,6 +194,7 @@ export async function forgotPassword(email: string): Promise<void> {
   });
   const link = `${env.WEB_ORIGIN}/reset-password?token=${token}`;
   console.log(`[mail:simulated] Password reset for ${email}: ${link}`);
+  void mailer.forgotPassword(user.email, user.fullName, link);
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {

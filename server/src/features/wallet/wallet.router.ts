@@ -10,5 +10,7 @@ walletRouter.use(auth);
 
 walletRouter.get("/", walletController.getWallet);
 walletRouter.post("/deposit", validate(walletValidation.deposit), walletController.deposit);
+walletRouter.post("/deposit/init", validate(walletValidation.initDeposit), walletController.initDeposit);
+walletRouter.get("/deposit/verify/:reference", validate(walletValidation.verifyDeposit), walletController.verifyDeposit);
 walletRouter.post("/withdraw", validate(walletValidation.withdraw), walletController.withdraw);
 walletRouter.get("/transactions", validate(walletValidation.transactions), walletController.transactions);

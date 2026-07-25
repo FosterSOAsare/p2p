@@ -2,6 +2,9 @@ import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
 import type { Prisma, TransactionType } from "../../generated/prisma/client";
 import { feeMathP, toPesewas, fromPesewas } from "../escrows/money";
+import * as paystack from "../../shared/lib/paystack";
+import { paystackEnabled } from "../../shared/config/env";
+import { mailer } from "../../shared/mail/mail.service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -69,12 +72,14 @@ export async function getWallet(userId: string) {
     update: {},
   });
 
-  // Escrow-locked = Σ fundingTotal of active fiat deals as buyer or seller (funded, delivered, disputed)
+  // Escrow-locked = Σ fundingTotal of funded-and-live fiat deals as buyer or seller.
+  // `created` is excluded: an unfunded deal hasn't debited the wallet yet, so
+  // counting it would understate available balance.
   const active = await prisma.escrow.findMany({
     where: {
       OR: [{ buyerId: userId }, { sellerId: userId }],
       rail: "fiat",
-      status: { in: ["created", "funded", "delivered", "disputed"] },
+      status: { in: ["funded", "delivered", "disputed"] },
     },
     select: { amount: true, feeAmount: true },
   });
@@ -114,12 +119,115 @@ export async function getWallet(userId: string) {
   };
 }
 
-/** Simulated momo top-up — instant. */
+/** Simulated momo top-up — instant. Kept as the dev-complete fallback when
+ *  Paystack isn't configured. */
 export async function deposit(userId: string, amount: number) {
   await prisma.$transaction((tx) =>
     credit(tx, userId, amount, "deposit", "Mobile money deposit (simulated)"),
   );
   return getWallet(userId);
+}
+
+// ---------- Real deposit via Paystack (test mode) ----------
+
+/**
+ * Start a Paystack charge. Records a `pending` PaymentIntent (the reference is
+ * the idempotency key) and hands back the hosted authorization URL. The wallet
+ * is NOT credited here — only once the charge is confirmed via webhook or the
+ * /verify poll.
+ */
+export async function initDeposit(userId: string, amount: number) {
+  if (!paystackEnabled()) {
+    throw ApiError.notImplemented(
+      "Paystack is not configured — top up with the simulated deposit (POST /wallet/deposit) instead",
+    );
+  }
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { email: true },
+  });
+  const reference = paystack.newReference();
+  await prisma.paymentIntent.create({
+    data: { userId, reference, amount, currency: "GHS", provider: "paystack", status: "pending" },
+  });
+  const init = await paystack.initTransaction({
+    email: user.email,
+    amountPesewas: toPesewas(amount),
+    reference,
+    metadata: { userId },
+  });
+  return { authorizationUrl: init.authorizationUrl, accessCode: init.accessCode, reference };
+}
+
+type SettleStatus = "success" | "failed" | "pending" | "unknown" | "amount_mismatch" | string;
+
+/**
+ * Idempotently settle a deposit reference. The pending→success flip is a guarded
+ * updateMany, so only the first caller (webhook OR poll) credits the wallet —
+ * the other no-ops. `verify:true` (poll path, no signature) re-confirms with
+ * Paystack; the webhook path trusts its already signature-verified payload.
+ */
+async function settleDeposit(
+  reference: string,
+  opts: { verify: boolean; payloadAmountPesewas?: number },
+): Promise<{ credited: boolean; status: SettleStatus; userId?: string }> {
+  const intent = await prisma.paymentIntent.findUnique({ where: { reference } });
+  if (!intent) return { credited: false, status: "unknown" };
+  if (intent.status !== "pending") {
+    return { credited: false, status: intent.status, userId: intent.userId };
+  }
+
+  const intentAmountP = toPesewas(Number(intent.amount));
+
+  if (opts.verify) {
+    const v = await paystack.verifyTransaction(reference);
+    if (v.status !== "success") {
+      if (v.status === "failed" || v.status === "abandoned") {
+        await prisma.paymentIntent.updateMany({
+          where: { reference, status: "pending" },
+          data: { status: "failed" },
+        });
+      }
+      return { credited: false, status: v.status, userId: intent.userId };
+    }
+    if (v.amountPesewas < intentAmountP) return { credited: false, status: "amount_mismatch", userId: intent.userId };
+  } else if (opts.payloadAmountPesewas != null && opts.payloadAmountPesewas < intentAmountP) {
+    return { credited: false, status: "amount_mismatch", userId: intent.userId };
+  }
+
+  const credited = await prisma.$transaction(async (tx) => {
+    const flip = await tx.paymentIntent.updateMany({
+      where: { reference, status: "pending" },
+      data: { status: "success", paidAt: new Date() },
+    });
+    if (flip.count === 0) return false; // another caller settled it first
+    await credit(tx, intent.userId, Number(intent.amount), "deposit", `Wallet deposit via Paystack (${reference})`);
+    return true;
+  });
+
+  return { credited, status: "success", userId: intent.userId };
+}
+
+/** Poll fallback for localhost (webhooks can't reach a laptop). Owner-scoped. */
+export async function verifyDeposit(userId: string, reference: string) {
+  const intent = await prisma.paymentIntent.findUnique({ where: { reference } });
+  if (!intent || intent.userId !== userId) throw ApiError.notFound("Deposit not found");
+  const result = await settleDeposit(reference, { verify: true });
+  return { status: result.status, credited: result.credited, wallet: await getWallet(userId) };
+}
+
+/** Handle a signature-verified Paystack webhook event. */
+export async function handlePaystackWebhook(event: {
+  event?: string;
+  data?: { reference?: string; amount?: number; status?: string };
+}) {
+  const reference = event.data?.reference;
+  if (!reference) return;
+  if (event.event === "charge.success") {
+    await settleDeposit(reference, { verify: false, payloadAmountPesewas: event.data?.amount });
+  } else if (event.event === "charge.failed") {
+    await prisma.paymentIntent.updateMany({ where: { reference, status: "pending" }, data: { status: "failed" } });
+  }
 }
 
 /** Simulated momo payout — instant settle at this scope. */
@@ -134,6 +242,13 @@ export async function withdraw(userId: string, amount: number, destination: stri
   await prisma.$transaction((tx) =>
     debitGuarded(tx, userId, amount, "withdrawal", `Mobile money payout to ${destination} (simulated)`),
   );
+
+  // Money-movement receipt — always sent (not gated by shipment prefs).
+  prisma.user
+    .findUnique({ where: { id: userId }, select: { email: true, fullName: true } })
+    .then((u) => u && mailer.withdrawal(u.email, u.fullName, amount.toFixed(2), destination))
+    .catch(() => undefined);
+
   return getWallet(userId);
 }
 

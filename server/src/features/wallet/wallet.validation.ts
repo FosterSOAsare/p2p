@@ -9,6 +9,20 @@ export const deposit: RequestSchema = {
   }),
 };
 
+export const initDeposit: RequestSchema = {
+  body: Joi.object({
+    amount: Joi.number().positive().max(100_000).required().messages({
+      "number.max": "Deposits are capped at GH₵ 100,000",
+    }),
+  }),
+};
+
+export const verifyDeposit: RequestSchema = {
+  params: Joi.object({
+    reference: Joi.string().max(120).required(),
+  }),
+};
+
 export const withdraw: RequestSchema = {
   body: Joi.object({
     amount: Joi.number().positive().max(1_000_000).required(),

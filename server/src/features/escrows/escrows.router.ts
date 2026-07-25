@@ -20,6 +20,7 @@ escrowsRouter.post("/code/:code/accept", validate(escrowsValidation.codeParam), 
 
 escrowsRouter.get("/", validate(escrowsValidation.list), escrowsController.list);
 escrowsRouter.get("/:id", validate(escrowsValidation.idParam), escrowsController.getDetail);
+escrowsRouter.get("/:id/qr", validate(escrowsValidation.idParam), escrowsController.getShareQr);
 escrowsRouter.patch("/:id", validate(escrowsValidation.updateDeal), escrowsController.updateDeal);
 
 // State transitions — one endpoint per event, guarded by the machine

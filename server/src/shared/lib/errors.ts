@@ -27,4 +27,7 @@ export class ApiError extends Error {
   static notImplemented(message = "Not implemented yet") {
     return new ApiError(501, message);
   }
+  static badGateway(message = "Upstream service error") {
+    return new ApiError(502, message);
+  }
 }
