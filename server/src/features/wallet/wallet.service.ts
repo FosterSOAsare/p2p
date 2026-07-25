@@ -150,13 +150,19 @@ export async function initDeposit(userId: string, amount: number) {
   await prisma.paymentIntent.create({
     data: { userId, reference, amount, currency: "GHS", provider: "paystack", status: "pending" },
   });
-  const init = await paystack.initTransaction({
-    email: user.email,
-    amountPesewas: toPesewas(amount),
-    reference,
-    metadata: { userId },
-  });
-  return { authorizationUrl: init.authorizationUrl, accessCode: init.accessCode, reference };
+  try {
+    const init = await paystack.initTransaction({
+      email: user.email,
+      amountPesewas: toPesewas(amount),
+      reference,
+      metadata: { userId },
+    });
+    return { authorizationUrl: init.authorizationUrl, accessCode: init.accessCode, reference };
+  } catch (err) {
+    // Don't leave a dangling pending intent if the Paystack call failed.
+    await prisma.paymentIntent.delete({ where: { reference } }).catch(() => undefined);
+    throw err;
+  }
 }
 
 type SettleStatus = "success" | "failed" | "pending" | "unknown" | "amount_mismatch" | string;
@@ -178,20 +184,21 @@ async function settleDeposit(
   }
 
   const intentAmountP = toPesewas(Number(intent.amount));
+  const markFailed = () =>
+    prisma.paymentIntent.updateMany({ where: { reference, status: "pending" }, data: { status: "failed" } });
 
   if (opts.verify) {
     const v = await paystack.verifyTransaction(reference);
     if (v.status !== "success") {
-      if (v.status === "failed" || v.status === "abandoned") {
-        await prisma.paymentIntent.updateMany({
-          where: { reference, status: "pending" },
-          data: { status: "failed" },
-        });
-      }
+      if (v.status === "failed" || v.status === "abandoned") await markFailed();
       return { credited: false, status: v.status, userId: intent.userId };
     }
-    if (v.amountPesewas < intentAmountP) return { credited: false, status: "amount_mismatch", userId: intent.userId };
+    if (v.currency !== "GHS" || v.amountPesewas < intentAmountP) {
+      await markFailed();
+      return { credited: false, status: "amount_mismatch", userId: intent.userId };
+    }
   } else if (opts.payloadAmountPesewas != null && opts.payloadAmountPesewas < intentAmountP) {
+    await markFailed();
     return { credited: false, status: "amount_mismatch", userId: intent.userId };
   }
 

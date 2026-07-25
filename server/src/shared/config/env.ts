@@ -50,5 +50,7 @@ export const env = {
   SMTP_PASS: process.env.SMTP_PASS ?? "",
 };
 
-/** True once a Paystack secret is configured — otherwise deposits stay simulated. */
-export const paystackEnabled = () => env.PAYSTACK_SECRET_KEY.startsWith("sk_");
+/** True once a Paystack TEST secret is configured. Restricted to test keys on
+ *  purpose — the platform is test-mode only, so a mis-pasted live key must not
+ *  silently process real charges. */
+export const paystackEnabled = () => env.PAYSTACK_SECRET_KEY.startsWith("sk_test_");

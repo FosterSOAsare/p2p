@@ -30,7 +30,7 @@ export function createApp() {
       origin(origin, cb) {
         if (!origin) return cb(null, true); // curl, mobile apps, server-to-server
         if (allowList.has(origin) || (isDev && isLocalOrLanOrigin(origin))) return cb(null, true);
-        cb(new Error(`Origin ${origin} not allowed by CORS`));
+        cb(null, false); // clean rejection (no CORS headers) rather than a 500
       },
     }),
   );

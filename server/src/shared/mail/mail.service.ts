@@ -41,7 +41,9 @@ export function renderTemplate(name: string, vars: Vars): string {
   };
   const body = interpolate(readTemplate(name), base);
   const layout = readTemplate("layout");
-  return interpolate(layout.replace("{{content}}", body), base);
+  // Function replacer: inserts `body` literally so any `$`-patterns in user data
+  // (e.g. a deal title) aren't treated as replacement specials ($&, $1, …).
+  return interpolate(layout.replace("{{content}}", () => body), base);
 }
 
 /** Deliver (or simulate) one message. Never throws — mail is best-effort. */

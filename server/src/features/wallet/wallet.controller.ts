@@ -49,11 +49,14 @@ export const paystackWebhook = async (req: Request, res: Response): Promise<void
     res.status(401).json({ message: "Invalid signature" });
     return;
   }
-  res.sendStatus(200); // ack immediately; process after
+  // Process BEFORE acking, so a transient failure returns non-2xx and Paystack
+  // retries the delivery. Settlement is idempotent, so retries are safe.
   try {
     const event = JSON.parse(raw.toString("utf8"));
     await walletService.handlePaystackWebhook(event);
+    res.sendStatus(200);
   } catch (err) {
     console.error("[paystack:webhook] processing error —", (err as Error).message);
+    res.sendStatus(500);
   }
 };
