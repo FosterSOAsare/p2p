@@ -136,12 +136,16 @@ export async function deposit(userId: string, amount: number) {
  * is NOT credited here — only once the charge is confirmed via webhook or the
  * /verify poll.
  */
-export async function initDeposit(userId: string, amount: number) {
+export async function initDeposit(userId: string, amount: number, method?: "momo" | "card") {
   if (!paystackEnabled()) {
     throw ApiError.notImplemented(
       "Paystack is not configured — top up with the simulated deposit (POST /wallet/deposit) instead",
     );
   }
+  // The buyer already picked a method in our UI — carry it through so the hosted
+  // page opens straight on it instead of asking twice.
+  const channels: paystack.PaymentChannel[] | undefined =
+    method === "momo" ? ["mobile_money"] : method === "card" ? ["card"] : undefined;
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
     select: { email: true },
@@ -156,6 +160,7 @@ export async function initDeposit(userId: string, amount: number) {
       amountPesewas: toPesewas(amount),
       reference,
       metadata: { userId },
+      channels,
     });
     return { authorizationUrl: init.authorizationUrl, accessCode: init.accessCode, reference };
   } catch (err) {

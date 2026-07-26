@@ -14,6 +14,8 @@ export const initDeposit: RequestSchema = {
     amount: Joi.number().positive().max(100_000).required().messages({
       "number.max": "Deposits are capped at GH₵ 100,000",
     }),
+    // Optional: preselects the method on the hosted payment page.
+    method: Joi.string().valid("momo", "card"),
   }),
 };
 

@@ -39,6 +39,9 @@ async function call<T>(path: string, init: RequestInit): Promise<T> {
   return body.data;
 }
 
+/** Paystack channel ids. The client picks "momo" or "card"; we map to these. */
+export type PaymentChannel = "mobile_money" | "card" | "bank" | "bank_transfer" | "ussd";
+
 export interface InitResult {
   authorizationUrl: string;
   accessCode: string;
@@ -51,6 +54,8 @@ export async function initTransaction(params: {
   amountPesewas: number;
   reference: string;
   metadata?: Record<string, unknown>;
+  /** Restrict the hosted page to one method so the buyer's choice carries over. */
+  channels?: PaymentChannel[];
 }): Promise<InitResult> {
   const data = await call<{ authorization_url: string; access_code: string; reference: string }>(
     "/transaction/initialize",
@@ -62,6 +67,7 @@ export async function initTransaction(params: {
         currency: "GHS",
         reference: params.reference,
         metadata: params.metadata ?? {},
+        channels: params.channels?.length ? params.channels : undefined,
         callback_url: env.PAYSTACK_CALLBACK_URL || undefined,
       }),
     },

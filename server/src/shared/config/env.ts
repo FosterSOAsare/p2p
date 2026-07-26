@@ -38,7 +38,15 @@ export const env = {
   PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY ?? "",
   PAYSTACK_PUBLIC_KEY: process.env.PAYSTACK_PUBLIC_KEY ?? "",
   // Where Paystack returns the buyer after payment (frontend route).
-  PAYSTACK_CALLBACK_URL: process.env.PAYSTACK_CALLBACK_URL ?? "",
+  PAYSTACK_CALLBACK_URL: (() => {
+    const url = process.env.PAYSTACK_CALLBACK_URL ?? "";
+    const isDev = (process.env.NODE_ENV ?? "development") !== "production";
+    if (isDev && url.includes("localhost:")) {
+      const origin = process.env.WEB_ORIGIN ?? detectedWebOrigin;
+      return url.replace(/https?:\/\/localhost:\d+/, origin);
+    }
+    return url;
+  })(),
 
   // Mail. "simulated" logs `[mail:simulated] To <email>: <subject>` (default);
   // flip to "smtp" + fill SMTP_* and install nodemailer to send for real.
