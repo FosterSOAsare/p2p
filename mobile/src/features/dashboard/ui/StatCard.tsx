@@ -95,6 +95,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   // Figures use the web's `font-display`.
-  value: { fontSize: 20, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
+  value: { fontSize: 17, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
   sub: { fontSize: 10.5, lineHeight: 14, fontFamily: Fonts.sans[500] },
 });

@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   // Web `text-2xl` (24px) with the subtitle at `text-xs` (12px).
   // The heading is the web's `font-display` — Space Grotesk.
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontFamily: Fonts.display[700],
     letterSpacing: -0.4,
     marginBottom: -Spacing.three,
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   buttonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: Fonts.sans[700],
     color: '#ffffff',
   },

@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.full,
   },
-  backText: { fontSize: 14, fontFamily: Fonts.sans[700] },
+  backText: { fontSize: 13, fontFamily: Fonts.sans[700] },
 
   eyebrow: {
     alignSelf: 'flex-start',
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
   },
   eyebrowText: { fontSize: 11, fontFamily: Fonts.sans[700], textTransform: 'uppercase', letterSpacing: 0.4 },
   // Screen heading — the web's `font-display` (Space Grotesk).
-  title: { fontSize: 24, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
+  title: { fontSize: 20, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
   subtitle: { fontSize: 12.5, lineHeight: 19, fontFamily: Fonts.sans[400] },
 
   errorBox: {
@@ -429,12 +429,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     height: 46,
   },
-  input: { flex: 1, fontSize: 14, fontFamily: Fonts.sans[400], outlineStyle: 'none' } as never,
+  input: { flex: 1, fontSize: 13, fontFamily: Fonts.sans[400], outlineStyle: 'none' } as never,
   inputStrong: { fontFamily: Fonts.sans[600] },
 
   textareaWrap: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },
   textarea: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: Fonts.sans[400],
     minHeight: 96,
     outlineStyle: 'none',
@@ -479,5 +479,5 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     marginTop: Spacing.two,
   },
-  submitText: { fontSize: 14, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  submitText: { fontSize: 13, fontFamily: Fonts.sans[700], color: '#ffffff' },
 });

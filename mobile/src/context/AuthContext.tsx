@@ -29,6 +29,25 @@ const roleUsers: Record<string, User> = {
   admin: mockAdminUser,
 };
 
+/**
+ * Resolves the mock account from whatever was typed into the login field, so
+ * all three home dashboards are reachable without a role-switch control:
+ *
+ *   kofi_buyer  / kofi@example.com     -> buyer
+ *   kwame_tech  / kwame@example.com    -> seller
+ *   admin_ama   / ama@p2p-admin.com    -> admin
+ *
+ * Anything else falls back to the buyer, so a random login still works.
+ * Replace this whole function with the real POST /api/auth/login.
+ */
+function resolveMockUser(identifier: string): User {
+  const id = identifier.trim().toLowerCase();
+  const match = [mockCurrentUser, mockSellerUser, mockAdminUser].find(
+    (u) => u.username.toLowerCase() === id || u.email.toLowerCase() === id,
+  );
+  return match ?? mockCurrentUser;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -36,12 +55,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading: false,
   });
 
-  const login = useCallback(async (_email: string, _password: string) => {
+  const login = useCallback(async (identifier: string, _password: string) => {
     setState((s) => ({ ...s, isLoading: true }));
     // Simulate API delay
     await new Promise((r) => setTimeout(r, 800));
     setState({
-      user: mockCurrentUser,
+      user: resolveMockUser(identifier),
       isAuthenticated: true,
       isLoading: false,
     });

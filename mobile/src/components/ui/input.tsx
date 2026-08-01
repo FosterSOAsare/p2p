@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   },
   label: {
     marginBottom: Spacing.two,
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: Fonts.sans[500],
   },
   inputContainer: {
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     paddingHorizontal: Spacing.four,
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: Fonts.sans[400],
   },
   inputWithLeftIcon: {

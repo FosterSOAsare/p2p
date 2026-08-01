@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   title: {
     marginTop: Spacing.two,
     marginBottom: Spacing.two,
-    lineHeight: 44,
+    lineHeight: 28,
   },
   body: {
     color: '#d1d5db',

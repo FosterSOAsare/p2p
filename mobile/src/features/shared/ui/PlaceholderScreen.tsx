@@ -99,10 +99,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.full,
   },
-  backText: { fontSize: 14, fontFamily: Fonts.sans[700] },
+  backText: { fontSize: 13, fontFamily: Fonts.sans[700] },
 
   // Screen heading — the web's `font-display` (Space Grotesk).
-  title: { fontSize: 24, fontFamily: Fonts.display[700], letterSpacing: -0.4, marginTop: Spacing.two },
+  title: { fontSize: 20, fontFamily: Fonts.display[700], letterSpacing: -0.4, marginTop: Spacing.two },
   description: { fontSize: 13, lineHeight: 19, fontFamily: Fonts.sans[400] },
 
   note: {

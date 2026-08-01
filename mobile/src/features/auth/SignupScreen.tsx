@@ -177,14 +177,14 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.eight,
   },
   title: {
-    fontSize: 32,
+    fontSize: 22,
     fontWeight: '800',
     marginBottom: Spacing.two,
   },
   description: {
     color: '#cbd5e1',
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 20,
   },
   form: {
     gap: Spacing.four,
@@ -203,6 +203,6 @@ const styles = StyleSheet.create({
   apiErrorText: {
     color: '#ef4444',
     textAlign: 'center',
-    fontSize: 14,
+    fontSize: 13,
   },
 });

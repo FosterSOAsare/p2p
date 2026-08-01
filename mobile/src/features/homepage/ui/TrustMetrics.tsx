@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
   },
   value: {
-    fontSize: 28,
+    fontSize: 22,
     marginBottom: Spacing.two,
   },
   label: {

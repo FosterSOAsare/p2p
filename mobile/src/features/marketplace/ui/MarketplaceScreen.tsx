@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Heart, Search, ShieldCheck, Store, X } from 'lucide-react-native';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
@@ -73,6 +74,7 @@ function formatMoney(amount: number, currency = 'GH₵') {
 
 export function MarketplaceScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const tabBarHeight = useTabBarHeight();
 
   const [search, setSearch] = useState('');
@@ -131,6 +133,11 @@ export function MarketplaceScreen() {
 
     return (
       <Pressable
+        // The web wraps the whole card in a link to /marketplace/:id, so the
+        // card — View chip included — opens the listing.
+        onPress={() => router.push(`/marketplace/${item.id}`)}
+        accessibilityRole="button"
+        accessibilityLabel={`View ${item.title}`}
         style={({ pressed }) => [
           styles.card,
           {
@@ -186,9 +193,24 @@ export function MarketplaceScreen() {
               {formatMoney(item.price, item.currency)}
             </Text>
           </View>
-          <View style={[styles.viewChip, { backgroundColor: theme.primaryLight }]}>
-            <Text style={[styles.viewChipText, { color: theme.primary }]}>View</Text>
-          </View>
+          {/* Its own pressable, like the web's View link — the card opens the
+              listing too, but this gives the chip a proper tap target. */}
+          <Pressable
+            onPress={() => router.push(`/marketplace/${item.id}`)}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={`View ${item.title}`}
+            style={({ pressed }) => [
+              styles.viewChip,
+              { backgroundColor: pressed ? theme.primary : theme.primaryLight },
+            ]}
+          >
+            {({ pressed }) => (
+              <Text style={[styles.viewChipText, { color: pressed ? '#ffffff' : theme.primary }]}>
+                View
+              </Text>
+            )}
+          </Pressable>
         </View>
       </Pressable>
     );
@@ -364,7 +386,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   // Screen heading — the web's `font-display` (Space Grotesk).
-  title: { fontSize: 26, fontFamily: Fonts.display[700], letterSpacing: -0.4, marginTop: -Spacing.two },
+  title: { fontSize: 21, fontFamily: Fonts.display[700], letterSpacing: -0.4, marginTop: -Spacing.two },
   subtitle: { fontSize: 13, lineHeight: 19, fontFamily: Fonts.sans[400] },
 
   searchWrap: {
@@ -378,7 +400,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: Fonts.sans[400],
     outlineStyle: 'none',
   } as never,
@@ -503,7 +525,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyTitle: { fontSize: 15, fontFamily: Fonts.sans[700] },
+  emptyTitle: { fontSize: 14, fontFamily: Fonts.sans[700] },
   emptyBody: { fontSize: 12, lineHeight: 18, textAlign: 'center', fontFamily: Fonts.sans[400] },
   emptyBtn: {
     marginTop: Spacing.two,

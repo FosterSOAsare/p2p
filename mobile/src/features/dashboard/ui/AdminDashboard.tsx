@@ -179,19 +179,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   // Heading uses the web's `font-display`.
-  title: { fontSize: 24, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
+  title: { fontSize: 20, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
   subtitle: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[400] },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
 
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four, gap: Spacing.three },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardTitle: { fontSize: 14, fontFamily: Fonts.display[700] },
+  cardTitle: { fontSize: 13, fontFamily: Fonts.display[700] },
   cardLink: { fontSize: 12, fontFamily: Fonts.sans[700] },
 
   statusGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three },
   statusCell: { flexGrow: 1, flexBasis: '28%', gap: 2 },
-  statusValue: { fontSize: 22, fontFamily: Fonts.display[700] },
+  statusValue: { fontSize: 19, fontFamily: Fonts.display[700] },
   statusLabel: {
     fontSize: 10.5,
     fontFamily: Fonts.sans[600],

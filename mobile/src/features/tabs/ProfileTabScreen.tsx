@@ -323,19 +323,19 @@ const styles = StyleSheet.create({
 
   header: { borderBottomWidth: 1, paddingBottom: Spacing.three, gap: 4 },
   // Heading uses the web's `font-display`.
-  title: { fontSize: 24, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
+  title: { fontSize: 20, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
   subtitle: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[400] },
 
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four, gap: Spacing.three },
-  cardTitle: { fontSize: 14, fontFamily: Fonts.display[700], borderBottomWidth: 1, paddingBottom: Spacing.two },
+  cardTitle: { fontSize: 13, fontFamily: Fonts.display[700], borderBottomWidth: 1, paddingBottom: Spacing.two },
   body: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[400] },
 
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   avatar: { height: 56, width: 56, borderRadius: Radius.md },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  avatarLetter: { fontSize: 20, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  avatarLetter: { fontSize: 17, fontFamily: Fonts.sans[700], color: '#ffffff' },
   identityText: { flex: 1, gap: 2 },
-  identityName: { fontSize: 17, fontFamily: Fonts.display[700] },
+  identityName: { fontSize: 15, fontFamily: Fonts.display[700] },
   identityHandle: { fontSize: 12, fontFamily: Fonts.sans[500] },
 
   kycBox: { borderTopWidth: 1, paddingTop: Spacing.three, gap: 6 },
@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.three,
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: Fonts.sans[400],
     outlineStyle: 'none',
   } as never,

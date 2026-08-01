@@ -32,39 +32,39 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
 
 const styles = StyleSheet.create({
   small: {
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: 20,
     fontFamily: Fonts.sans[500],
   },
   smallBold: {
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: 20,
     fontFamily: Fonts.sans[700],
   },
   default: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 20,
     fontFamily: Fonts.sans[500],
   },
   // Headings take the web's `font-display` — Space Grotesk.
   title: {
-    fontSize: 48,
+    fontSize: 28,
     fontFamily: Fonts.display[600],
-    lineHeight: 52,
+    lineHeight: 34,
   },
   subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
+    fontSize: 22,
+    lineHeight: 28,
     fontFamily: Fonts.display[600],
   },
   link: {
-    lineHeight: 30,
-    fontSize: 14,
+    lineHeight: 22,
+    fontSize: 13,
     fontFamily: Fonts.sans[400],
   },
   linkPrimary: {
-    lineHeight: 30,
-    fontSize: 14,
+    lineHeight: 22,
+    fontSize: 13,
     fontFamily: Fonts.sans[400],
     color: '#16a34a',
   },

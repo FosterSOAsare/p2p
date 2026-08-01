@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   // Screen heading — the web's `font-display` (Space Grotesk).
-  title: { fontSize: 26, fontFamily: Fonts.display[700], letterSpacing: -0.4, marginTop: -Spacing.two },
+  title: { fontSize: 21, fontFamily: Fonts.display[700], letterSpacing: -0.4, marginTop: -Spacing.two },
   subtitle: { fontSize: 13, lineHeight: 19, fontFamily: Fonts.sans[400] },
   newDeal: {
     flexDirection: 'row',
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   railText: { fontSize: 9.5, fontFamily: Fonts.sans[700] },
-  dealTitle: { fontSize: 14.5, fontFamily: Fonts.sans[700] },
+  dealTitle: { fontSize: 13.5, fontFamily: Fonts.sans[700] },
   meta: { fontSize: 11, lineHeight: 16, fontFamily: Fonts.sans[400] },
 
   cardFooter: {
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   amountLabel: { fontSize: 9.5, fontFamily: Fonts.sans[600] },
-  amount: { fontSize: 18, fontFamily: Fonts.sans[700] },
+  amount: { fontSize: 16, fontFamily: Fonts.sans[700] },
   viewRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   viewText: { fontSize: 12, fontFamily: Fonts.sans[700] },
 

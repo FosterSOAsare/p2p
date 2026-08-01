@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     marginTop: Spacing.two,
     marginBottom: Spacing.two,
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: Fonts.sans[400],
     color: '#111827',
   },

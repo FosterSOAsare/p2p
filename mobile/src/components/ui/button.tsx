@@ -196,14 +196,14 @@ const styles = StyleSheet.create({
   },
   text: {
     fontFamily: Fonts.sans[600],
-    fontSize: 16,
+    fontSize: 14,
     textAlign: 'center',
   },
   textSm: {
-    fontSize: 14,
+    fontSize: 13,
   },
   textLg: {
-    fontSize: 18,
+    fontSize: 16,
   },
   leftIcon: {
     marginRight: Spacing.two,

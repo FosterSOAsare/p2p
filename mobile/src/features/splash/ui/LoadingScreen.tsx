@@ -167,14 +167,14 @@ const styles = StyleSheet.create({
   // Brand heading — the web's `font-display` (Space Grotesk), whose heaviest
   // cut is 700, so this drops from the old 800.
   title: {
-    fontSize: 27,
+    fontSize: 22,
     fontFamily: Fonts.display[700],
     letterSpacing: -0.5,
     color: '#ffffff',
   },
   subtitle: {
     marginTop: 8,
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 22,
     fontFamily: Fonts.sans[400],
     color: '#94a3b8',

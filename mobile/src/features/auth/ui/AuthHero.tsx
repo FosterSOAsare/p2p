@@ -154,9 +154,9 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: 12, fontWeight: '600' },
   title: {
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: '700',
-    lineHeight: 28,
+    lineHeight: 24,
     letterSpacing: -0.4,
   },
   body: { fontSize: 12, lineHeight: 18 },

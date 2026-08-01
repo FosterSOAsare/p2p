@@ -1,11 +1,26 @@
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Package, ShieldCheck, Star, Store, Wallet } from 'lucide-react-native';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Package,
+  ShieldCheck,
+  Star,
+  Store,
+  Truck,
+  Wallet,
+} from 'lucide-react-native';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { mockSellerListings, mockSellerStats, type User } from '@/constants/mockData';
+import {
+  mockOrders,
+  mockSellerListings,
+  mockSellerStats,
+  type Order,
+  type User,
+} from '@/constants/mockData';
 import { StatCard } from './StatCard';
 
 /**
@@ -22,12 +37,34 @@ import { StatCard } from './StatCard';
 const money = (amount: number, currency = 'GH₵') =>
   `${currency}${amount.toLocaleString('en-GH', { maximumFractionDigits: 2 })}`;
 
+/** "10 Mar 2025" — same format the deals list uses. */
+const orderDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** Status badge tones, mirroring the web's <Badge tone={...}> mapping. */
+function statusBadge(status: Order['status']) {
+  switch (status) {
+    case 'released':
+      return { label: 'RELEASED', bg: '#dcfce7', text: '#166534' };
+    case 'shipped':
+    case 'delivered':
+      return { label: status.toUpperCase(), bg: '#dbeafe', text: '#1e40af' };
+    case 'disputed':
+      return { label: 'DISPUTED', bg: '#fee2e2', text: '#991b1b' };
+    default:
+      return { label: 'AWAITING SHIPMENT', bg: '#fef9c3', text: '#854d0e' };
+  }
+}
+
 export function SellerDashboard({ user }: { user: User }) {
   const theme = useTheme();
   const router = useRouter();
 
   const stats = mockSellerStats;
   const listings = mockSellerListings;
+  // Sales are the orders where this account is the vendor.
+  const sales = mockOrders.filter((o) => o.vendor.username === user.username);
+  const actionRequired = sales.filter((o) => o.status === 'escrow_funded').length;
 
   return (
     <View style={styles.wrap}>
@@ -115,6 +152,103 @@ export function SellerDashboard({ user }: { user: User }) {
         />
       </View>
 
+      {/* Sales & dispatch */}
+      <View style={styles.sectionHead}>
+        <View style={styles.sectionHeadText}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Merchant Sales</Text>
+          <Text style={[styles.sectionSub, { color: theme.textTertiary }]}>
+            Orders placed by buyers. Enter tracking to mark them shipped.
+          </Text>
+        </View>
+        <View style={[styles.countPill, { backgroundColor: theme.backgroundElement }]}>
+          <Text style={[styles.countPillText, { color: theme.textSecondary }]}>
+            {actionRequired} to ship
+          </Text>
+        </View>
+      </View>
+
+      {sales.length === 0 ? (
+        <View style={[styles.empty, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <Truck size={26} color={theme.textTertiary} />
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+            No incoming sales orders yet.
+          </Text>
+        </View>
+      ) : (
+        sales.map((order) => {
+          const badge = statusBadge(order.status);
+
+          return (
+            <Pressable
+              key={order.id}
+              onPress={() => router.push(`/escrow/${order.dealId}`)}
+              style={({ pressed }) => [
+                styles.sale,
+                { backgroundColor: theme.card, borderColor: pressed ? theme.primary : theme.cardBorder },
+              ]}
+            >
+              <View style={[styles.saleTop, { borderBottomColor: theme.border }]}>
+                <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                  <Text style={[styles.badgeText, { color: badge.text }]}>{badge.label}</Text>
+                </View>
+                <Text style={[styles.saleMeta, { color: theme.textTertiary }]} numberOfLines={1}>
+                  @{order.buyer.username} · {orderDate(order.createdAt)}
+                </Text>
+              </View>
+
+              <Text style={[styles.saleTitle, { color: theme.text }]} numberOfLines={1}>
+                {order.listingTitle}
+              </Text>
+
+              {order.tracking ? (
+                <View style={styles.trackingRow}>
+                  <Truck size={12} color={theme.primary} />
+                  <Text style={[styles.tracking, { color: theme.textSecondary }]} numberOfLines={1}>
+                    {order.tracking.carrier}: {order.tracking.code}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={[styles.saleFooter, { borderTopColor: theme.border }]}>
+                <View>
+                  <Text style={[styles.escrowLabel, { color: theme.textTertiary }]}>Escrow Value</Text>
+                  <Text style={[styles.escrowValue, { color: theme.text }]}>
+                    {order.currency} {order.amount.toLocaleString()}
+                  </Text>
+                </View>
+
+                {/* Status-dependent action, as on the web. The dispatch form
+                    needs a write call, so for now this opens the deal. */}
+                {order.status === 'disputed' ? (
+                  <View style={[styles.actionNote, { backgroundColor: '#fef3c7' }]}>
+                    <AlertTriangle size={13} color="#92400e" />
+                    <Text style={[styles.actionNoteText, { color: '#92400e' }]}>Under Review</Text>
+                  </View>
+                ) : order.status === 'escrow_funded' ? (
+                  <View style={[styles.dispatchBtn, { backgroundColor: theme.text }]}>
+                    <Truck size={14} color={theme.background} />
+                    <Text style={[styles.dispatchText, { color: theme.background }]}>
+                      Enter Tracking
+                    </Text>
+                  </View>
+                ) : order.status === 'released' ? (
+                  <View style={[styles.actionNote, { backgroundColor: '#dcfce7' }]}>
+                    <CheckCircle2 size={13} color="#166534" />
+                    <Text style={[styles.actionNoteText, { color: '#166534' }]}>Payout Released</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.actionNote, { backgroundColor: '#dbeafe' }]}>
+                    <Text style={[styles.actionNoteText, { color: '#1e40af' }]}>
+                      Awaiting Confirmation
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </Pressable>
+          );
+        })
+      )}
+
       {/* Inventory */}
       <View style={styles.sectionHead}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Manage Store Inventory</Text>
@@ -179,7 +313,7 @@ const styles = StyleSheet.create({
   },
   heroText: { flex: 1, gap: 2 },
   // Store name uses the web's `font-display`.
-  heroName: { fontSize: 20, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
+  heroName: { fontSize: 17, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
   heroHandle: { fontSize: 11.5, fontFamily: Fonts.sans[400] },
 
   trustRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two },
@@ -215,8 +349,66 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: Spacing.two,
   },
-  sectionTitle: { fontSize: 17, fontFamily: Fonts.display[700], letterSpacing: -0.3 },
+  sectionHeadText: { flex: 1, gap: 2 },
+  sectionTitle: { fontSize: 15, fontFamily: Fonts.display[700], letterSpacing: -0.3 },
+  sectionSub: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.sans[400] },
   sectionLink: { fontSize: 12, fontFamily: Fonts.sans[700] },
+
+  countPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.full },
+  countPillText: { fontSize: 11, fontFamily: Fonts.sans[700] },
+
+  empty: {
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.five,
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  emptyText: { fontSize: 13, fontFamily: Fonts.sans[600], textAlign: 'center' },
+
+  sale: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.three, gap: Spacing.two },
+  saleTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+    borderBottomWidth: 1,
+    paddingBottom: Spacing.two,
+  },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.sm },
+  badgeText: { fontSize: 9, fontFamily: Fonts.sans[700], letterSpacing: 0.3 },
+  saleMeta: { flexShrink: 1, fontSize: 10.5, fontFamily: Fonts.sans[500] },
+  saleTitle: { fontSize: 13.5, fontFamily: Fonts.sans[700] },
+  trackingRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  tracking: { flex: 1, fontSize: 10.5, fontFamily: Fonts.sans[500] },
+  saleFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+    borderTopWidth: 1,
+    paddingTop: Spacing.two,
+  },
+  escrowLabel: { fontSize: 9.5, fontFamily: Fonts.sans[600] },
+  escrowValue: { fontSize: 15, fontFamily: Fonts.display[700] },
+  dispatchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 38,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.md,
+  },
+  dispatchText: { fontSize: 12, fontFamily: Fonts.sans[700] },
+  actionNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: Radius.sm,
+  },
+  actionNoteText: { fontSize: 11, fontFamily: Fonts.sans[700] },
 
   listing: {
     flexDirection: 'row',

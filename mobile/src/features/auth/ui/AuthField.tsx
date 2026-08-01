@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: Fonts.sans[400],
     // Kills the blue focus outline react-native-web adds by default.
     outlineStyle: 'none',

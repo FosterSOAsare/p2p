@@ -115,7 +115,9 @@ export function BuyerDashboard({ user }: { user: User }) {
             <Text style={[styles.heroBtnText, { color: theme.text }]}>My Orders</Text>
           </Pressable>
           <Pressable
-            onPress={() => router.push('/settings')}
+            // The Profile tab holds the real account UI (the web's
+            // UserSettings); /settings is still a placeholder route.
+            onPress={() => router.push('/profile')}
             style={({ pressed }) => [
               styles.heroBtn,
               styles.heroBtnDark,
@@ -294,7 +296,7 @@ const styles = StyleSheet.create({
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   avatar: { height: 60, width: 60, borderRadius: Radius.md },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  avatarLetter: { fontSize: 22, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  avatarLetter: { fontSize: 19, fontFamily: Fonts.sans[700], color: '#ffffff' },
   verifiedDot: {
     position: 'absolute',
     bottom: -2,
@@ -309,7 +311,7 @@ const styles = StyleSheet.create({
   },
   heroText: { flex: 1, gap: 2 },
   // Name uses the web's `font-display`.
-  heroName: { fontSize: 20, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
+  heroName: { fontSize: 17, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
   heroHandle: { fontSize: 12, fontFamily: Fonts.sans[600] },
   heroMeta: { fontSize: 11, fontFamily: Fonts.sans[400] },
 
@@ -330,7 +332,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
 
   banner: { borderRadius: Radius.lg, padding: Spacing.four, gap: 6 },
-  bannerTitle: { fontSize: 15, fontFamily: Fonts.display[700] },
+  bannerTitle: { fontSize: 14, fontFamily: Fonts.display[700] },
   bannerBody: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[400] },
   bannerBtn: {
     flexDirection: 'row',
@@ -350,7 +352,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: Spacing.two,
   },
-  sectionTitle: { fontSize: 17, fontFamily: Fonts.display[700], letterSpacing: -0.3 },
+  sectionTitle: { fontSize: 15, fontFamily: Fonts.display[700], letterSpacing: -0.3 },
   sectionLink: { fontSize: 12, fontFamily: Fonts.sans[700] },
 
   empty: {

@@ -25,7 +25,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   title: {
-    fontSize: 14,
+    fontSize: 13,
   },
   codeSnippet: {
     borderRadius: Spacing.sm,
@@ -33,6 +33,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
   },
   hint: {
-    fontSize: 14,
+    fontSize: 13,
   },
 });
