@@ -13,7 +13,6 @@ import {
   WifiOff,
   ArrowRight,
 } from 'lucide-react'
-import { useSellerProfile } from '../../user/data/usersApi'
 import { useUploadSingleFile } from '../../upload/data/uploadApi'
 import { useChat, type ChatMessage } from '../data/useChat'
 import { formatTime } from '../../shared/libs/date'
@@ -25,10 +24,11 @@ import { formatTime } from '../../shared/libs/date'
  */
 export function ChatPanel({ username, onBack }: { username: string; onBack?: () => void }) {
   const chat = useChat(username)
-  const profileQuery = useSellerProfile(username)
-  // The socket ack carries the counterparty too; the profile query is what
-  // paints the header instantly from cache while the thread opens.
-  const counterparty = chat.counterparty ?? profileQuery.data
+  // The conversation:open ack carries everything the header needs, so there's
+  // no profile fetch here — which also keeps this off /seller/:username, now
+  // that the endpoint is sellers-only.
+  const counterparty = chat.counterparty
+  const isSeller = counterparty?.verified ?? false
   const uploadSingle = useUploadSingleFile()
 
   const [draft, setDraft] = useState('')
@@ -78,6 +78,33 @@ export function ChatPanel({ username, onBack }: { username: string; onBack?: () 
     setDraft('')
   }
 
+  const identity = (
+    <>
+      {counterparty?.avatarUrl ? (
+        <img src={counterparty.avatarUrl} alt="" className="h-9 w-9 rounded-xl object-cover" />
+      ) : (
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 text-xs font-bold text-white uppercase">
+          {username.charAt(0)}
+        </span>
+      )}
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`truncate text-sm font-bold text-slate-900 dark:text-white ${
+              isSeller ? 'transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400' : ''
+            }`}
+          >
+            {counterparty?.storeName ?? `@${username}`}
+          </span>
+          {isSeller && <ShieldCheck size={14} className="shrink-0 text-primary-600 dark:text-primary-400" />}
+        </div>
+        <p className="truncate text-[11px] text-slate-400">
+          {chat.counterpartyTyping ? 'typing…' : isSeller ? `@${username} · view store` : `@${username}`}
+        </p>
+      </div>
+    </>
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Thread header */}
@@ -92,26 +119,15 @@ export function ChatPanel({ username, onBack }: { username: string; onBack?: () 
           </button>
         )}
 
-        <Link to={`/seller/${username}`} className="flex min-w-0 flex-1 items-center gap-3 group">
-          {counterparty?.avatarUrl ? (
-            <img src={counterparty.avatarUrl} alt="" className="h-9 w-9 rounded-xl object-cover" />
-          ) : (
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 text-xs font-bold text-white uppercase">
-              {username.charAt(0)}
-            </span>
-          )}
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="truncate text-sm font-bold text-slate-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                {counterparty?.storeName ?? `@${username}`}
-              </span>
-              {counterparty?.verified && <ShieldCheck size={14} className="text-primary-600 dark:text-primary-400 shrink-0" />}
-            </div>
-            <p className="truncate text-[11px] text-slate-400">
-              {chat.counterpartyTyping ? 'typing…' : `@${username} · view profile`}
-            </p>
-          </div>
-        </Link>
+        {/* Only sellers have a storefront to link to — /seller/:username 404s
+            for a plain buyer, so render their identity as static text. */}
+        {isSeller ? (
+          <Link to={`/seller/${username}`} className="group flex min-w-0 flex-1 items-center gap-3">
+            {identity}
+          </Link>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-3">{identity}</div>
+        )}
       </div>
 
       {!chat.connected && (
