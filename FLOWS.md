@@ -73,7 +73,7 @@ Off-marketplace contract between two accounts — no listing, no KYC required.
 ## 7. Dispute & arbitration ✅ (server + admin client) · ⚠️ (evidence chat empty)
 
 1. **Open** — Buyer or seller at a `funded`/`delivered` deal → `POST /:id/dispute` `{reason, description}` → **`disputed`**; the deal **freezes** (no further party actions; `autoReleaseAt` nulled).
-2. **Review** — Admin at `/admin/disputes` (queue, status tab in URL) opens the detail drawer: deal terms, both parties, amounts, timeline, and the **deal chat as evidence** (⚠️ empty until messaging is wired).
+2. **Review** — Admin at `/admin/disputes` (queue, status tab in URL) opens the detail drawer: deal terms, both parties, amounts, timeline, and the **deal chat as evidence** (persisted messages + the deal's system notices).
 3. **Rule** — `POST /api/admin/disputes/:id/resolve {outcome: release | refund | split, buyerRefund?, rulingNote}` → calls `transition(RESOLVE_*)` → credits seller and/or buyer wallets (pro-rata fee on split), sets **`disbursed`**, records `outcome`/`ruledAmount*`/`rulingNote`/`resolvedById`, posts a "⚖️ Official Admin Ruling" chat line. 409 if already resolved.
 4. **After** — verdict renders on the deal page; **payout skips the 24h clearance hold** (admin was involved) → straight to available balance; **no review** offered on a dispute-resolved deal.
 
@@ -86,8 +86,12 @@ Off-marketplace contract between two accounts — no listing, no KYC required.
 
 ---
 
-## 9. Messaging ⚠️ (server done, client not wired)
-Server has a full 1:1 thread per user pair (`/api/messages`: list / thread / send / read) and `postDealMessage()` injects system lines on lifecycle/ruling events. **Client `MessageThread.tsx` keeps messages in local state only** — nothing persists, so the paperclip attachment and the dispute evidence transcript are non-functional end-to-end. Fix = `messagesApi.ts` + wire the component.
+## 9. Messaging (realtime, WebSocket)
+One 1:1 thread per user pair, live over **Socket.IO** on the same port as the API. The socket is the transport; Postgres stays the source of truth, so history survives reloads, offline parties catch up, and the dispute evidence transcript populates itself.
+
+Handshake carries the JWT access token. Every socket joins `user:<id>` (notifications — unread bumps and deal notices reach you on any page) and joins `convo:<id>` while a thread is open (messages, read ticks, typing). Opening a thread is keyed by *username*, so the room always derives from your own identity.
+
+Client: `/messages?u=<username>` — two-pane inbox (conversation list + open thread), `useChat` for the thread, `useMessageNotifications` in `Layout` for the session-wide socket and live unread counts. Messages are `text` | `file` | `system`: files upload to Cloudinary over HTTP and travel as URL + metadata; system lines are the escrow notices, rendered as chips linking to `/escrow/:id`.
 
 ---
 
@@ -111,4 +115,4 @@ Server has a full 1:1 thread per user pair (`/api/messages`: list / thread / sen
 ## Legend of what's simulated vs real
 - **Real:** auth, KYC, listings, escrow state machine + fee math + wallet money movement, disputes, admin tooling, Cloudinary uploads.
 - **Simulated:** payment at checkout (escrow born funded), momo deposit/withdraw, verify/reset emails (console).
-- **Not built:** TRX crypto rail, real payment processor, email/SMS delivery, background auto-release/resolve, client messaging persistence, milestones.
+- **Not built:** TRX crypto rail, real payment processor, email/SMS delivery, background auto-release/resolve, milestones, Socket.IO Redis adapter (single-instance only).

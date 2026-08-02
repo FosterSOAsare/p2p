@@ -15,9 +15,13 @@ Legend: `[x]` done & wired · `[ ]` not done · ⚠️ built but non-functional.
 - [x] Legacy URLs (`/escrow`, `/user/orders`, `/user/settings`, `/seller/wallet`) fully migrated to `/deals`, `/settings`, `/wallet`; a proper **404 page** (`NotFound`) catches anything unmatched
 - [x] Homepage **Featured Listings** now real (top 6 by rating via `sort=rating`); **TrustMetrics + Testimonials** intentionally static (copy updated to match features — GHS, no crypto/tiers)
 
-## ⚠️ Cross-cutting gap — deal messaging
+## Messaging — realtime (WebSocket)
 
-- [ ] **`MessageThread.tsx` is local-state only** — never calls the built `/api/messages` endpoints; no `messagesApi.ts`. So buyer↔seller chat + the paperclip attachment don't persist, and the admin dispute **evidence transcript is empty**. Fix = write `messagesApi.ts` + wire the component (no WebSocket needed for REST).
+- [x] **Live 1:1 chat over Socket.IO** — `features/messages/` (socket singleton, `useChat`, `ChatPanel`, two-pane `/messages?u=` inbox). History, sends, read receipts and typing all travel over the socket; messages persist to Postgres, so the admin dispute **evidence transcript** populates automatically
+- [x] Text + file messages (Cloudinary upload over HTTP, URL/metadata over the socket) — verified for images and PDFs
+- [x] Deal lifecycle notices render as system chips linking to `/escrow/:id`
+- [x] Live unread counts — `notify:message` / `message:read` invalidate the conversation list; total badge on the Messages nav item
+- [ ] Verify the admin dispute view renders the evidence transcript end-to-end
 
 ---
 
@@ -61,13 +65,13 @@ Legend: `[x]` done & wired · `[ ]` not done · ⚠️ built but non-functional.
 - [x] **Deals oversight** (`/deals` as admin → `AdminDealsList`) — status/search/paginate in URL params; read-only; disputed rows link to arbitration
 - [x] Admin **stats dashboard** (`/admin`) — KPI cards (users, listings, KYC pending, open disputes, total deals, settled volume) + deals-by-status; admin landing target (`/dashboard` → `/admin`)
 - [ ] Listings moderation view · deals force-override actions · dispute appeals · audit log
-- [ ] Evidence chat transcript renders empty until messaging is wired (see cross-cutting gap)
+- [ ] Evidence chat transcript — messages now persist, so it should populate; not yet verified in the admin view
 
 ---
 
 ## Parked / by design
 
-- [ ] Live/realtime messaging via WebSocket (REST wiring is the prerequisite)
+- [ ] Redis adapter for Socket.IO (only needed if the API ever runs multi-instance)
 - [ ] Real payment step at checkout (simulated by design)
 - [ ] **TRX crypto rail** UI (deposit address, confirmations, Tronscan) — standalone TRX deals can be created but not funded
 - [ ] Dead modules to remove: `sellerData.ts`, `userProfile.ts`, most of `products.ts` (homepage-only mock)

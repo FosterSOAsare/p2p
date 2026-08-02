@@ -27,9 +27,13 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 - [x] `POST /deposit` (instant simulated — dev fallback) · `POST /withdraw` (guarded; blocks on pending clearance; emails a receipt) · `GET /transactions`
 - [x] **Real deposit (Paystack test mode):** `POST /deposit/init {amount}` → `{authorizationUrl,reference}`; `GET /deposit/verify/:reference` (poll fallback); `POST /webhook/paystack` (raw body, HMAC-SHA512 verified). Idempotent via `PaymentIntent(reference unique)`.
 
-### Messaging (`/api/messages`) — server done, **client not wired**
-- [x] `GET /` (conversations) · `GET /:username` (thread) · `POST /:username` (send) · `POST /:username/read`
-- [x] `postDealMessage()` — system lines injected into a pair's thread on lifecycle/ruling events
+### Messaging — realtime (Socket.IO, same port as the API)
+- [x] `shared/realtime/` — io singleton + JWT handshake auth; rooms `user:<id>` (notifications) and `convo:<id>` (open thread)
+- [x] `messages.gateway.ts` — `conversation:open` (history + `sinceId` gap-fill), `message:send`, `message:read`, `typing`
+- [x] One persist-then-emit write path (`createMessage`) — chat, file cards and system notices all persist to Postgres, then broadcast
+- [x] `postDealMessage()` — system lines injected into a pair's thread on lifecycle/ruling events, now pushed live to both parties
+- [x] `MessageType` (text/file/system) + attachment columns — migration `20260802110801_message_types_attachments`
+- [x] `GET /` (conversations) — still used for the inbox snapshot; the other `/api/messages` REST routes are superseded by the socket
 
 ### Uploads (`/api/upload`)
 - [x] `POST /single` · `POST /multiple` — Multer → Cloudinary (10MB, image/PDF)
