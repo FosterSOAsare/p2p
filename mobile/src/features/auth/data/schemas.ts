@@ -63,3 +63,30 @@ export const forgotPasswordSchema = z.object({
 });
 
 export type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
+
+/** Mirrors the web's `resetPasswordSchema` — same rule, same message. */
+export const resetPasswordSchema = z
+  .object({
+    newPassword: passwordSchema,
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+export type ResetPasswordForm = z.infer<typeof resetPasswordSchema>;
+
+/** Mirrors the web's `changePasswordSchema`. */
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Enter your current password'),
+    newPassword: passwordSchema,
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'New passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+export type ChangePasswordForm = z.infer<typeof changePasswordSchema>;

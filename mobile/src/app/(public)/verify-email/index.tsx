@@ -1,3 +1,3 @@
-import { VerifyEmailScreen } from '@/features/auth/VerifyEmailScreen';
+import { VerifyEmailScreen } from '@/features/auth/ui/VerifyEmailScreen';
 
 export default VerifyEmailScreen;

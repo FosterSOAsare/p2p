@@ -16,6 +16,7 @@ import {
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useSaved } from '@/context/SavedContext';
 import { mockBuyerStats, mockOrders, type Order, type User } from '@/constants/mockData';
 import { StatCard } from './StatCard';
 
@@ -56,6 +57,7 @@ function statusBadge(status: Order['status']) {
 export function BuyerDashboard({ user }: { user: User }) {
   const theme = useTheme();
   const router = useRouter();
+  const { count: savedCount } = useSaved();
 
   const stats = mockBuyerStats;
   const orders = mockOrders;
@@ -155,7 +157,8 @@ export function BuyerDashboard({ user }: { user: User }) {
         />
         <StatCard
           label="Saved Items"
-          value={String(stats.savedItems)}
+          // Live count from SavedContext, so the tile agrees with Bookmarks.
+          value={String(savedCount)}
           sub="View my bookmarks →"
           icon={Heart}
           accent="#f43f5e"

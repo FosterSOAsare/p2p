@@ -16,6 +16,7 @@ import { Heart, Search, ShieldCheck, Store, X } from 'lucide-react-native';
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
+import { useSaved } from '@/context/SavedContext';
 import { mockCategories, mockProducts, type ImageRef, type Product } from '@/constants/mockData';
 
 /**
@@ -80,7 +81,8 @@ export function MarketplaceScreen() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [sort, setSort] = useState<SortKey>('featured');
-  const [saved, setSaved] = useState<Set<string>>(new Set());
+  // Shared with the listing page, bookmarks and the dashboard tile.
+  const { isSaved, toggleSaved } = useSaved();
 
   const categoryNames = useMemo(
     () => ['All', ...mockCategories.map((c) => c.name)],
@@ -111,15 +113,6 @@ export function MarketplaceScreen() {
     return sorted;
   }, [search, category, sort]);
 
-  const toggleSaved = (id: string) => {
-    setSaved((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const clearFilters = () => {
     setSearch('');
     setCategory('All');
@@ -129,7 +122,7 @@ export function MarketplaceScreen() {
   const hasFilters = category !== 'All' || search.trim().length > 0;
 
   const renderCard = ({ item }: { item: Product }) => {
-    const isSaved = saved.has(item.id);
+    const saved = isSaved(item.id);
 
     return (
       <Pressable
@@ -157,13 +150,13 @@ export function MarketplaceScreen() {
           <Pressable
             onPress={() => toggleSaved(item.id)}
             hitSlop={8}
-            style={[styles.heart, isSaved && styles.heartOn]}
-            accessibilityLabel={isSaved ? 'Remove from saved' : 'Save listing'}
+            style={[styles.heart, saved && styles.heartOn]}
+            accessibilityLabel={saved ? 'Remove from saved' : 'Save listing'}
           >
             <Heart
               size={13}
-              color={isSaved ? '#ffffff' : theme.textSecondary}
-              fill={isSaved ? '#ffffff' : 'transparent'}
+              color={saved ? '#ffffff' : theme.textSecondary}
+              fill={saved ? '#ffffff' : 'transparent'}
             />
           </Pressable>
         </View>

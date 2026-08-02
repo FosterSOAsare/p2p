@@ -3,7 +3,18 @@ import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Bell, CheckCircle2, Lock, User as UserIcon } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import {
+  Bell,
+  Camera,
+  CheckCircle2,
+  Clock,
+  Lock,
+  ShieldCheck,
+  Trash2,
+  User as UserIcon,
+  XCircle,
+} from 'lucide-react-native';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -31,25 +42,32 @@ const SECTIONS: { id: SectionId; label: string; icon: typeof UserIcon }[] = [
   { id: 'notifications', label: 'Alerts', icon: Bell },
 ];
 
-/** Mirrors the web's KYC status pill copy. */
+/** Pill label, icon and tones per KYC state — same set as the web's card. */
 function kycPill(status: string) {
   switch (status) {
     case 'verified':
-      return { label: 'Verified Seller', bg: '#dcfce7', text: '#166534' };
+      return { label: 'Verified Seller', icon: CheckCircle2, bg: '#dcfce7', text: '#166534' };
     case 'pending':
-      return { label: 'Pending Review', bg: '#fef3c7', text: '#92400e' };
+      return { label: 'Under Review', icon: Clock, bg: '#fef3c7', text: '#92400e' };
     case 'rejected':
-      return { label: 'Rejected', bg: '#fee2e2', text: '#991b1b' };
+      return { label: 'Rejected', icon: XCircle, bg: '#fee2e2', text: '#991b1b' };
     default:
-      return { label: 'Not Verified', bg: '#e5e7eb', text: '#374151' };
+      return { label: 'Not Verified', icon: null, bg: '#e5e7eb', text: '#374151' };
   }
 }
 
+/** The web's explanatory line for each state, kept verbatim. */
 function kycNote(status: string) {
-  if (status === 'verified') return 'Your identity is verified — marketplace selling is unlocked.';
-  if (status === 'pending')
-    return 'Your KYC submission is with our review team. You can buy and use escrow deals while you wait.';
-  return 'Verify your identity to unlock marketplace selling. Buying and standalone escrow deals need no KYC.';
+  switch (status) {
+    case 'verified':
+      return 'Your identity is verified. You can create marketplace listings and receive payouts.';
+    case 'pending':
+      return 'Your KYC submission is with our review team. You can buy and use escrow deals while you wait.';
+    case 'rejected':
+      return 'Your submission was rejected. Review the reason and resubmit from the seller verification page.';
+    default:
+      return 'Verify your identity to unlock marketplace selling. Buying and standalone escrow deals need no KYC.';
+  }
 }
 
 export function ProfileTabScreen() {
@@ -67,11 +85,45 @@ export function ProfileTabScreen() {
   const [username, setUsername] = useState(user?.username ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
+  const [avatarUri, setAvatarUri] = useState<string | null>(user?.avatarUrl ?? null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [emailShipmentUpdates, setEmailShipmentUpdates] = useState(true);
   const [smsReleaseAlerts, setSmsReleaseAlerts] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const kyc = kycPill(user?.kycStatus ?? 'unverified');
+
+  /**
+   * Opens the gallery and previews the chosen photo.
+   *
+   * TODO(api): the web uploads to Cloudinary and PATCHes the avatar URL. Here
+   * the picked file stays on the device, so the new photo is a local preview
+   * only — it resets when the app reloads.
+   */
+  const pickAvatar = async () => {
+    setPhotoError(null);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setPhotoError('Photo access is off. Enable it for Expo Go in system settings.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setAvatarUri(result.assets[0].uri);
+        setSaved(false);
+      }
+    } catch {
+      setPhotoError("Couldn't open the gallery on this device.");
+    }
+  };
 
   /**
    * One labelled input. Deliberately a function returning JSX rather than a
@@ -156,8 +208,9 @@ export function ProfileTabScreen() {
         {/* Identity card */}
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
           <View style={styles.identityRow}>
-            {user?.avatarUrl ? (
-              <Image source={user.avatarUrl} style={styles.avatar} contentFit="cover" />
+            {/* Reflects a freshly picked photo, not just the stored one */}
+            {avatarUri ? (
+              <Image source={avatarUri} style={styles.avatar} contentFit="cover" />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: theme.primary }]}>
                 <Text style={styles.avatarLetter}>{(user?.fullName ?? 'U').charAt(0)}</Text>
@@ -174,25 +227,27 @@ export function ProfileTabScreen() {
           </View>
 
           <View style={[styles.kycBox, { borderTopColor: theme.border }]}>
-            <Text style={[styles.kycTitle, { color: theme.textSecondary }]}>
-              KYC Verification Status
-            </Text>
+            <View style={styles.kycTitleRow}>
+              <ShieldCheck size={16} color={theme.primary} />
+              <Text style={[styles.kycTitle, { color: theme.text }]}>KYC Verification Status</Text>
+            </View>
+
             <View style={[styles.kycPill, { backgroundColor: kyc.bg }]}>
-              {user?.kycStatus === 'verified' ? <CheckCircle2 size={12} color={kyc.text} /> : null}
+              {kyc.icon ? <kyc.icon size={13} color={kyc.text} /> : null}
               <Text style={[styles.kycPillText, { color: kyc.text }]}>{kyc.label}</Text>
             </View>
+
             <Text style={[styles.kycNote, { color: theme.textTertiary }]}>
               {kycNote(user?.kycStatus ?? 'unverified')}
             </Text>
-            {user?.kycStatus !== 'verified' ? (
-              <Pressable
-                onPress={() => router.push('/vendor/kyc')}
-                style={({ pressed }) => [
-                  styles.kycBtn,
-                  { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <Text style={styles.kycBtnText}>Verify My Identity</Text>
+
+            {/* The web only offers this while there's something to do — hidden
+                once verified, and while a submission is under review. */}
+            {user?.kycStatus !== 'verified' && user?.kycStatus !== 'pending' ? (
+              <Pressable onPress={() => router.push('/sell')} hitSlop={6}>
+                <Text style={[styles.kycLink, { color: theme.primary }]}>
+                  Start seller verification →
+                </Text>
               </Pressable>
             ) : null}
           </View>
@@ -232,6 +287,58 @@ export function ProfileTabScreen() {
               <Text style={[styles.cardTitle, { color: theme.text, borderBottomColor: theme.border }]}>
                 Personal Information
               </Text>
+
+              {/* Profile photo — mirrors the web's avatar block */}
+              <View style={styles.photoRow}>
+                {avatarUri ? (
+                  <Image source={avatarUri} style={styles.photo} contentFit="cover" />
+                ) : (
+                  <View style={[styles.photo, styles.photoFallback, { backgroundColor: theme.primary }]}>
+                    <Text style={styles.photoLetter}>
+                      {(user?.username ?? '?').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.photoActions}>
+                  <View style={styles.photoButtons}>
+                    <Pressable
+                      onPress={pickAvatar}
+                      style={({ pressed }) => [
+                        styles.photoBtn,
+                        {
+                          borderColor: theme.inputBorder,
+                          backgroundColor: pressed ? theme.backgroundSelected : theme.inputBackground,
+                        },
+                      ]}
+                    >
+                      <Camera size={14} color={theme.text} />
+                      <Text style={[styles.photoBtnText, { color: theme.text }]}>
+                        {avatarUri ? 'Change photo' : 'Upload photo'}
+                      </Text>
+                    </Pressable>
+
+                    {avatarUri ? (
+                      <Pressable
+                        onPress={() => {
+                          setAvatarUri(null);
+                          setSaved(false);
+                        }}
+                        style={styles.removeBtn}
+                      >
+                        <Trash2 size={14} color="#e11d48" />
+                        <Text style={styles.removeText}>Remove</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+
+                  <Text style={[styles.photoHint, { color: theme.textTertiary }]}>
+                    JPG or PNG, up to 10MB. Shown on your profile, listings, and deals.
+                  </Text>
+                  {photoError ? <Text style={styles.photoError}>{photoError}</Text> : null}
+                </View>
+              </View>
+
               {field('fullName', 'Full Name', fullName, setFullName, 'Kofi Mensah')}
               {field('username', 'Username', username, setUsername, 'kofi_buyer', {
                 autoCapitalize: 'none',
@@ -339,12 +446,9 @@ const styles = StyleSheet.create({
   identityHandle: { fontSize: 12, fontFamily: Fonts.sans[500] },
 
   kycBox: { borderTopWidth: 1, paddingTop: Spacing.three, gap: 6 },
-  kycTitle: {
-    fontSize: 10.5,
-    fontFamily: Fonts.sans[700],
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
+  kycTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  kycTitle: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
+  kycLink: { fontSize: 11.5, fontFamily: Fonts.sans[700], marginTop: 2 },
   kycPill: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -356,16 +460,6 @@ const styles = StyleSheet.create({
   },
   kycPillText: { fontSize: 11.5, fontFamily: Fonts.sans[700] },
   kycNote: { fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.sans[400] },
-  kycBtn: {
-    alignSelf: 'flex-start',
-    height: 40,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
-    borderRadius: Radius.md,
-    marginTop: 2,
-  },
-  kycBtnText: { fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
-
   sectionSwitch: { flexDirection: 'row', gap: Spacing.two },
   sectionChip: {
     flex: 1,
@@ -378,6 +472,33 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   sectionChipText: { fontSize: 12, fontFamily: Fonts.sans[700] },
+
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  photo: { height: 76, width: 76, borderRadius: Radius.lg },
+  photoFallback: { alignItems: 'center', justifyContent: 'center' },
+  photoLetter: { fontSize: 26, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  photoActions: { flex: 1, gap: 6 },
+  photoButtons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  photoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  photoBtnText: { fontSize: 11.5, fontFamily: Fonts.sans[700] },
+  removeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
+  removeText: { fontSize: 11.5, fontFamily: Fonts.sans[700], color: '#e11d48' },
+  photoHint: { fontSize: 10.5, lineHeight: 14, fontFamily: Fonts.sans[400] },
+  photoError: { fontSize: 10.5, lineHeight: 14, fontFamily: Fonts.sans[600], color: '#b91c1c' },
 
   field: { gap: 5 },
   label: {

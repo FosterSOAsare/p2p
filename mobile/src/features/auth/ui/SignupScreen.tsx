@@ -81,13 +81,15 @@ export function SignupScreen() {
     },
   });
 
-  const onSubmit = handleSubmit(async () => {
+  const onSubmit = handleSubmit(async (values) => {
     // Web sends a new account to /verify-email rather than straight into the app,
     // so we stay in the (public) group and do the same. Deliberately NOT calling
     // the mock `signup()` yet: it marks the session authenticated, which would
     // trip the root guard and skip verification.
     // TODO(backend): POST /api/auth/signup, then land on /verify-email.
-    router.replace('/verify-email');
+    // The email rides along so the verify screen can name the inbox to check,
+    // the same way the web passes it through navigation state.
+    router.replace(`/verify-email?email=${encodeURIComponent(values.email)}`);
   });
 
   /** Wires a field's focus tracking into AuthField without repeating handlers. */

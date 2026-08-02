@@ -1,12 +1,3 @@
-import { PlaceholderScreen } from '@/features/shared/ui/PlaceholderScreen';
+import { ChangePasswordScreen } from '@/features/auth/ui/ChangePasswordScreen';
 
-export default function ChangePasswordRoute() {
-  return (
-    <PlaceholderScreen
-      title="Change Password"
-      description="Update the password on your account."
-      webRoute="/change-password"
-      backLabel="Back"
-    />
-  );
-}
+export default ChangePasswordScreen;

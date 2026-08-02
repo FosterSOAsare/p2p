@@ -30,6 +30,7 @@ import {
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
+import { useSaved } from '@/context/SavedContext';
 import { mockProducts } from '@/constants/mockData';
 
 /**
@@ -68,8 +69,10 @@ export function ProductDetailScreen() {
   const product = useMemo(() => mockProducts.find((p) => p.id === id), [id]);
 
   const [slide, setSlide] = useState(0);
-  const [isSaved, setIsSaved] = useState(false);
   const [reported, setReported] = useState(false);
+  // Shared with the marketplace hearts and the bookmarks screen.
+  const { isSaved, toggleSaved } = useSaved();
+  const saved = product ? isSaved(product.id) : false;
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -242,7 +245,8 @@ export function ProductDetailScreen() {
           ) : (
             <>
               <Pressable
-                onPress={() => router.push('/checkout')}
+                // Same query param the web uses: /checkout?listing=<id>
+                onPress={() => router.push(`/checkout?listing=${product.id}`)}
                 style={({ pressed }) => [
                   styles.primaryBtn,
                   { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
@@ -254,7 +258,15 @@ export function ProductDetailScreen() {
 
               <View style={styles.secondaryRow}>
                 <Pressable
-                  onPress={() => router.push(`/messages/${product.vendor.username}`)}
+                  // Same shape as the web: the thread carries a `redirect` so
+                  // its Back returns to this listing. (The web also falls back
+                  // to /login when signed out; here the (app) group is guarded,
+                  // so this screen is only reachable signed in.)
+                  onPress={() =>
+                    router.push(
+                      `/messages/${product.vendor.username}?redirect=/marketplace/${product.id}`,
+                    )
+                  }
                   style={({ pressed }) => [
                     styles.secondaryBtn,
                     {
@@ -268,22 +280,22 @@ export function ProductDetailScreen() {
                 </Pressable>
 
                 <Pressable
-                  onPress={() => setIsSaved((v) => !v)}
+                  onPress={() => toggleSaved(product.id)}
                   style={({ pressed }) => [
                     styles.secondaryBtn,
                     {
-                      backgroundColor: isSaved ? '#fff1f2' : pressed ? theme.backgroundSelected : theme.card,
-                      borderColor: isSaved ? '#fecdd3' : theme.border,
+                      backgroundColor: saved ? '#fff1f2' : pressed ? theme.backgroundSelected : theme.card,
+                      borderColor: saved ? '#fecdd3' : theme.border,
                     },
                   ]}
                 >
                   <Heart
                     size={15}
-                    color={isSaved ? '#e11d48' : theme.text}
-                    fill={isSaved ? '#e11d48' : 'transparent'}
+                    color={saved ? '#e11d48' : theme.text}
+                    fill={saved ? '#e11d48' : 'transparent'}
                   />
-                  <Text style={[styles.secondaryText, { color: isSaved ? '#e11d48' : theme.text }]}>
-                    {isSaved ? 'Saved' : 'Save'}
+                  <Text style={[styles.secondaryText, { color: saved ? '#e11d48' : theme.text }]}>
+                    {saved ? 'Saved' : 'Save'}
                   </Text>
                 </Pressable>
               </View>

@@ -1,16 +1,3 @@
-import { useLocalSearchParams } from 'expo-router';
+import { MessageThreadScreen } from '@/features/messages/ui/MessageThreadScreen';
 
-import { PlaceholderScreen } from '@/features/shared/ui/PlaceholderScreen';
-
-export default function MessageThreadRoute() {
-  const { username } = useLocalSearchParams<{ username: string }>();
-
-  return (
-    <PlaceholderScreen
-      title="Messages"
-      description={`Chat with @${username} — persists as dispute evidence.`}
-      webRoute="/messages/:username"
-      backLabel="Back"
-    />
-  );
-}
+export default MessageThreadScreen;

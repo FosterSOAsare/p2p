@@ -16,6 +16,7 @@ import {
 } from '@expo-google-fonts/space-grotesk';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { SavedProvider } from '@/context/SavedContext';
 import { Colors } from '@/constants/theme';
 
 /**
@@ -81,9 +82,11 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
-          <RootNavigator />
-        </ThemeProvider>
+        <SavedProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
+            <RootNavigator />
+          </ThemeProvider>
+        </SavedProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

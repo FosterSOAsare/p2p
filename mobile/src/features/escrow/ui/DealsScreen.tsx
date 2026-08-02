@@ -7,6 +7,7 @@ import { ArrowRight, Inbox, Plus, ShieldCheck, Wallet } from 'lucide-react-nativ
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
+import { useAuth } from '@/context/AuthContext';
 import { mockDeals, type EscrowDeal } from '@/constants/mockData';
 import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
 
@@ -47,6 +48,7 @@ export function DealsScreen() {
   const theme = useTheme();
   const tabBarHeight = useTabBarHeight();
   const router = useRouter();
+  const { user } = useAuth();
   const [tab, setTab] = useState('all');
 
   const deals = useMemo(() => {
@@ -58,10 +60,17 @@ export function DealsScreen() {
   const renderDeal = ({ item }: { item: EscrowDeal }) => {
     const badge = statusBadge(item.status);
     const tone = TONE_COLORS[badge.tone];
-    const other = item.counterparty;
+    // Role-aware, like the web's DealCard: show the *other* party and label the
+    // relationship. Mock deals are buyer-created, so the creator is the buyer.
+    const isBuyer = item.creator.username === user?.username;
+    const other = isBuyer ? item.counterparty : item.creator;
+    const roleLabel = isBuyer ? 'Buying from' : 'Selling to';
 
     return (
       <Pressable
+        onPress={() => router.push(`/escrow/${item.id}`)}
+        accessibilityRole="button"
+        accessibilityLabel={`Open deal ${item.code}`}
         style={({ pressed }) => [
           styles.card,
           {
@@ -94,7 +103,7 @@ export function DealsScreen() {
             </Text>
 
             <Text numberOfLines={2} style={[styles.meta, { color: theme.textSecondary }]}>
-              Counterparty <Text style={{ color: theme.text }}>@{other.username}</Text>
+              {roleLabel} <Text style={{ color: theme.text }}>@{other.username}</Text>
               <Text style={{ color: theme.textTertiary }}> · {formatDate(item.createdAt)}</Text>
             </Text>
           </View>
