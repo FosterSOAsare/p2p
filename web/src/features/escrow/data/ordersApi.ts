@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../shared/libs/api'
 import { authKeys } from '../../auth/data/authApi'
+import type { FeeSplit } from './fees'
 
 // ---------- shared deal shape (server serialize()) ----------
 
@@ -22,6 +23,7 @@ export interface Deal {
   rail: 'fiat' | 'crypto'
   amount: number
   feeAmount: number
+  feeSplit: FeeSplit
   buyerFee: number
   sellerFee: number
   fundingTotal: number
@@ -175,10 +177,10 @@ export function useCreateStandaloneEscrow() {
       description?: string
       amount: number
       currency?: 'GHS' | 'TRX'
-      rail?: 'fiat' | 'crypto'
       role?: 'buyer' | 'seller'
       invitedUsername?: string
-      feeSplit?: 'BUYER' | 'SELLER' | 'SPLIT'
+      // `rail` is intentionally absent — the server derives it from currency.
+      feeSplit?: FeeSplit
     }) =>
       api<{ deal: DealDetail }>('/api/escrows', {
         method: 'POST',

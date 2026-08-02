@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ShieldCheck, ArrowLeft, ArrowRight, User, FileText, LockKeyhole, Loader2 } from 'lucide-react'
 import { useCreateStandaloneEscrow } from '../features/escrow/data/ordersApi'
+import { quoteFee, type FeeSplit } from '../features/escrow/data/fees'
 import { formatMoney } from '../features/shared/libs/currency'
 import { apiErrorMessage } from '../features/shared/libs/api'
 
@@ -14,7 +15,7 @@ export function NewEscrow() {
   const [amount, setAmount] = useState<number>(500)
   const [currency, setCurrency] = useState<'GHS' | 'TRX'>('GHS')
   const [role, setRole] = useState<'buyer' | 'seller'>('buyer')
-  const [feeSplit, setFeeSplit] = useState<'BUYER' | 'SELLER' | 'SPLIT'>('BUYER')
+  const [feeSplit, setFeeSplit] = useState<FeeSplit>('split')
   const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -29,7 +30,6 @@ export function NewEscrow() {
         description: description.trim() || undefined,
         amount,
         currency,
-        rail: currency === 'TRX' ? 'crypto' : 'fiat',
         role,
         invitedUsername: invitedUsername.trim() || undefined,
         feeSplit,
@@ -45,11 +45,9 @@ export function NewEscrow() {
     )
   }
 
-  // 1.5% fee calculation for preview
-  const feeRate = 0.015
-  const estimatedFee = amount * feeRate
-  const buyerTotal = feeSplit === 'BUYER' ? amount + estimatedFee : feeSplit === 'SPLIT' ? amount + estimatedFee / 2 : amount
-  const sellerPayout = feeSplit === 'SELLER' ? amount - estimatedFee : feeSplit === 'SPLIT' ? amount - estimatedFee / 2 : amount
+  // Mirrors the server's pesewa math (min/cap included), so the preview is the
+  // charge — not a flat-percentage approximation.
+  const { fee: estimatedFee, buyerTotal, sellerPayout } = quoteFee(amount, currency, feeSplit)
 
   return (
     <div className="mx-auto max-w-2xl py-4 sm:py-6 space-y-6">
@@ -188,12 +186,12 @@ export function NewEscrow() {
             <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Escrow Fee Paid By</label>
             <select
               value={feeSplit}
-              onChange={(e) => setFeeSplit(e.target.value as any)}
+              onChange={(e) => setFeeSplit(e.target.value as FeeSplit)}
               className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 py-2.5 px-4 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:border-emerald-500 focus:outline-none cursor-pointer"
             >
-              <option value="BUYER">Buyer Pays Full Fee (1.5%)</option>
-              <option value="SELLER">Seller Pays Full Fee (1.5%)</option>
-              <option value="SPLIT">Split Fee (0.75% Buyer / 0.75% Seller)</option>
+              <option value="split">Split evenly (half each)</option>
+              <option value="buyer">Buyer pays the full fee</option>
+              <option value="seller">Seller pays the full fee</option>
             </select>
           </div>
 

@@ -5,7 +5,7 @@ import { ApiError } from "../../shared/lib/errors";
 import { env } from "../../shared/config/env";
 import type { DisputeReason, Escrow, EscrowStatus, Prisma } from "../../generated/prisma/client";
 import { lookupTransition, type ActorRole, type EscrowEvent } from "./escrow-machine";
-import { CRYPTO_FEE, FIAT_FEE, breakdown, computeFeeP, feeMathP, fromPesewas, toPesewas } from "./money";
+import { CRYPTO_FEE, FIAT_FEE, breakdown, computeFeeP, feeMathP, fromPesewas, toPesewas, type FeeSplit } from "./money";
 import * as walletService from "../wallet/wallet.service";
 import { postDealMessage } from "../messages/messages.service";
 import { mailer } from "../../shared/mail/mail.service";
@@ -104,7 +104,8 @@ export async function checkoutFromListing(buyerId: string, input: CheckoutInput)
     // Real payment: debit the buyer's wallet for the funding total. If the
     // balance is short, the guard throws and the whole checkout rolls back
     // (stock restored) — the buyer must top up (Paystack deposit) first.
-    const fundingTotal = fromPesewas(feeMathP(amountP, feeP).fundingTotalP);
+    // Marketplace checkout has no fee-split control — always 50/50.
+    const fundingTotal = fromPesewas(feeMathP(amountP, feeP, "split").fundingTotalP);
     await walletService.debitGuarded(
       tx,
       buyerId,
@@ -164,6 +165,8 @@ export interface CreateStandaloneInput {
   role: "buyer" | "seller";
   amount: number;
   currency: "GHS" | "TRX";
+  /** Who absorbs the platform fee. Defaults to an even split. */
+  feeSplit?: FeeSplit;
 }
 
 export async function createStandalone(creatorId: string, input: CreateStandaloneInput) {
@@ -202,6 +205,7 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
         invitedUsername: cleanCounterpartyUsername,
         amount: fromPesewas(amountP),
         feeAmount: fromPesewas(feeP),
+        feeSplit: input.feeSplit ?? "split",
         currency: input.currency,
         rail,
         status: "created",
@@ -321,6 +325,10 @@ export async function getPublicByCode(code: string) {
     currency: escrow.currency,
     rail: escrow.rail,
     status: escrow.status,
+    // The joiner is agreeing to these terms — show who carries the fee, and
+    // what each side actually pays/receives, before they accept.
+    feeSplit: escrow.feeSplit,
+    ...breakdown(Number(escrow.amount), Number(escrow.feeAmount), escrow.feeSplit),
     creator: escrow.creator,
     creatorIsBuyer: escrow.creatorRole === "buyer",
     joinable: escrow.status === "created" && (!escrow.buyerId || !escrow.sellerId),
@@ -432,7 +440,7 @@ async function applyEffects(
 ): Promise<Prisma.EscrowUpdateInput> {
   const amount = Number(escrow.amount);
   const fee = Number(escrow.feeAmount);
-  const money = breakdown(amount, fee);
+  const money = breakdown(amount, fee, escrow.feeSplit);
 
   switch (event) {
     case "FUND": {
@@ -583,7 +591,7 @@ async function sendTransitionEmails(escrow: Escrow, event: EscrowEvent, actor: A
   ]);
   if (!buyer || !seller) return;
 
-  const payout = breakdown(Number(escrow.amount), Number(escrow.feeAmount)).sellerPayout.toFixed(2);
+  const payout = breakdown(Number(escrow.amount), Number(escrow.feeAmount), escrow.feeSplit).sellerPayout.toFixed(2);
 
   switch (event) {
     case "RELEASE":
@@ -772,7 +780,7 @@ type EscrowWithParties = Escrow & {
 };
 
 function serialize(e: EscrowWithParties, userId: string) {
-  const money = breakdown(Number(e.amount), Number(e.feeAmount));
+  const money = breakdown(Number(e.amount), Number(e.feeAmount), e.feeSplit);
   const myRole = e.buyerId === userId ? "buyer" : e.sellerId === userId ? "seller" : "creator";
   return {
     id: e.id,
@@ -784,6 +792,7 @@ function serialize(e: EscrowWithParties, userId: string) {
     rail: e.rail,
     amount: Number(e.amount),
     feeAmount: Number(e.feeAmount),
+    feeSplit: e.feeSplit,
     ...money, // buyerFee, sellerFee, fundingTotal, sellerPayout
     quantity: e.quantity,
     listing: e.listing ? { id: e.listing.id, image: e.listing.images[0] ?? null } : null,

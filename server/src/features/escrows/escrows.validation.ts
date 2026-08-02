@@ -32,10 +32,10 @@ export const createStandalone: RequestSchema = {
     invitedUsername: Joi.string().trim().allow("", null),
     role: Joi.string().valid("buyer", "seller").required(),
     amount: Joi.number().positive().max(10_000_000).required(),
+    // No rail/type here on purpose: rail is derived from currency
+    // (see escrows.service.createStandalone).
     currency: Joi.string().valid("GHS", "TRX").required(),
-    rail: Joi.string().valid("fiat", "crypto").optional(),
-    feeSplit: Joi.string().valid("BUYER", "SELLER", "SPLIT").optional(),
-    type: Joi.string().valid("PHYSICAL", "DIGITAL", "SERVICE", "CRYPTO").optional(),
+    feeSplit: Joi.string().valid("buyer", "seller", "split").default("split"),
   }),
 };
 

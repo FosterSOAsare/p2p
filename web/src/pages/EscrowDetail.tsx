@@ -245,7 +245,9 @@ export function EscrowDetail() {
               <FileText size={18} className="text-emerald-600 dark:text-emerald-400" /> Deal Details
             </h3>
             {deal.description && (
-              <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800">{deal.description}</p>
+              <p className="whitespace-pre-line text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                {deal.description}
+              </p>
             )}
             {deal.trackingNumber && (
               <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">

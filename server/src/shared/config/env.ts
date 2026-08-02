@@ -58,6 +58,19 @@ export const env = {
   SMTP_PASS: process.env.SMTP_PASS ?? "",
 };
 
+// Fail fast on boot instead of running on empty defaults. An unset JWT secret
+// is the dangerous one: jsonwebtoken happily signs and verifies with "", so the
+// app would look healthy while every token was trivially forgeable. DATABASE_URL
+// is here too — the Prisma adapter is built from it at import time.
+const REQUIRED = ["DATABASE_URL", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET"] as const;
+const missing = REQUIRED.filter((key) => !env[key]);
+if (missing.length > 0) {
+  throw new Error(
+    `Missing required environment variable(s): ${missing.join(", ")}. ` +
+      `Set them in server/.env before starting the API.`,
+  );
+}
+
 /** True once a Paystack TEST secret is configured. Restricted to test keys on
  *  purpose — the platform is test-mode only, so a mis-pasted live key must not
  *  silently process real charges. */

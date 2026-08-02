@@ -1,7 +1,7 @@
 /**
  * Fee math — ported from TaaS (packages/shared/money.ts), adapted from BigInt
  * minor units to integer pesewas so the payout invariant survives Decimal storage:
- *   fundingTotal === sellerPayout + fee   (always, on any amount)
+ *   fundingTotal === sellerPayout + fee   (always, on any amount and any split)
  * The fee is computed ONCE at creation and stored — never recomputed.
  */
 
@@ -29,9 +29,19 @@ export function computeFeeP(amountP: number, cfg: FeeConfig): number {
   return raw;
 }
 
-/** Fee split is 50/50 (SPLIT). Integer-floor the buyer's half; seller takes the rounding remainder. */
-export function feeMathP(amountP: number, feeP: number) {
-  const buyerShareP = Math.floor(feeP / 2);
+/** Who absorbs the fee — mirrors the FeeSplit enum in schema.prisma. */
+export type FeeSplit = "buyer" | "seller" | "split";
+
+/**
+ * Divides the fee between the two sides. The buyer's share is always the part
+ * that gets added to what they lock; the seller's share is deducted from their
+ * payout. `split` floors the buyer's half so the seller absorbs an odd pesewa.
+ *
+ * The invariant `fundingTotal === sellerPayout + fee` holds in all three modes,
+ * which is what keeps the ledger balanced no matter who pays.
+ */
+export function feeMathP(amountP: number, feeP: number, split: FeeSplit = "split") {
+  const buyerShareP = split === "buyer" ? feeP : split === "seller" ? 0 : Math.floor(feeP / 2);
   const sellerShareP = feeP - buyerShareP;
   return {
     buyerShareP,
@@ -42,8 +52,8 @@ export function feeMathP(amountP: number, feeP: number) {
 }
 
 /** Convenience: full breakdown in GH₵ floats for a Decimal-stored escrow row. */
-export function breakdown(amount: number, fee: number) {
-  const m = feeMathP(toPesewas(amount), toPesewas(fee));
+export function breakdown(amount: number, fee: number, split: FeeSplit = "split") {
+  const m = feeMathP(toPesewas(amount), toPesewas(fee), split);
   return {
     buyerFee: fromPesewas(m.buyerShareP),
     sellerFee: fromPesewas(m.sellerShareP),

@@ -101,6 +101,23 @@ enum DisputeReason {
   other
 }
 
+/// text = a typed chat bubble, file = a Cloudinary attachment card,
+/// system = a deal lifecycle notice posted by the escrow/admin services.
+enum MessageType {
+  text
+  file
+  system
+}
+
+/// Who absorbs the platform fee. Chosen at creation and stored, so the quote a
+/// party agreed to is the one settled — see money.ts for the arithmetic.
+/// Marketplace checkout is always `split`; standalone deals pick.
+enum FeeSplit {
+  buyer
+  seller
+  split
+}
+
 // ---------- Identity ----------
 
 model User {
@@ -328,6 +345,7 @@ model Escrow {
   invitedUsername String? // unresolved counterparty invite; joinable by code
   amount          Decimal      @db.Decimal(14, 2)
   feeAmount       Decimal      @default(0) @db.Decimal(14, 2) // fiat 1.5% / crypto 1.0%
+  feeSplit        FeeSplit     @default(split) // who absorbs feeAmount
   currency        Currency
   rail            EscrowRail
   status          EscrowStatus @default(created)

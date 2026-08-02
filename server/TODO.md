@@ -81,4 +81,5 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 - [x] ~~Background jobs / time-locks~~ **dropped** — the platform is fully manual (no auto-release, no dispute auto-resolve). `autoReleaseAt`/`autoResolveAt` are nulled on transition; `sweepAutoRelease()` remains in code but is never scheduled. Re-add only if timed release is ever wanted.
 - [ ] **Milestones** — `Milestone` model defined but unused (digital-goods/service split funding)
 - [x] `GET /api/escrows/:id/qr` — QR data-URL for the share/join link (party-only). Optional/nice-to-have since invites are username-based.
-- [ ] Tidy: standalone-deal validation accepts dead `rail`/`feeSplit`/`type` (always 50/50); JWT secrets default `""` (no startup guard)
+- [x] Tidy: dead `rail`/`type` dropped from standalone-deal validation (rail is derived from currency); **`feeSplit` implemented** rather than discarded — `FeeSplit` enum (`buyer`/`seller`/`split`) stored on the escrow and honoured by `feeMathP`/`breakdown` at funding, release and payout (migration `escrow_fee_split`). Marketplace checkout is always `split`
+- [x] Startup guard — boot throws if `DATABASE_URL` / `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` are unset, instead of signing tokens with an empty secret
