@@ -61,6 +61,12 @@ enum MilestoneStatus {
   disbursed
 }
 
+enum PaymentStatus {
+  pending
+  success
+  failed
+}
+
 enum TransactionType {
   deposit
   withdrawal
@@ -119,6 +125,7 @@ model User {
   kyc              KycProfile?
   kycReviews       KycProfile[]  @relation("KycReviewer")
   wallets          Wallet[]
+  paymentIntents   PaymentIntent[]
   listings         Listing[]
   savedListings    SavedListing[]
   blocksMade       VendorBlock[]  @relation("BlocksMade")
@@ -214,6 +221,27 @@ model Transaction {
 
   @@index([walletId, createdAt])
   @@map("transactions")
+}
+
+/// A Paystack (test-mode) deposit attempt. Created `pending` at /deposit/init;
+/// flipped to `success` — exactly once — by the signature-verified webhook or
+/// the /deposit/verify poll, which is when the wallet is actually credited.
+/// `reference` is the Paystack transaction reference and the idempotency key.
+model PaymentIntent {
+  id        String        @id @default(uuid(7))
+  userId    String
+  reference String        @unique
+  amount    Decimal       @db.Decimal(14, 2)
+  currency  Currency      @default(GHS)
+  provider  String        @default("paystack")
+  status    PaymentStatus @default(pending)
+  paidAt    DateTime?
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("payment_intents")
 }
 
 // ---------- Marketplace ----------

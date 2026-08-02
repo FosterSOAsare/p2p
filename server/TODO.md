@@ -22,9 +22,10 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 - [x] `PATCH /me` 🔒 · `PUT /me/notification-prefs` 🔒 (prefs stored, not yet consumed)
 - [x] `GET /:username` — public profile (store identity, rating aggregate, active listings)
 
-### Wallet (`/api/wallet`) — simulated GHS
-- [x] `GET /` — `{balance(cleared), pendingClearance, escrowLocked}`
-- [x] `POST /deposit` · `POST /withdraw` (guarded; blocks on pending clearance) · `GET /transactions`
+### Wallet (`/api/wallet`) — GHS
+- [x] `GET /` — `{balance(cleared), pendingClearance, escrowLocked}` (escrowLocked now excludes unfunded `created` deals)
+- [x] `POST /deposit` (instant simulated — dev fallback) · `POST /withdraw` (guarded; blocks on pending clearance; emails a receipt) · `GET /transactions`
+- [x] **Real deposit (Paystack test mode):** `POST /deposit/init {amount}` → `{authorizationUrl,reference}`; `GET /deposit/verify/:reference` (poll fallback); `POST /webhook/paystack` (raw body, HMAC-SHA512 verified). Idempotent via `PaymentIntent(reference unique)`.
 
 ### Messaging (`/api/messages`) — server done, **client not wired**
 - [x] `GET /` (conversations) · `GET /:username` (thread) · `POST /:username` (send) · `POST /:username/read`
@@ -41,13 +42,13 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 - [x] `GET/POST/DELETE /api/users/me/saved[/:listingId]` — bookmarks
 - [x] `GET /api/users/me/blocked` · `POST/DELETE /api/users/:username/block` — vendor block (+reason)
 - [x] `GET /api/users/me/dashboard` — buyer stats (active orders, total spent, saved, recent)
-- [x] **Checkout** `POST /api/escrows/from-listing` `{listingId,quantity,paymentMethod}` → escrow born `funded` (payment simulated), stock decremented, seller notified
+- [x] **Checkout** `POST /api/escrows/from-listing` `{listingId,quantity,paymentMethod}` → escrow born `funded`, **buyer wallet debited for real** (insufficient balance rolls back checkout & restores stock — top up first), stock decremented, seller notified (in-app + email)
 - [x] **Deals** `GET /api/escrows?role=buyer` · `GET /:id` (party-only)
 - [x] `POST /:id/release` (delivered→disbursed, credits seller) · `POST /:id/dispute` · `POST /:id/review` (disbursed, one per party)
 - [x] **Standalone escrow** `POST /api/escrows` `{title,amount,currency,role,counterpartyUsername?}` → `created` + share code
 - [x] `GET /api/escrows/code/:code` (public preview) · `POST /code/:code/accept` (join) · `PATCH /:id` (edit while `created`)
-- [x] `POST /:id/fund` (created→funded; **fiat only** — TRX throws 501)
-- [ ] Real payment step before funding (checkout is simulated — `TODO(payments)`)
+- [x] `POST /:id/fund` (created→funded; **fiat only** — TRX throws 501); **now debits the buyer's wallet** for the funding total (guarded — rolls back if short)
+- [x] ~~Real payment step before funding~~ — buyer now pays from a real wallet balance (topped up via Paystack) on both checkout and standalone `fund`
 
 ## Seller
 
@@ -56,7 +57,7 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 - [x] **Deliver** `POST /api/escrows/:id/deliver` `{carrier?,trackingNumber?,note?}` (funded→delivered)
 - [x] **Payout** — on buyer release, seller wallet credited (amount − seller fee half), `escrow_release` txn
 - [x] Reviews received surface on profile + listing (avg rating)
-- [ ] Seller notification emails on new order / delivered / released (`TODO(notifications)`)
+- [x] Seller notification **emails** on new order / funds released (gated by `emailShipmentUpdates` for order updates); dispute open/resolved + withdrawal receipts too
 - [ ] Promote/boost listing (paid placement)
 
 ## Admin (`/api/admin` 👑)
@@ -75,9 +76,9 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 ## Cross-cutting — not built / deferred (all personas)
 
 - [ ] **TRX crypto rail** (TRON Shasta / TronGrid): `GET /:id/crypto`, `POST /:id/crypto/check`, on-chain fund/payout/refund. Standalone TRX deals can be *created* but `fund`/`payout`/`refund` throw 501. `CryptoEscrow` model unused.
-- [ ] **Real payments** — buyer actually pays before funding (currently simulated)
-- [ ] **Email/SMS notifications** — a `mailService.send()` that logs `[mail:simulated]` on each lifecycle event (verify/reset already simulated to console)
+- [x] **Real payments** — buyer pays from a real wallet balance (Paystack test-mode deposit) before funding; crypto rail still deferred
+- [x] **Email notifications** — `mailer.*` renders HTML templates in `/server/templates` and logs `[mail:simulated] To <email>: <subject>` (flip to SMTP via `MAIL_DRIVER`). Hooked on verify / reset / login / new-order / funds-release / dispute-created / dispute-resolved / withdrawal. SMS still deferred.
 - [x] ~~Background jobs / time-locks~~ **dropped** — the platform is fully manual (no auto-release, no dispute auto-resolve). `autoReleaseAt`/`autoResolveAt` are nulled on transition; `sweepAutoRelease()` remains in code but is never scheduled. Re-add only if timed release is ever wanted.
 - [ ] **Milestones** — `Milestone` model defined but unused (digital-goods/service split funding)
-- [ ] `GET /api/escrows/:id/qr` — QR data-URL for the share link
+- [x] `GET /api/escrows/:id/qr` — QR data-URL for the share/join link (party-only). Optional/nice-to-have since invites are username-based.
 - [ ] Tidy: standalone-deal validation accepts dead `rail`/`feeSplit`/`type` (always 50/50); JWT secrets default `""` (no startup guard)

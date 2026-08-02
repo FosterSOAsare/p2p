@@ -1,23 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import {
-  ArrowLeft,
-  Lock,
-  Minus,
-  Plus,
-  CreditCard,
-  Smartphone,
-  ShieldCheck,
-  Loader2,
-  CheckCircle2,
-  AlertTriangle,
-} from 'lucide-react'
+import { ArrowLeft, Lock, Minus, Plus, ShieldCheck, Loader2, AlertTriangle, Wallet } from 'lucide-react'
 import { useListing } from '../features/marketplace/data/marketplaceApi'
 import { useCheckout } from '../features/escrow/data/ordersApi'
 import { useMe } from '../features/auth/data/authApi'
+import { useWallet } from '../features/escrow/data/walletApi'
+import { useInitDeposit, pendingOrder, type PayMethod } from '../features/escrow/data/paymentsApi'
+import { PaymentModal } from '../features/escrow/ui/PaymentModal'
 import { formatMoney } from '../features/shared/libs/currency'
 import { apiErrorMessage } from '../features/shared/libs/api'
-import { SimulationNotice } from '../features/shared/ui/SimulationNotice'
 
 // Fee mirror of the server (fiat 1.5%, min GH₵2, cap GH₵150) for a live preview.
 function computeFee(amount: number): number {
@@ -27,11 +18,6 @@ function computeFee(amount: number): number {
   return raw
 }
 
-const PAYMENT_METHODS = [
-  { id: 'momo' as const, label: 'Mobile Money', hint: 'MTN / Telecel / AirtelTigo', icon: Smartphone },
-  { id: 'card' as const, label: 'Debit / Credit Card', hint: 'Visa / Mastercard', icon: CreditCard },
-]
-
 export function Checkout() {
   const [searchParams] = useSearchParams()
   const listingId = searchParams.get('listing') ?? ''
@@ -39,12 +25,16 @@ export function Checkout() {
 
   const { data: me } = useMe()
   const listingQuery = useListing(listingId)
+  const walletQuery = useWallet()
   const checkout = useCheckout()
+  const initDeposit = useInitDeposit()
 
   const [quantity, setQuantity] = useState(1)
-  const [paymentMethod, setPaymentMethod] = useState<'momo' | 'card'>('momo')
+  const [payOpen, setPayOpen] = useState(false)
+  const [redirecting, setRedirecting] = useState(false)
 
   const listing = listingQuery.data
+  const walletBalance = walletQuery.data?.balance ?? 0
 
   const totals = useMemo(() => {
     if (!listing) return null
@@ -96,12 +86,44 @@ export function Checkout() {
   const isOwnListing = me?.username === listing.seller.username
   const maxQty = listing.quantity
 
-  const placeOrder = () => {
+  // Wallet covers the whole order — fund straight from the balance.
+  const payFromWallet = () => {
     checkout.mutate(
-      { listingId, quantity, paymentMethod },
+      { listingId, quantity, paymentMethod: 'momo' },
       { onSuccess: ({ deal }) => navigate(`/escrow/${deal.id}`, { replace: true }) },
     )
   }
+
+  // Wallet covers part (or none) — collect the rest on the hosted page, then the
+  // callback route credits the wallet and places this order.
+  const payWithProvider = (walletAmount: number, method: PayMethod) => {
+    const shortfall = Math.round((totals.fundingTotal - walletAmount) * 100) / 100
+    setRedirecting(true)
+    initDeposit.mutate(
+      { amount: shortfall, method },
+      {
+        onSuccess: ({ authorizationUrl, reference }) => {
+          pendingOrder.save({
+            listingId,
+            quantity,
+            paymentMethod: method,
+            reference,
+            returnTo: `/checkout?listing=${listingId}`,
+          })
+          window.location.href = authorizationUrl
+        },
+        onError: () => setRedirecting(false),
+      },
+    )
+  }
+
+  const payError = checkout.isError
+    ? apiErrorMessage(checkout.error)
+    : initDeposit.isError
+      ? apiErrorMessage(initDeposit.error)
+      : null
+
+  const busy = checkout.isPending || initDeposit.isPending || redirecting
 
   return (
     <div className="mx-auto max-w-4xl py-4 sm:py-6 space-y-6">
@@ -169,31 +191,24 @@ export function Checkout() {
             </div>
           </div>
 
-          {/* Payment method (simulated) */}
-          <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-3">
-            <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white">Payment Method</h3>
-
-            {PAYMENT_METHODS.map(({ id, label, hint, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => setPaymentMethod(id)}
-                className={`w-full flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all cursor-pointer ${
-                  paymentMethod === id
-                    ? 'border-primary-500 bg-primary-50/50 dark:bg-primary-950/40 ring-1 ring-primary-500'
-                    : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-                }`}
-              >
-                <Icon size={20} className="text-primary-600 dark:text-primary-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-slate-900 dark:text-white">{label}</div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400">{hint}</div>
-                </div>
-                {paymentMethod === id && <CheckCircle2 size={16} className="text-primary-600 dark:text-primary-400 shrink-0" />}
-              </button>
-            ))}
-
-            <SimulationNotice />
-          </div>
+          {/* Wallet balance — the buyer picks how much of it to spend at payment time */}
+          {walletBalance > 0 && (
+            <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-950 text-primary-600 dark:text-primary-400">
+                <Wallet size={18} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white">
+                  {formatMoney(walletBalance)} in your wallet
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {walletBalance >= totals.fundingTotal
+                    ? 'Enough to cover this order — or pay another way.'
+                    : 'Use it toward this order and pay the rest at checkout.'}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: order summary */}
@@ -229,27 +244,32 @@ export function Checkout() {
               </div>
             )}
 
-            {checkout.isError && (
-              <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-[11px] font-semibold text-rose-700 dark:bg-rose-950/60 dark:border-rose-800 dark:text-rose-300">
-                {apiErrorMessage(checkout.error)}
-              </div>
-            )}
-
             <button
-              onClick={placeOrder}
-              disabled={isOwnListing || checkout.isPending}
+              onClick={() => setPayOpen(true)}
+              disabled={isOwnListing || busy}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer disabled:opacity-50"
             >
-              {checkout.isPending ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
-              {checkout.isPending ? 'Funding Escrow...' : `Pay ${formatMoney(totals.fundingTotal)} & Fund Escrow`}
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
+              {busy ? 'Processing…' : `Pay ${formatMoney(totals.fundingTotal)}`}
             </button>
 
             <p className="text-center text-[10px] text-slate-400 dark:text-slate-500">
-              Payment is simulated for this prototype — no card is charged.
+              Mobile money or card · Protected by escrow
             </p>
           </div>
         </div>
       </div>
+
+      <PaymentModal
+        open={payOpen}
+        total={totals.fundingTotal}
+        balance={walletBalance}
+        isPending={busy}
+        errorMessage={payError}
+        onClose={() => setPayOpen(false)}
+        onPayFromWallet={payFromWallet}
+        onPayWithProvider={payWithProvider}
+      />
     </div>
   )
 }

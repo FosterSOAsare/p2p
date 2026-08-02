@@ -35,6 +35,11 @@ export const getPublicByCode = asyncHandler(async (req, res) => {
   res.json(preview);
 });
 
+export const getShareQr = asyncHandler(async (req, res) => {
+  const qr = await escrowsService.getShareQr(req.user!, req.params.id as string);
+  res.json(qr);
+});
+
 export const acceptByCode = asyncHandler(async (req, res) => {
   const deal = await escrowsService.acceptByCode(req.user!.id, req.params.code as string);
   res.json({ deal });

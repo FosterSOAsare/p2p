@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import QRCode from "qrcode";
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
 import { env } from "../../shared/config/env";
@@ -7,6 +8,7 @@ import { lookupTransition, type ActorRole, type EscrowEvent } from "./escrow-mac
 import { CRYPTO_FEE, FIAT_FEE, breakdown, computeFeeP, feeMathP, fromPesewas, toPesewas } from "./money";
 import * as walletService from "../wallet/wallet.service";
 import { postDealMessage } from "../messages/messages.service";
+import { mailer } from "../../shared/mail/mail.service";
 
 type Tx = Prisma.TransactionClient;
 type Actor = { id: string } | "system";
@@ -94,15 +96,28 @@ export async function checkoutFromListing(buyerId: string, input: CheckoutInput)
         feeAmount: fromPesewas(feeP),
         currency: "GHS",
         rail: "fiat",
-        status: "funded", // simulated payment = funded on the fly
+        status: "funded", // funded in the same breath — but now backed by a real wallet debit
         fundedAt: new Date(),
       },
     });
 
+    // Real payment: debit the buyer's wallet for the funding total. If the
+    // balance is short, the guard throws and the whole checkout rolls back
+    // (stock restored) — the buyer must top up (Paystack deposit) first.
+    const fundingTotal = fromPesewas(feeMathP(amountP, feeP).fundingTotalP);
+    await walletService.debitGuarded(
+      tx,
+      buyerId,
+      fundingTotal,
+      "escrow_fund",
+      `Escrow funded — ${escrow.title}`,
+      escrow.id,
+    );
+
     await tx.escrowEvent.createMany({
       data: [
         { escrowId: escrow.id, actorId: buyerId, actorRole: "buyer", event: "created" },
-        { escrowId: escrow.id, actorId: buyerId, actorRole: "buyer", event: "funded", detail: { paymentMethod: input.paymentMethod, simulated: true } },
+        { escrowId: escrow.id, actorId: buyerId, actorRole: "buyer", event: "funded", detail: { paymentMethod: input.paymentMethod } },
       ],
     });
 
@@ -116,6 +131,25 @@ export async function checkoutFromListing(buyerId: string, input: CheckoutInput)
     `📦 New order: "${result.title}" — GH₵ ${Number(result.amount).toFixed(2)} is locked in escrow (${result.code}). Deliver to release your payout.`,
     result.id,
   ).catch(() => undefined);
+
+  // …and by email, if they haven't opted out of order updates.
+  prisma.user
+    .findUnique({
+      where: { id: result.sellerId! },
+      select: { email: true, fullName: true, emailShipmentUpdates: true },
+    })
+    .then((seller) => {
+      if (seller?.emailShipmentUpdates) {
+        return mailer.newOrder(
+          seller.email,
+          seller.fullName,
+          result.title,
+          Number(result.amount).toFixed(2),
+          result.code,
+        );
+      }
+    })
+    .catch(() => undefined);
 
   return getDetail({ id: buyerId }, result.id);
 }
@@ -408,7 +442,17 @@ async function applyEffects(
       if (escrow.rail === "crypto") {
         throw ApiError.notImplemented("TRX funding lands with the crypto rail — coming next");
       }
-      // Simulated payment — no buyer wallet debit. TODO(payments): real charge here.
+      // Buyer pays the funding total (item + their half of the fee) from their
+      // wallet. Guarded debit rolls the whole transition back if the balance is
+      // short — the buyer must top up (Paystack deposit) first.
+      await walletService.debitGuarded(
+        tx,
+        escrow.buyerId,
+        money.fundingTotal,
+        "escrow_fund",
+        `Escrow funded — ${escrow.title}`,
+        escrow.id,
+      );
       return { fundedAt: new Date() };
     }
 
@@ -500,22 +544,69 @@ async function refundBuyer(tx: Tx, escrow: Escrow, refundAmount: number) {
 async function notifyAfterTransition(escrow: Escrow, event: EscrowEvent, actor: Actor) {
   if (!escrow.buyerId || !escrow.sellerId) return;
   const money = `GH₵ ${Number(escrow.amount).toFixed(2)}`;
+
+  // In-app thread message. RESOLVE_* is intentionally absent — the admin service
+  // posts the official verdict itself.
   switch (event) {
     case "FUND":
-      return postDealMessage(escrow.buyerId, escrow.sellerId, `💰 "${escrow.title}" is funded — ${money} locked in escrow (${escrow.code}).`, escrow.id);
+      await postDealMessage(escrow.buyerId, escrow.sellerId, `💰 "${escrow.title}" is funded — ${money} locked in escrow (${escrow.code}).`, escrow.id);
+      break;
     case "DELIVER":
-      return postDealMessage(escrow.sellerId, escrow.buyerId, `🚚 "${escrow.title}" marked delivered${escrow.trackingNumber ? ` — ${escrow.carrier ?? "tracking"} ${escrow.trackingNumber}` : ""}. Confirm receipt to release.`, escrow.id);
+      await postDealMessage(escrow.sellerId, escrow.buyerId, `🚚 "${escrow.title}" marked delivered${escrow.trackingNumber ? ` — ${escrow.carrier ?? "tracking"} ${escrow.trackingNumber}` : ""}. Confirm receipt to release.`, escrow.id);
+      break;
     case "RELEASE":
-      return postDealMessage(
+      await postDealMessage(
         actor === "system" ? escrow.buyerId : (actor as { id: string }).id,
         escrow.sellerId,
         `✅ "${escrow.title}" — escrow released${actor === "system" ? " automatically" : ""}. Payout sent to the seller.`,
         escrow.id,
       );
+      break;
     case "DISPUTE":
-      return postDealMessage(escrow.buyerId, escrow.sellerId, `⚠️ A dispute was opened on "${escrow.title}" (${escrow.code}). Funds are frozen until an admin rules.`, escrow.id);
-    default:
-      return;
+      await postDealMessage(escrow.buyerId, escrow.sellerId, `⚠️ A dispute was opened on "${escrow.title}" (${escrow.code}). Funds are frozen until an admin rules.`, escrow.id);
+      break;
+  }
+
+  // Email side-channel — best-effort, never blocks the transition.
+  await sendTransitionEmails(escrow, event, actor).catch(() => undefined);
+}
+
+/** Lifecycle emails for release/dispute events. Money & dispute mail always
+ *  sends (not gated by the shipment-updates preference). */
+async function sendTransitionEmails(escrow: Escrow, event: EscrowEvent, actor: Actor) {
+  if (event !== "RELEASE" && event !== "DISPUTE" && !event.startsWith("RESOLVE_")) return;
+  if (!escrow.buyerId || !escrow.sellerId) return;
+
+  const [buyer, seller] = await Promise.all([
+    prisma.user.findUnique({ where: { id: escrow.buyerId }, select: { email: true, fullName: true } }),
+    prisma.user.findUnique({ where: { id: escrow.sellerId }, select: { email: true, fullName: true } }),
+  ]);
+  if (!buyer || !seller) return;
+
+  const payout = breakdown(Number(escrow.amount), Number(escrow.feeAmount)).sellerPayout.toFixed(2);
+
+  switch (event) {
+    case "RELEASE":
+      await mailer.fundsRelease(seller.email, seller.fullName, escrow.title, payout, escrow.code);
+      break;
+    case "DISPUTE": {
+      // Notify the party who didn't open it (or both, on a system-opened dispute).
+      const openerId = actor === "system" ? null : (actor as { id: string }).id;
+      if (openerId !== escrow.buyerId) await mailer.disputeCreated(buyer.email, buyer.fullName, escrow.title, escrow.code);
+      if (openerId !== escrow.sellerId) await mailer.disputeCreated(seller.email, seller.fullName, escrow.title, escrow.code);
+      break;
+    }
+    case "RESOLVE_RELEASE":
+    case "RESOLVE_REFUND":
+    case "RESOLVE_PARTIAL": {
+      const outcome =
+        event === "RESOLVE_RELEASE" ? "Released to seller" : event === "RESOLVE_REFUND" ? "Refunded to buyer" : "Split between parties";
+      await Promise.all([
+        mailer.disputeResolved(buyer.email, buyer.fullName, escrow.title, outcome, escrow.code),
+        mailer.disputeResolved(seller.email, seller.fullName, escrow.title, outcome, escrow.code),
+      ]);
+      break;
+    }
   }
 }
 
@@ -610,6 +701,26 @@ export async function list(userId: string, params: { role?: "buyer" | "seller"; 
     page: params.page,
     pages: Math.max(1, Math.ceil(total / params.limit)),
   };
+}
+
+/**
+ * QR data-URL for a deal's share/join link — a convenience for handing a
+ * standalone deal to a counterparty. Party-only. Note: since invites are
+ * primarily username-based, this is optional/nice-to-have (see TODO.md).
+ * The join route (`/join/:code`) mirrors the public preview endpoint.
+ */
+export async function getShareQr(actor: { id: string }, id: string) {
+  const escrow = await prisma.escrow.findUnique({
+    where: { id },
+    select: { code: true, buyerId: true, sellerId: true, creatorId: true },
+  });
+  if (!escrow) throw ApiError.notFound("Deal not found");
+  const isParty = [escrow.buyerId, escrow.sellerId, escrow.creatorId].includes(actor.id);
+  if (!isParty) throw ApiError.forbidden("You are not a party to this deal");
+
+  const joinUrl = `${env.WEB_ORIGIN}/join/${escrow.code}`;
+  const dataUrl = await QRCode.toDataURL(joinUrl, { width: 240, margin: 1 });
+  return { code: escrow.code, joinUrl, dataUrl };
 }
 
 export async function getDetail(actor: { id: string }, id: string) {

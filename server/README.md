@@ -52,7 +52,7 @@ Optional scripts: `npx tsx scripts/seed-marketplace.ts` (categories + demo listi
 DATABASE_URL=postgresql://...-pooler.../neondb?sslmode=require   # Neon pooled — runtime
 DIRECT_URL=postgresql://.../neondb?sslmode=require               # Neon direct (no -pooler) — migrations
 PORT=8000
-WEB_ORIGIN=http://localhost:5173
+# WEB_ORIGIN=http://localhost:5173   # Optional: auto-detected (LAN IP) when unset
 
 JWT_ACCESS_SECRET=<64-char hex — node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
 JWT_REFRESH_SECRET=<64-char hex>

@@ -1,12 +1,16 @@
 /**
  * Global API client — all server requests go through here.
- * - Base URL from VITE_API_URL (defaults to the local API server)
+ * - Base URL from VITE_API_URL; otherwise derived from the current host so the
+ *   app works on any network with zero config: opened at localhost → API on
+ *   localhost:8000; opened at a LAN IP (e.g. from a phone) → that IP:8000.
  * - Attaches the JWT access token as an Authorization: Bearer header
  * - On 401, transparently refreshes the token pair once and retries
  * - Normalizes server errors into ApiError { status, message, details }
  */
 
-const API_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const API_URL: string =
+  import.meta.env.VITE_API_URL ??
+  (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8000` : 'http://localhost:8000')
 
 const ACCESS_KEY = 'p2p_access_token'
 const REFRESH_KEY = 'p2p_refresh_token'

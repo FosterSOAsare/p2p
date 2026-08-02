@@ -5,6 +5,7 @@ import { StyleGuide } from './pages/StyleGuide'
 import { Products } from './features/marketplace/ui/Products'
 import { ProductDetail } from './features/marketplace/ui/ProductDetail'
 import { Checkout } from './pages/Checkout'
+import { PaymentCallback } from './pages/PaymentCallback'
 import { MessageThread } from './pages/MessageThread'
 import { Signup } from './features/auth/ui/Signup'
 import { Login } from './features/auth/ui/Login'
@@ -44,6 +45,8 @@ function App() {
         <Route path="marketplace" element={<Products />} />
         <Route path="marketplace/:id" element={<ProductDetail />} />
         <Route path="checkout" element={<Checkout />} />
+        {/* Return leg from the hosted payment page */}
+        <Route path="wallet/deposit/callback" element={<PaymentCallback />} />
         <Route path="seller/:username" element={<SellerProfile />} />
         <Route path="messages/:username" element={<MessageThread />} />
         {/* Unified deals list — role-aware (buyer/seller → own deals, admin → all) */}

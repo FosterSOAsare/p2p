@@ -2,6 +2,7 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import {env} from "./shared/config/env"
+import { isLocalOrLanOrigin } from "./shared/lib/net";
 import { errorHandler, notFoundHandler } from "./shared/middleware/error.middleware";
 import { healthRouter } from "./features/health/health.router";
 import { authRouter } from "./features/auth/auth.router";
@@ -11,6 +12,7 @@ import { adminRouter } from "./features/admin/admin.router";
 import { categoriesRouter, listingsRouter } from "./features/listings/listings.router";
 import { messagesRouter } from "./features/messages/messages.router";
 import { walletRouter } from "./features/wallet/wallet.router";
+import { paystackWebhook } from "./features/wallet/wallet.controller";
 import { escrowsRouter } from "./features/escrows/escrows.router";
 import { uploadRouter } from "./features/upload/upload.router";
 
@@ -18,7 +20,25 @@ export function createApp() {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({ origin: env.WEB_ORIGIN }));
+
+  // CORS: always allow the explicit list; in development also allow any
+  // localhost/private-LAN origin so teammates need zero config on any network.
+  const allowList = new Set(env.CORS_ORIGINS);
+  const isDev = env.NODE_ENV !== "production";
+  app.use(
+    cors({
+      origin(origin, cb) {
+        if (!origin) return cb(null, true); // curl, mobile apps, server-to-server
+        if (allowList.has(origin) || (isDev && isLocalOrLanOrigin(origin))) return cb(null, true);
+        cb(null, false); // clean rejection (no CORS headers) rather than a 500
+      },
+    }),
+  );
+
+  // Paystack webhook needs the RAW body for HMAC signature verification, so it
+  // is mounted before the JSON parser with its own raw parser.
+  app.post("/api/wallet/webhook/paystack", express.raw({ type: "*/*" }), paystackWebhook);
+
   app.use(express.json({ limit: "1mb" }));
 
   app.use("/health", healthRouter);
