@@ -50,8 +50,10 @@ real API and typecheck clean. Two "finished-looking" features are **not function
 - [ ] **Listings moderation (M)** — browse all listings incl. drafts, takedown with reason.
 - [ ] **Deals force-override (M)** — admin manual hold / release / refund + an oversight detail drawer
   (oversight is list-only, read-only today).
-- [ ] **Dispute appeals (M)** — one appeal per dispute, routed to a different/senior admin.
 - [ ] **Audit log (M)** — append-only record of every admin mutation (KYC/disputes already stamp actor+time).
+
+Dispute appeals are **out of scope** — an admin ruling is final. (`docs/` describes an appeal window; that's
+the original TaaS vision, not this build.)
 
 ## Phase 5 — Cleanup & polish  ⏱ before the demo
 

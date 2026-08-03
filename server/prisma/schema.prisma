@@ -1,6 +1,6 @@
 // P2P Marketplace Escrow — simplified from the TaaS schema to the proposal scope:
 // 6-state escrow, simulated GHS wallet, real TRX (Shasta testnet), usernames,
-// share-code/QR join, disputes w/ admin ruling + time-locked auto-resolution.
+// share-code/QR join, disputes settled by a final admin ruling.
 // Enum values are lowercase to match the web client's vocabulary exactly.
 
 generator client {
@@ -476,7 +476,6 @@ model Dispute {
   ruledAmountSeller Decimal?        @db.Decimal(14, 2)
   rulingNote        String?
   resolvedById      String?
-  autoResolveAt     DateTime? // time-locked auto-resolution if no admin ruling
   resolvedAt        DateTime?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -485,7 +484,9 @@ model Dispute {
   openedBy   User   @relation("DisputeOpener", fields: [openedById], references: [id])
   resolvedBy User?  @relation("DisputeResolver", fields: [resolvedById], references: [id])
 
-  @@index([status, autoResolveAt])
+  // The queue filters on status alone — every ruling is manual, so there is no
+  // deadline column to scan alongside it.
+  @@index([status])
   @@map("disputes")
 }
 

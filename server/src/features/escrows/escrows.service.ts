@@ -13,8 +13,9 @@ import { mailer } from "../../shared/mail/mail.service";
 type Tx = Prisma.TransactionClient;
 type Actor = { id: string } | "system";
 
-// Auto-release/auto-resolve are DISABLED for now (everything manual). The sweep
-// below and this constant stay for when timers are switched back on.
+// Auto-release is DISABLED for now — the buyer releases manually. The sweep
+// below and this constant stay for when the timer is switched back on.
+// (Dispute auto-resolution was removed outright: every ruling is an admin's.)
 const AUTO_RELEASE_HOURS = Number(process.env.AUTO_RELEASE_HOURS ?? 72);
 void AUTO_RELEASE_HOURS;
 
@@ -563,8 +564,6 @@ async function applyEffects(
           openedById: escrow.buyerId!, // overwritten below for seller-opened disputes
           reason: payload?.reason ?? "other",
           description: payload?.description ?? "",
-          // auto-resolution disabled for now — an admin must rule manually
-          autoResolveAt: null,
         },
       });
       return { disputedAt: new Date() };

@@ -8,7 +8,8 @@ standalone (off-marketplace) deals, share-code join, a per-pair chat, and admin 
 > **Simulation notice:** all fiat / mobile-money (GHS) payments are **simulated** end-to-end — no
 > real charge, no processor. Wallet money still moves atomically in the DB so balances are correct.
 > The **TRX (TRON Shasta) crypto rail is not built yet** — TRX deals can be created but not funded.
-> Email/SMS are simulated to the server console. Auto-release/auto-resolve are disabled (manual only).
+> Email/SMS are simulated to the server console. Auto-release is disabled (the buyer releases manually);
+> dispute auto-resolution was removed — every ruling is an admin's.
 
 ## Tech stack
 

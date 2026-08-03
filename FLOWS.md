@@ -82,7 +82,7 @@ Off-marketplace contract between two accounts — no listing, no KYC required.
 4. **Rule** — the ruling console is a single dial over the buyer's refund (`0 … fundingTotal`) with a live split preview; its endpoints map back to the dedicated outcomes, which is exact — a split at `fundingTotal` charges no fee (= `RESOLVE_REFUND`), and at `0` leaves the seller `fundingTotal − fee`, which *is* `sellerPayout` (= `RESOLVE_RELEASE`). `POST /api/admin/disputes/:id/resolve {outcome: release | refund | split, buyerRefund?, rulingNote}` → calls `transition(RESOLVE_*)` → credits seller and/or buyer wallets (pro-rata fee on split), sets **`disbursed`**, records `outcome`/`ruledAmount*`/`rulingNote`/`resolvedById`, posts a "⚖️ Official Admin Ruling" chat line. 409 if already resolved.
 5. **After** — verdict renders on the deal page; **payout skips the 24h clearance hold** (admin was involved) → straight to available balance; **no review** offered on a dispute-resolved deal.
 
-An admin ruling is **final** — appeals are out of scope by decision, not omission. ⛔ **Not built:** time-locked auto-resolution.
+An admin ruling is **final**, and it's the only way a dispute ends. Appeals and time-locked auto-resolution are both out of scope by decision, not omission — a frozen deal waits for a human.
 
 ---
 
