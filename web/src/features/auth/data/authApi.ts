@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, tokenStore, type AuthTokens } from '../../shared/libs/api'
+import { disconnectSocket } from '../../messages/realtime/socket'
 
 // ---------- server response shapes ----------
 
@@ -107,6 +108,7 @@ export function useLogout() {
     },
     onSettled: () => {
       tokenStore.clear()
+      disconnectSocket()
       // setQueryData notifies active subscribers immediately (removeQueries does not),
       // so the header flips to logged-out without waiting for a re-render.
       queryClient.setQueryData(authKeys.me, null)

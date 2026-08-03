@@ -2,11 +2,19 @@
  * Formats an ISO date string (or Date) for display.
  * formatDate      → "July 23, 2026"
  * formatDateTime  → "July 23, 2026, 3:22 PM"
+ * formatTime      → "3:22 PM"
  */
 export function formatDate(value: string | Date): string {
   const date = typeof value === 'string' ? new Date(value) : value
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+/** Clock time only — used for message timestamps inside a chat thread. */
+export function formatTime(value: string | Date): string {
+  const date = typeof value === 'string' ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
 export function formatDateTime(value: string | Date): string {

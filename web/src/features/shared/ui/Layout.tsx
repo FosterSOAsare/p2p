@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useMe, useLogout } from '../../auth/data/authApi'
+import { useMessageNotifications } from '../../messages/data/useMessageNotifications'
+import { useUnreadTotal } from '../../messages/data/messagesApi'
+import type { LucideIcon } from 'lucide-react'
 import {
   Handshake,
   Store,
@@ -22,8 +25,18 @@ import {
   Wallet,
   Scale,
   Users,
+  MessageSquare,
 } from 'lucide-react'
 import { Footer } from './Footer'
+
+/** Unread pill on a nav entry. Capped so a busy inbox can't stretch the item. */
+function UnreadDot({ count }: { count: number }) {
+  return (
+    <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-bold text-white">
+      {count > 9 ? '9+' : count}
+    </span>
+  )
+}
 
 const dropdownLinkClass =
   'flex items-center gap-2 rounded-lg px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 hover:text-primary-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
@@ -46,13 +59,17 @@ export function Layout() {
   const logout = useLogout()
   const isLoggedIn = Boolean(me)
 
+  // Opens the session-wide socket and keeps the inbox/unread counts fresh.
+  useMessageNotifications()
+  const unreadTotal = useUnreadTotal()
+
   // Role-aware navigation: admin (account role) > seller (KYC-verified) > buyer.
   // /dashboard renders the right component per persona, so every role points there.
   const isAdmin = me?.role === 'admin'
   const isSeller = !isAdmin && me?.kycStatus === 'verified'
 
   // Admins get a dedicated review surface only — no marketplace/escrow/buyer chrome.
-  const primaryNavItems = isAdmin
+  const primaryNavItems: { to: string; label: string; icon: LucideIcon; badge?: number }[] = isAdmin
     ? [
         { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
         { to: '/admin/kyc', label: 'KYC Queue', icon: ShieldCheck },
@@ -64,6 +81,9 @@ export function Layout() {
         { to: '/marketplace', label: 'Marketplace', icon: Store },
         // One unified deals list — a buyer/seller sees their own deals (scoped server-side)
         ...(isLoggedIn ? [{ to: '/deals', label: 'My Deals', icon: ShieldCheck }] : []),
+        ...(isLoggedIn
+          ? [{ to: '/messages', label: 'Messages', icon: MessageSquare, badge: unreadTotal }]
+          : []),
         // Sellers manage listings, buyers can become sellers
         ...(isSeller
           ? [{ to: '/listings', label: 'My Listings', icon: Package }]
@@ -79,6 +99,9 @@ export function Layout() {
 
   const location = useLocation()
   const isHomePage = location.pathname === '/'
+  // The inbox owns the viewport: no footer, no page scroll — only the message
+  // list and the conversation list scroll, inside their own panes.
+  const isChatPage = location.pathname === '/messages'
 
   // Automatically scroll to top when route changes
   useEffect(() => {
@@ -86,7 +109,11 @@ export function Layout() {
   }, [location.pathname])
 
   return (
-    <div className="min-h-screen flex flex-col transition-colors duration-300 bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div
+      className={`${
+        isChatPage ? 'h-screen overflow-hidden' : 'min-h-screen'
+      } flex flex-col transition-colors duration-300 bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100`}
+    >
       <header className="sticky top-0 z-40 border-b backdrop-blur-md transition-colors duration-300 border-slate-200/80 bg-white/90 dark:border-slate-800 dark:bg-slate-950/90">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           {/* Logo */}
@@ -101,7 +128,7 @@ export function Layout() {
 
           {/* Desktop Navigation Bar */}
           <nav className="hidden md:flex items-center gap-1">
-            {primaryNavItems.map(({ to, label, icon: Icon }) => (
+            {primaryNavItems.map(({ to, label, icon: Icon, badge }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -116,6 +143,7 @@ export function Layout() {
               >
                 <Icon size={15} />
                 {label}
+                {Boolean(badge) && <UnreadDot count={badge!} />}
               </NavLink>
             ))}
           </nav>
@@ -187,6 +215,13 @@ export function Layout() {
                           </Link>
                         </>
                       )}
+
+                      {/* Outside the !isAdmin gate — admins hold threads too
+                          (dispute follow-ups), and their nav omits Messages. */}
+                      <Link to="/messages" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                        <MessageSquare size={15} /> Messages
+                        {unreadTotal > 0 && <UnreadDot count={unreadTotal} />}
+                      </Link>
 
                       {!isSeller && !isAdmin && (
                         <Link to="/bookmarks" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
@@ -295,7 +330,7 @@ export function Layout() {
         {mobileMenuOpen && (
           <div className="md:hidden border-t p-4 animate-fade-in border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             <nav className="space-y-1">
-              {primaryNavItems.map(({ to, label, icon: Icon }) => (
+              {primaryNavItems.map(({ to, label, icon: Icon, badge }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -311,6 +346,7 @@ export function Layout() {
                 >
                   <Icon size={16} />
                   {label}
+                  {Boolean(badge) && <UnreadDot count={badge!} />}
                 </NavLink>
               ))}
 
@@ -353,6 +389,15 @@ export function Layout() {
                     <ShoppingBag size={16} /> {isSeller ? 'My Sales' : 'My Orders'}
                   </Link>
                 )}
+                {isLoggedIn && (
+                  <Link
+                    to="/messages"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
+                  >
+                    <MessageSquare size={16} /> Messages
+                  </Link>
+                )}
                 {!isSeller && !isAdmin && (
                   <Link
                     to="/bookmarks"
@@ -393,16 +438,16 @@ export function Layout() {
         )}
       </header>
 
-      <main className="w-full flex-1">
+      <main className={`w-full flex-1 ${isChatPage ? 'min-h-0' : ''}`}>
         {isHomePage ? (
           <Outlet />
         ) : (
-          <div className="mx-auto max-w-6xl px-3 sm:px-6 py-3 sm:py-8">
+          <div className={`mx-auto max-w-6xl px-3 sm:px-6 ${isChatPage ? 'h-full py-3' : 'py-3 sm:py-8'}`}>
             <Outlet />
           </div>
         )}
       </main>
-      <Footer />
+      {!isChatPage && <Footer />}
     </div>
   )
 }

@@ -1,8 +1,7 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
-import {env} from "./shared/config/env"
-import { isLocalOrLanOrigin } from "./shared/lib/net";
+import { isAllowedOrigin } from "./shared/config/cors";
 import { errorHandler, notFoundHandler } from "./shared/middleware/error.middleware";
 import { healthRouter } from "./features/health/health.router";
 import { authRouter } from "./features/auth/auth.router";
@@ -21,16 +20,13 @@ export function createApp() {
 
   app.use(helmet());
 
-  // CORS: always allow the explicit list; in development also allow any
-  // localhost/private-LAN origin so teammates need zero config on any network.
-  const allowList = new Set(env.CORS_ORIGINS);
-  const isDev = env.NODE_ENV !== "production";
+  // CORS: shared rule (see shared/config/cors.ts) so the WebSocket handshake
+  // accepts exactly the same origins as the REST API.
   app.use(
     cors({
       origin(origin, cb) {
-        if (!origin) return cb(null, true); // curl, mobile apps, server-to-server
-        if (allowList.has(origin) || (isDev && isLocalOrLanOrigin(origin))) return cb(null, true);
-        cb(null, false); // clean rejection (no CORS headers) rather than a 500
+        // clean rejection (no CORS headers) rather than a 500
+        cb(null, isAllowedOrigin(origin));
       },
     }),
   );

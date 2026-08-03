@@ -12,7 +12,10 @@ export const getThread = asyncHandler(async (req, res) => {
 });
 
 export const sendMessage = asyncHandler(async (req, res) => {
-  const message = await messagesService.sendMessage(req.user!.id, req.params.username as string, req.body.body);
+  const message = await messagesService.sendMessage(req.user!.id, req.params.username as string, {
+    body: req.body.body,
+    attachment: req.body.attachment,
+  });
   res.status(201).json({ message });
 });
 

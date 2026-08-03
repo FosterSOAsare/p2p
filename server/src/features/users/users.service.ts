@@ -16,6 +16,10 @@ export async function getPublicProfile(username: string) {
   if (!user || user.status === "suspended") throw ApiError.notFound("User not found");
 
   const verified = user.kyc?.status === "verified";
+  // This is the *seller* storefront (`/seller/:username`). A plain buyer has no
+  // store to show, so don't serve an empty one — 404 and let the client decide
+  // not to link there in the first place.
+  if (!verified) throw ApiError.notFound("Seller not found");
   const [listings, salesCompleted, ratingAgg] = await Promise.all([
     prisma.listing.findMany({
       where: { sellerId: user.id, status: "active" },

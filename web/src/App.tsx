@@ -6,7 +6,7 @@ import { Products } from './features/marketplace/ui/Products'
 import { ProductDetail } from './features/marketplace/ui/ProductDetail'
 import { Checkout } from './pages/Checkout'
 import { PaymentCallback } from './pages/PaymentCallback'
-import { MessageThread } from './pages/MessageThread'
+import { Messages } from './pages/Messages'
 import { Signup } from './features/auth/ui/Signup'
 import { Login } from './features/auth/ui/Login'
 import { VerifyEmail } from './features/auth/ui/VerifyEmail'
@@ -48,7 +48,8 @@ function App() {
         {/* Return leg from the hosted payment page */}
         <Route path="wallet/deposit/callback" element={<PaymentCallback />} />
         <Route path="seller/:username" element={<SellerProfile />} />
-        <Route path="messages/:username" element={<MessageThread />} />
+        {/* Inbox — the open thread is selected by ?u=<username> */}
+        <Route path="messages" element={<Messages />} />
         {/* Unified deals list — role-aware (buyer/seller → own deals, admin → all) */}
         <Route path="deals" element={<Deals />} />
         <Route path="escrow/new" element={<NewEscrow />} />

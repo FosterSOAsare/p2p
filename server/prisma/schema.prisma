@@ -419,14 +419,23 @@ model Conversation {
 
 /// Immutable messages — auto-attached as evidence when a dispute opens.
 /// escrowId links deal-related/system messages to the deal they reference.
+/// type drives the client renderer: a chat bubble, a file card, or a centered
+/// system chip — no sniffing URLs out of the body.
 model Message {
-  id             String    @id @default(uuid(7))
+  id             String      @id @default(uuid(7))
   conversationId String
   senderId       String
+  type           MessageType @default(text)
   body           String
+  // Set when type = file. Bytes live in Cloudinary (POST /api/upload/single);
+  // only the resulting URL + metadata travel over the socket.
+  attachmentUrl  String?
+  attachmentName String?
+  attachmentMime String?
+  attachmentSize Int?
   escrowId       String?
   readAt         DateTime?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime    @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id])

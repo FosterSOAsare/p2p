@@ -602,7 +602,7 @@ export function EscrowDetail() {
 
             {counterparty && (
               <Link
-                to={`/messages/${counterparty.username}?redirect=/escrow/${id}`}
+                to={`/messages?u=${counterparty.username}`}
                 className={`w-full inline-flex items-center justify-center gap-1.5 rounded-xl py-3 text-xs font-bold transition-all cursor-pointer ${
                   deal.status === 'disputed'
                     ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-md shadow-amber-500/20'

@@ -1,14 +1,12 @@
 /**
  * Global API client — all server requests go through here.
- * - Base URL from VITE_API_URL; otherwise derived from the current host so the
- *   app works on any network with zero config: opened at localhost → API on
- *   localhost:8000; opened at a LAN IP (e.g. from a phone) → that IP:8000.
  * - Attaches the JWT access token as an Authorization: Bearer header
  * - On 401, transparently refreshes the token pair once and retries
  * - Normalizes server errors into ApiError { status, message, details }
  */
 
-const API_URL: string =
+/** Exported so the WebSocket connects to the same origin the REST calls use. */
+export const API_URL: string =
   import.meta.env.VITE_API_URL ??
   (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8000` : 'http://localhost:8000')
 
@@ -119,6 +117,16 @@ async function uploadRequest<T>(path: string, formData: FormData, allowRefresh: 
     throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? res.statusText, (data as { details?: unknown } | null)?.details)
   }
   return data as T
+}
+
+/**
+ * Refresh the token pair on demand. Used by the socket layer: a rejected
+ * handshake is the WebSocket's version of a 401, and it has no request to
+ * transparently retry, so it asks for a refresh then reconnects.
+ * Shares the in-flight promise with REST retries.
+ */
+export function refreshAccessToken(): Promise<boolean> {
+  return refreshTokens()
 }
 
 // Single refresh in flight at a time — concurrent 401s share it.

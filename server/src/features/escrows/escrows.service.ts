@@ -129,9 +129,9 @@ export async function checkoutFromListing(buyerId: string, input: CheckoutInput)
   await postDealMessage(
     buyerId,
     result.sellerId!,
-    `📦 New order: "${result.title}" — GH₵ ${Number(result.amount).toFixed(2)} is locked in escrow (${result.code}). Deliver to release your payout.`,
+    `📦 New order: "${result.title}" — GH₵ ${Number(result.amount).toFixed(2)} is locked in escrow (${result.code}).`,
     result.id,
-  ).catch(() => undefined);
+  ).catch((err) => console.error("[escrow] order notice failed:", err));
 
   // …and by email, if they haven't opted out of order updates.
   prisma.user
@@ -223,7 +223,7 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
       invitedUserId,
       `🤝 Escrow deal invite: "${escrow.title}" — ${escrow.currency === "TRX" ? `${Number(escrow.amount)} TRX` : `GH₵ ${Number(escrow.amount).toFixed(2)}`} (code ${escrow.code}). Open your deals to accept.`,
       escrow.id,
-    ).catch(() => undefined);
+    ).catch((err) => console.error("[escrow] invite notice failed:", err));
   }
 
   return getDetail({ id: creatorId }, escrow.id);
@@ -369,7 +369,7 @@ export async function acceptByCode(userId: string, code: string) {
     escrow.creatorId,
     `✅ Joined your escrow deal "${escrow.title}" (${escrow.code}).`,
     escrow.id,
-  ).catch(() => undefined);
+  ).catch((err) => console.error("[escrow] join notice failed:", err));
 
   return getDetail({ id: userId }, escrow.id);
 }

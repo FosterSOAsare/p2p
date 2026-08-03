@@ -130,7 +130,7 @@ export function SellerProfile() {
           {!isOwnProfile && !blockEntry && (
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => navigate(me ? `/messages/${profile.username}?redirect=/seller/${profile.username}` : '/login')}
+                onClick={() => navigate(me ? `/messages?u=${profile.username}` : '/login')}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-md hover:bg-primary-700 transition-all cursor-pointer"
               >
                 <MessageCircle size={16} />
