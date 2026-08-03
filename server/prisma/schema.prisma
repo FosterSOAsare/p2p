@@ -138,6 +138,18 @@ enum FeeSplit {
   split
 }
 
+/// The *subject area* of a notification, not the individual event — it only
+/// drives the icon and accent colour in the panel. Deliberately coarse: a new
+/// notifiable action ships by writing a new title/body, with no enum migration.
+enum NotificationCategory {
+  deal
+  listing
+  dispute
+  kyc
+  wallet
+  system
+}
+
 // ---------- Identity ----------
 
 model User {
@@ -181,6 +193,7 @@ model User {
   disputesResolved Dispute[]     @relation("DisputeResolver")
   reviewsWritten   Review[]      @relation("ReviewAuthor")
   reviewsReceived  Review[]      @relation("ReviewTarget")
+  notifications    Notification[]
 
   @@index([status])
   @@map("users")
@@ -498,6 +511,30 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@map("messages")
+}
+
+/// A one-way in-app notice. Unlike a Message it has no thread, no sender and no
+/// reply path — when a user genuinely needs to answer something (a takedown),
+/// the structured route is the one to take: ListingDispute, not a chat bubble.
+///
+/// `link` is a client route the row opens (e.g. /deals/<id>). Nullable because
+/// some notices are purely informational.
+model Notification {
+  id        String               @id @default(uuid(7))
+  userId    String
+  category  NotificationCategory
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime             @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // The panel reads newest-first; the badge counts where readAt IS NULL.
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@map("notifications")
 }
 
 /// Append-only timeline of every state transition (detail-page stepper + admin oversight).

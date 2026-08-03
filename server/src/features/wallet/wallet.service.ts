@@ -5,6 +5,7 @@ import { feeMathP, toPesewas, fromPesewas } from "../escrows/money";
 import * as paystack from "../../shared/lib/paystack";
 import { paystackEnabled } from "../../shared/config/env";
 import { mailer } from "../../shared/mail/mail.service";
+import { notify } from "../notifications/notifications.service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -217,6 +218,19 @@ async function settleDeposit(
     return true;
   });
 
+  // Only on the call that actually flipped the intent — settleDeposit runs from
+  // both the webhook and the poll fallback, and the loser of that race must not
+  // notify a second time.
+  if (credited) {
+    await notify({
+      userId: intent.userId,
+      category: "wallet",
+      title: "Deposit confirmed",
+      body: `GH₵ ${Number(intent.amount).toFixed(2)} was added to your wallet.`,
+      link: "/wallet",
+    });
+  }
+
   return { credited, status: "success", userId: intent.userId };
 }
 
@@ -260,6 +274,14 @@ export async function withdraw(userId: string, amount: number, destination: stri
     .findUnique({ where: { id: userId }, select: { email: true, fullName: true } })
     .then((u) => u && mailer.withdrawal(u.email, u.fullName, amount.toFixed(2), destination))
     .catch(() => undefined);
+
+  await notify({
+    userId,
+    category: "wallet",
+    title: "Withdrawal sent",
+    body: `GH₵ ${amount.toFixed(2)} is on its way to ${destination}.`,
+    link: "/wallet",
+  });
 
   return getWallet(userId);
 }

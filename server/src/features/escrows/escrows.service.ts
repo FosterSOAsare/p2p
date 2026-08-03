@@ -8,6 +8,7 @@ import { lookupTransition, type ActorRole, type EscrowEvent } from "./escrow-mac
 import { CRYPTO_FEE, FIAT_FEE, breakdown, computeFeeP, feeMathP, fromPesewas, toPesewas, type FeeSplit } from "./money";
 import * as walletService from "../wallet/wallet.service";
 import { postDealMessage } from "../messages/messages.service";
+import { notifyAdmins } from "../notifications/notifications.service";
 import { mailer } from "../../shared/mail/mail.service";
 
 type Tx = Prisma.TransactionClient;
@@ -67,20 +68,19 @@ async function assertNoOpenDispute(tx: Tx, a: string, b: string) {
 export interface CheckoutInput {
   listingId: string;
   quantity: number;
-  paymentMethod: string; // simulated method (momo/card) — recorded only, not charged
+  paymentMethod: string; // momo/card — recorded on the event, not a separate charge
 }
 
 /**
- * The /checkout flow. Nothing persists while the buyer reviews the order —
- * this call IS the "payment" moment. Payment is SIMULATED (as though the buyer
- * has paid): no buyer wallet, no balance, no deposit. In one transaction we
- * decrement stock and create the escrow already `funded`. The seller learns of
- * the order via the pair's in-app conversation thread.
+ * The /checkout flow. Nothing persists while the buyer reviews the order — this
+ * call IS the payment moment. One transaction decrements stock, creates the
+ * escrow already `funded`, and debits the buyer's wallet for the funding total;
+ * a short balance throws and rolls the whole thing back, stock included, so the
+ * buyer has to top up (Paystack deposit) first.
  *
- * TODO(payments): integrate a real payment step (buyer pays for the order)
- *   before marking it funded.
- * TODO(notifications): email/push to the seller on new order (in-app message
- *   is posted below; external channels are not wired yet).
+ * Because the escrow is born `funded`, checkout never runs the FUND transition —
+ * which is why the seller's "new order" mail is sent here rather than by
+ * sendTransitionEmails.
  */
 export async function checkoutFromListing(buyerId: string, input: CheckoutInput) {
   const result = await prisma.$transaction(async (tx) => {
@@ -675,6 +675,15 @@ async function notifyAfterTransition(escrow: Escrow, event: EscrowEvent, actor: 
     }
     case "DISPUTE":
       await postDealMessage(escrow.buyerId, escrow.sellerId, `⚠️ A dispute was opened on "${escrow.title}" (${escrow.code}). Funds are frozen until an admin rules.`, escrow.id);
+      // The parties are covered by the notice above; the admins were not
+      // covered by anything — a disputed deal freezes money and only surfaced
+      // when someone happened to open /admin/disputes.
+      await notifyAdmins({
+        category: "dispute",
+        title: "New dispute — funds frozen",
+        body: `"${escrow.title}" (${escrow.code}) is disputed and awaiting a ruling.`,
+        link: "/admin/disputes",
+      });
       break;
   }
 
@@ -682,15 +691,18 @@ async function notifyAfterTransition(escrow: Escrow, event: EscrowEvent, actor: 
   await sendTransitionEmails(escrow, event, actor).catch(() => undefined);
 }
 
-/** Lifecycle emails for release/dispute events. Money & dispute mail always
- *  sends (not gated by the shipment-updates preference). */
+/** Lifecycle emails. Money & dispute mail always sends; the two shipment steps
+ *  (FUND, DELIVER) respect the recipient's emailShipmentUpdates preference,
+ *  matching how checkout gates mailer.newOrder. */
 async function sendTransitionEmails(escrow: Escrow, event: EscrowEvent, actor: Actor) {
-  if (event !== "RELEASE" && event !== "CANCEL" && event !== "DISPUTE" && !event.startsWith("RESOLVE_")) return;
+  const MAILED: EscrowEvent[] = ["FUND", "DELIVER", "RELEASE", "CANCEL", "DISPUTE"];
+  if (!MAILED.includes(event) && !event.startsWith("RESOLVE_")) return;
   if (!escrow.buyerId || !escrow.sellerId) return;
 
+  const userSelect = { email: true, fullName: true, emailShipmentUpdates: true } as const;
   const [buyer, seller] = await Promise.all([
-    prisma.user.findUnique({ where: { id: escrow.buyerId }, select: { email: true, fullName: true } }),
-    prisma.user.findUnique({ where: { id: escrow.sellerId }, select: { email: true, fullName: true } }),
+    prisma.user.findUnique({ where: { id: escrow.buyerId }, select: userSelect }),
+    prisma.user.findUnique({ where: { id: escrow.sellerId }, select: userSelect }),
   ]);
   if (!buyer || !seller) return;
 
@@ -698,8 +710,28 @@ async function sendTransitionEmails(escrow: Escrow, event: EscrowEvent, actor: A
   const payout = money.sellerPayout.toFixed(2);
 
   switch (event) {
+    case "FUND":
+      // Only standalone deals reach here — marketplace checkout writes the
+      // escrow straight to `funded` and mails newOrder itself.
+      if (seller.emailShipmentUpdates) {
+        await mailer.dealFunded(seller.email, seller.fullName, escrow.title, Number(escrow.amount).toFixed(2), escrow.code);
+      }
+      break;
+    case "DELIVER":
+      if (buyer.emailShipmentUpdates) {
+        const tracking = escrow.trackingNumber
+          ? `${escrow.carrier ?? "Tracking"} ${escrow.trackingNumber}`
+          : "No tracking provided";
+        await mailer.orderDelivered(buyer.email, buyer.fullName, escrow.title, tracking, escrow.code);
+      }
+      break;
     case "RELEASE":
       await mailer.fundsRelease(seller.email, seller.fullName, escrow.title, payout, escrow.code);
+      // The buyer is told only when the *timer* released it — on a manual
+      // release they clicked the button, so an email restating that is noise.
+      if (actor === "system") {
+        await mailer.autoRelease(buyer.email, buyer.fullName, escrow.title, payout, escrow.code);
+      }
       break;
     case "CANCEL":
       // Only for a funded order — that template is about the refund, and an
