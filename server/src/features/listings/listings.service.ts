@@ -135,7 +135,6 @@ export async function getById(id: string, viewer?: { id: string; role: "user" | 
                   id: listing.disputes[0].id,
                   status: listing.disputes[0].status,
                   explanation: listing.disputes[0].explanation,
-                  corrections: listing.disputes[0].corrections,
                   reviewNote: listing.disputes[0].reviewNote,
                   createdAt: listing.disputes[0].createdAt.toISOString(),
                 }
@@ -210,14 +209,12 @@ export async function create(sellerId: string, input: ListingInput) {
 export async function update(actor: Actor, listingId: string, input: ListingInput) {
   const existing = await assertOwnership(actor, listingId);
 
-  // A removed listing is under moderation: the seller may correct the content to
-  // support an appeal, but only an admin (via a dispute ruling) can put it back
-  // on the marketplace — otherwise a seller could simply un-remove themselves.
+  // A removed listing is frozen. The seller can still read it and, where the
+  // takedown allows, appeal it — but not change it. Editing under moderation
+  // would mean an admin rules on content that has since moved, and it's what
+  // let a seller quietly un-remove themselves.
   if (existing.status === "removed" && actor.role !== "admin") {
-    if (!existing.disputeAllowed) throw ApiError.forbidden("This listing was removed and can't be edited");
-    if (input.status !== undefined) {
-      throw ApiError.forbidden("Submit a dispute to have this listing reinstated");
-    }
+    throw ApiError.forbidden("This listing was removed and can't be edited");
   }
 
   const listing = await prisma.listing.update({
@@ -316,14 +313,16 @@ function toCard(l: ListingWithSeller) {
 
 /**
  * Open a dispute on a removed listing. Only the owner, only when the admin
- * allowed appeals, and only one open dispute at a time. The seller is expected
- * to have corrected the listing first — `update()` permits edits while removed
- * so long as an appeal is available.
+ * allowed appeals, and only one open dispute at a time.
+ *
+ * It's an argument, not a resubmission: the listing is frozen at removal, so
+ * the admin rules on exactly what they took down. A seller who wants to sell a
+ * corrected version creates a new listing.
  */
 export async function submitDispute(
   sellerId: string,
   listingId: string,
-  input: { explanation: string; corrections?: string },
+  input: { explanation: string },
 ) {
   const listing = await prisma.listing.findUnique({
     where: { id: listingId },
@@ -345,7 +344,6 @@ export async function submitDispute(
       listingId,
       sellerId,
       explanation: input.explanation.trim(),
-      corrections: input.corrections?.trim() || null,
     },
   });
 
@@ -378,7 +376,6 @@ export async function submitDispute(
     id: dispute.id,
     status: dispute.status,
     explanation: dispute.explanation,
-    corrections: dispute.corrections,
     createdAt: dispute.createdAt.toISOString(),
   };
 }

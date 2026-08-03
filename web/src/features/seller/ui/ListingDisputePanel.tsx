@@ -10,7 +10,6 @@ export interface ListingRemovalInfo {
     id: string
     status: 'open' | 'approved' | 'rejected'
     explanation: string
-    corrections: string | null
     reviewNote: string | null
     createdAt: string
   } | null
@@ -18,12 +17,14 @@ export interface ListingRemovalInfo {
 
 /**
  * Shown on a seller's own removed listing: the takedown reason, and — when the
- * admin allowed it — the form to appeal after correcting the listing above.
+ * admin allowed it — the form to appeal.
+ *
+ * The appeal is an argument, not a resubmission: a removed listing is frozen, so
+ * the admin rules on exactly what they took down.
  */
 export function ListingDisputePanel({ listingId, removal }: { listingId: string; removal: ListingRemovalInfo }) {
   const submit = useSubmitListingDispute()
   const [explanation, setExplanation] = useState('')
-  const [corrections, setCorrections] = useState('')
 
   const dispute = removal.dispute
   const canSubmit = explanation.trim().length >= 10
@@ -89,24 +90,6 @@ export function ListingDisputePanel({ listingId, removal }: { listingId: string;
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label
-              htmlFor="dispute-corrections"
-              className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
-            >
-              What did you change? <span className="normal-case font-normal">(optional)</span>
-            </label>
-            <textarea
-              id="dispute-corrections"
-              rows={2}
-              value={corrections}
-              onChange={(e) => setCorrections(e.target.value)}
-              disabled={submit.isPending}
-              maxLength={2000}
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-white outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 disabled:opacity-50 resize-none"
-            />
-          </div>
-
           {submit.isError && (
             <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
               {apiErrorMessage(submit.error)}
@@ -114,13 +97,7 @@ export function ListingDisputePanel({ listingId, removal }: { listingId: string;
           )}
 
           <button
-            onClick={() =>
-              submit.mutate({
-                id: listingId,
-                explanation: explanation.trim(),
-                corrections: corrections.trim() || undefined,
-              })
-            }
+            onClick={() => submit.mutate({ id: listingId, explanation: explanation.trim() })}
             disabled={submit.isPending || !canSubmit}
             className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3 text-xs font-bold text-white shadow-md hover:bg-primary-700 transition-all cursor-pointer disabled:opacity-50"
           >

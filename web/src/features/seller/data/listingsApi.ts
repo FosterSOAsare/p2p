@@ -92,10 +92,10 @@ export function useDeleteListing() {
 export function useSubmitListingDispute() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, explanation, corrections }: { id: string; explanation: string; corrections?: string }) =>
+    mutationFn: ({ id, explanation }: { id: string; explanation: string }) =>
       api<{ dispute: { id: string; status: string } }>(`/api/listings/${id}/dispute`, {
         method: 'POST',
-        body: { explanation, ...(corrections ? { corrections } : {}) },
+        body: { explanation },
       }).then((r) => r.dispute),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['listings'] })

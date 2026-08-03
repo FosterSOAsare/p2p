@@ -71,6 +71,5 @@ export const dispute: RequestSchema = {
     explanation: Joi.string().trim().min(10).max(2000).required().messages({
       "string.min": "Explain in a little more detail (at least 10 characters)",
     }),
-    corrections: Joi.string().trim().max(2000).allow("", null),
   }),
 };

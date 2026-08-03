@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Loader2, Check, Ban, ArrowRight } from 'lucide-react'
+import { X, Loader2, Check, Ban } from 'lucide-react'
 import {
   useResolveListingDispute,
   type AdminListingDispute,
@@ -71,7 +71,7 @@ export function ListingDisputeReview({
             ) : null}
           </div>
           <div className="min-w-0">
-            <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{dispute.after.title}</p>
+            <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{dispute.listing.title}</p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               @{dispute.seller.username} · submitted {formatDate(dispute.createdAt)}
             </p>
@@ -96,48 +96,35 @@ export function ListingDisputeReview({
               {dispute.explanation}
             </p>
           </div>
-          {dispute.corrections && (
-            <div>
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Corrections made
-              </span>
-              <p className="text-xs text-slate-700 dark:text-slate-300 mt-1 whitespace-pre-wrap leading-relaxed">
-                {dispute.corrections}
-              </p>
-            </div>
-          )}
         </div>
 
-        {/* What actually changed */}
+        {/* The listing itself — frozen at removal, so this is what the ruling applies to */}
         <div>
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-            Changes since removal
+          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            The listing
           </span>
-          {dispute.changedFields.length === 0 ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400">The listing hasn't been edited.</p>
-          ) : (
-            <div className="space-y-2">
-              {dispute.changedFields.map((f) => {
-                const field = f as keyof ListingSnapshot
-                return (
-                  <div key={f} className="rounded-xl border border-slate-200 dark:border-slate-800 p-2.5">
-                    <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                      {FIELD_LABELS[field] ?? f}
-                    </span>
-                    <div className="flex items-center gap-2 mt-1 text-xs">
-                      <span className="flex-1 min-w-0 truncate text-rose-600 dark:text-rose-400 line-through">
-                        {renderValue(field, dispute.before?.[field])}
-                      </span>
-                      <ArrowRight size={12} className="shrink-0 text-slate-400" />
-                      <span className="flex-1 min-w-0 truncate font-semibold text-emerald-700 dark:text-emerald-400">
-                        {renderValue(field, dispute.after[field])}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+            {(['title', 'price', 'category', 'condition', 'quantity', 'location'] as const).map((field) => (
+              <div key={field} className="flex items-baseline gap-3 text-xs">
+                <span className="w-20 shrink-0 text-[10px] font-bold uppercase text-slate-400">
+                  {FIELD_LABELS[field] ?? field}
+                </span>
+                <span className="min-w-0 flex-1 break-words font-semibold text-slate-800 dark:text-slate-200">
+                  {renderValue(field, dispute.listing[field])}
+                </span>
+              </div>
+            ))}
+            {dispute.listing.description && (
+              <div className="border-t border-slate-100 pt-2 dark:border-slate-800">
+                <span className="block text-[10px] font-bold uppercase text-slate-400">
+                  {FIELD_LABELS.description ?? 'Description'}
+                </span>
+                <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                  {dispute.listing.description}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {resolve.isError && (

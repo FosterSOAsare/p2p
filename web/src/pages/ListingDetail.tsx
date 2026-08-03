@@ -47,12 +47,10 @@ export function ListingDetail() {
     ? (listing.condition as (typeof CONDITIONS)[number])
     : 'Good'
 
-  // A removal the seller can still appeal stays editable, so they can correct
-  // the listing first. Once it's non-disputable or the dispute was rejected the
-  // takedown is final — mirrors the server guard in listings.service.update().
-  const editingLocked =
-    listing.status === 'removed' &&
-    (!listing.removal?.disputeAllowed || listing.removal?.dispute?.status === 'rejected')
+  // A removed listing is frozen — mirrors the server guard in
+  // listings.service.update(). The seller can still read it (and appeal, where
+  // the takedown allows), but the form is replaced by a read-only view.
+  const editingLocked = listing.status === 'removed'
 
   const onSubmit = (values: ListingFormValues) => {
     updateListing.mutate(
@@ -154,10 +152,53 @@ export function ListingDetail() {
         )}
 
         {editingLocked ? (
-          <p className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-            This takedown is final, so the listing can no longer be edited. Create a new listing if you want to sell
-            the item again.
-          </p>
+          <div className="space-y-3">
+            <p className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs leading-relaxed text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+              A removed listing is frozen while it&apos;s under moderation, so it can&apos;t be edited. Create a new
+              listing if you want to sell the item again.
+            </p>
+
+            <dl className="space-y-2.5 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+              {(
+                [
+                  ['Title', listing.title],
+                  ['Price', formatMoney(listing.price)],
+                  ['Category', listing.category],
+                  ['Condition', listing.condition ?? '—'],
+                  ['Quantity', String(listing.quantity)],
+                  ['Location', listing.location ?? '—'],
+                ] as const
+              ).map(([label, value]) => (
+                <div key={label} className="flex items-baseline gap-3 text-xs">
+                  <dt className="w-20 shrink-0 text-[10px] font-bold uppercase text-slate-400">{label}</dt>
+                  <dd className="min-w-0 flex-1 break-words font-semibold text-slate-800 dark:text-slate-200">
+                    {value}
+                  </dd>
+                </div>
+              ))}
+              {listing.description && (
+                <div className="border-t border-slate-100 pt-2.5 dark:border-slate-800">
+                  <dt className="text-[10px] font-bold uppercase text-slate-400">Description</dt>
+                  <dd className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                    {listing.description}
+                  </dd>
+                </div>
+              )}
+            </dl>
+
+            {listing.images.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {listing.images.map((src) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt=""
+                    className="h-20 w-20 rounded-lg border border-slate-200 object-cover dark:border-slate-700"
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
           <ListingForm
             defaultValues={{

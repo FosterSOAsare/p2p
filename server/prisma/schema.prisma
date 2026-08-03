@@ -292,7 +292,6 @@ model ListingDispute {
   sellerId     String
   status       ListingDisputeStatus @default(open)
   explanation  String // why the seller believes it should be reinstated
-  corrections  String? // what they changed before appealing
   reviewNote   String? // admin's note on the decision
   reviewedById String?
   reviewedAt   DateTime?
@@ -345,8 +344,6 @@ model Listing {
   /// Whether the seller may appeal this removal — the admin decides per takedown.
   /// Severe violations are removed without appeal; correctable ones allow it.
   disputeAllowed Boolean @default(false)
-  /// Listing fields as they were at removal, so a reviewer can diff the seller's corrections.
-  removalSnapshot Json?
 
   seller    User             @relation(fields: [sellerId], references: [id])
   removedBy User?            @relation("ListingModerator", fields: [removedById], references: [id])

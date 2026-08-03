@@ -13,9 +13,14 @@ Only what's still outstanding is listed here — see `FLOWS.md` for the endpoint
 
 ## Admin (`/api/admin` 👑)
 
-- [ ] Listings moderation (browse all incl. drafts, takedown w/ reason)
 - [ ] Deals **force-override** (manual hold / release / refund) + oversight detail endpoint
 - [ ] Audit log · support tickets
+
+## Listings moderation
+
+Takedown → seller appeal → admin ruling is built end to end. Outstanding:
+
+- [ ] Drop `corrections` from `ListingDispute` (and the `removalSnapshot` diff it exists to support) — the appeal is an explanation, not a resubmission.
 
 ## Crypto
 

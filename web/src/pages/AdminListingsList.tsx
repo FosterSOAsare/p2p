@@ -183,7 +183,7 @@ export function AdminListingsList() {
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 dark:text-white text-sm truncate">{d.after.title}</span>
+                      <span className="font-bold text-slate-900 dark:text-white text-sm truncate">{d.listing.title}</span>
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border capitalize ${
                           d.status === 'open'
@@ -199,10 +199,7 @@ export function AdminListingsList() {
                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                       @{d.seller.username} · removed for {d.listing.removalReasonText}
                     </p>
-                    <span className="text-[10px] text-slate-400">
-                      {d.changedFields.length > 0 ? `${d.changedFields.length} field(s) edited · ` : 'No edits · '}
-                      {formatDate(d.createdAt)}
-                    </span>
+                    <span className="text-[10px] text-slate-400">Appealed {formatDate(d.createdAt)}</span>
                   </div>
                 </div>
                 <button

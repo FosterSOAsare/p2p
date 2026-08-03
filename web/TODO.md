@@ -1,11 +1,12 @@
-## Messaging
+# Web TODO — open items
 
-Realtime chat is merged and on `main`. Text, image and PDF sending verified single-handed; what's left is verification that needs a second person or a full deal.
+Realtime messaging, the dispute console and listings moderation are all built **and verified**
+with live accounts. Only unstarted work is listed below.
 
-- [ ] Verify a live two-account session — unread counts, read ticks and typing across two devices, plus reconnect gap-fill (kill the network mid-thread and confirm no messages are lost).
-- [ ] Verify `/admin/disputes/:id` end-to-end on a real disputed deal: chat, attachments and `system` notices all appear in the case record; the ruling dial's preview matches what actually lands in the wallets; an admin note reaches both parties live.
+---
 
 ## Buyer
+
 - [ ] Report listing (stretch)
 
 ## Seller
@@ -14,7 +15,13 @@ Realtime chat is merged and on `main`. Text, image and PDF sending verified sing
 
 ## Admin
 
-- [ ] Listings moderation view · deals force-override actions · audit log
+- [ ] Deals force-override actions · audit log
+- [ ] Link **Listings** from the admin sidebar — it's in the profile dropdown and `AdminSectionNav`, but `primaryNavItems` in `Layout.tsx` still lists only Dashboard / KYC / Disputes / Users / Deals.
+- [ ] Decide whether admins get a **Messages** nav entry. `useMessageNotifications()` and `useUnreadTotal()` already run for them and `/messages` isn't admin-gated, so a seller's reply to a takedown notice is delivered and counted — just never surfaced.
+
+## Listings moderation
+
+- [ ] Drop the dispute's "what was changed" (`corrections`) field from the seller form and the admin review panel.
 
 ## Crypto
 

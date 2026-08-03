@@ -55,12 +55,18 @@ export function ProductDetail() {
 
   const product = listingQuery.data
 
-  if (listingQuery.isError || !product) {
+  // The server already 404s a removed listing for everyone except its owner and
+  // admins — they get it back so the seller's own page can show the takedown
+  // reason. On the *marketplace* it should be gone for them too: this is the
+  // public shopfront, and `/listings/:id` is where the seller reviews it.
+  if (listingQuery.isError || !product || product.status === 'removed') {
     return (
       <div className="py-12 text-center space-y-4">
         <h2 className="font-display text-xl font-bold text-slate-900 dark:text-white">Listing Not Found</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          {listingQuery.error ? apiErrorMessage(listingQuery.error) : 'The listing you are looking for may have been sold or removed.'}
+          {listingQuery.isError && listingQuery.error
+            ? apiErrorMessage(listingQuery.error)
+            : 'The listing you are looking for may have been sold or removed.'}
         </p>
         <Link
           to="/marketplace"

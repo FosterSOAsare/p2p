@@ -112,16 +112,18 @@ export interface AdminListingDispute {
   id: string
   status: ListingDisputeStatus
   explanation: string
-  corrections: string | null
   reviewNote: string | null
   reviewedBy: string | null
   reviewedAt: string | null
   createdAt: string
   seller: { username: string; avatarUrl: string | null }
-  listing: { id: string; status: ListingStatus; image: string | null; removalReasonText: string | null }
-  before: ListingSnapshot | null
-  after: ListingSnapshot
-  changedFields: string[]
+  /** The listing as removed — it's frozen, so this is what the ruling applies to. */
+  listing: ListingSnapshot & {
+    id: string
+    status: ListingStatus
+    image: string | null
+    removalReasonText: string | null
+  }
 }
 
 export function useAdminListingDisputes(status: 'open' | 'resolved' | 'all') {

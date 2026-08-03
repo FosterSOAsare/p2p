@@ -641,17 +641,6 @@ export async function removeListing(
       removedAt: new Date(),
       removedById: adminId,
       disputeAllowed: input.disputeAllowed ?? false,
-      // Freeze the current fields so a reviewer can diff the seller's corrections.
-      removalSnapshot: {
-        title: listing.title,
-        description: listing.description,
-        price: Number(listing.price),
-        category: listing.category,
-        condition: listing.condition,
-        quantity: listing.quantity,
-        images: listing.images,
-        location: listing.location,
-      },
     },
     select: listingRowSelect,
   });
@@ -699,7 +688,6 @@ const disputeInclude = {
       status: true,
       removalReason: true,
       removalNote: true,
-      removalSnapshot: true,
     },
   },
   seller: { select: { username: true, avatarUrl: true } },
@@ -708,30 +696,13 @@ const disputeInclude = {
 
 type DisputeWithListing = Prisma.ListingDisputeGetPayload<{ include: typeof disputeInclude }>;
 
+// No snapshot/diff: the listing is frozen at removal, so what the reviewer sees
+// is by definition what was taken down.
 function toAdminDispute(d: DisputeWithListing) {
-  const snapshot = (d.listing.removalSnapshot ?? null) as Record<string, unknown> | null;
-  // Current values, so the reviewer can see exactly what changed since removal.
-  const current = {
-    title: d.listing.title,
-    description: d.listing.description,
-    price: Number(d.listing.price),
-    category: d.listing.category,
-    condition: d.listing.condition,
-    quantity: d.listing.quantity,
-    images: d.listing.images,
-    location: d.listing.location,
-  };
-  const changedFields = snapshot
-    ? Object.keys(current).filter(
-        (k) => JSON.stringify(snapshot[k] ?? null) !== JSON.stringify((current as Record<string, unknown>)[k] ?? null),
-      )
-    : [];
-
   return {
     id: d.id,
     status: d.status,
     explanation: d.explanation,
-    corrections: d.corrections,
     reviewNote: d.reviewNote,
     reviewedBy: d.reviewedBy?.username ?? null,
     reviewedAt: d.reviewedAt?.toISOString() ?? null,
@@ -744,10 +715,15 @@ function toAdminDispute(d: DisputeWithListing) {
       removalReasonText: d.listing.removalReason
         ? removalReasonText(d.listing.removalReason, d.listing.removalNote)
         : null,
+      title: d.listing.title,
+      description: d.listing.description,
+      price: Number(d.listing.price),
+      category: d.listing.category,
+      condition: d.listing.condition,
+      quantity: d.listing.quantity,
+      images: d.listing.images,
+      location: d.listing.location,
     },
-    before: snapshot,
-    after: current,
-    changedFields,
   };
 }
 
