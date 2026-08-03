@@ -47,6 +47,13 @@ export function ListingDetail() {
     ? (listing.condition as (typeof CONDITIONS)[number])
     : 'Good'
 
+  // A removal the seller can still appeal stays editable, so they can correct
+  // the listing first. Once it's non-disputable or the dispute was rejected the
+  // takedown is final — mirrors the server guard in listings.service.update().
+  const editingLocked =
+    listing.status === 'removed' &&
+    (!listing.removal?.disputeAllowed || listing.removal?.dispute?.status === 'rejected')
+
   const onSubmit = (values: ListingFormValues) => {
     updateListing.mutate(
       {
@@ -140,30 +147,37 @@ export function ListingDetail() {
       {/* Edit form — prefilled from the live listing */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 shadow-sm space-y-4">
         <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-3">
-          Edit Listing
+          {editingLocked ? 'Listing' : 'Edit Listing'}
         </h3>
         {listing.removal && (
           <ListingDisputePanel listingId={listing.id} removal={listing.removal} />
         )}
 
-        <ListingForm
-          defaultValues={{
-            title: listing.title,
-            description: listing.description ?? '',
-            price: listing.price,
-            category: listing.category,
-            condition: knownCondition,
-            quantity: listing.quantity,
-            imagesText: listing.images.join('\n'),
-            location: listing.location ?? '',
-            status: listing.status as ListingFormValues['status'],
-          }}
-          submitLabel="Save Changes"
-          pendingLabel="Saving..."
-          isPending={updateListing.isPending}
-          error={updateListing.error}
-          onSubmit={onSubmit}
-        />
+        {editingLocked ? (
+          <p className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            This takedown is final, so the listing can no longer be edited. Create a new listing if you want to sell
+            the item again.
+          </p>
+        ) : (
+          <ListingForm
+            defaultValues={{
+              title: listing.title,
+              description: listing.description ?? '',
+              price: listing.price,
+              category: listing.category,
+              condition: knownCondition,
+              quantity: listing.quantity,
+              imagesText: listing.images.join('\n'),
+              location: listing.location ?? '',
+              status: listing.status as ListingFormValues['status'],
+            }}
+            submitLabel="Save Changes"
+            pendingLabel="Saving..."
+            isPending={updateListing.isPending}
+            error={updateListing.error}
+            onSubmit={onSubmit}
+          />
+        )}
       </div>
 
       <ConfirmDialog

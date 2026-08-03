@@ -19,9 +19,11 @@ export const idParam: RequestSchema = {
   }),
 };
 
+// `removed` is filterable here but not in the create/update schemas below — a
+// seller can review their takedowns, not put a listing into that state.
 export const mineQuery: RequestSchema = {
   query: Joi.object({
-    status: Joi.string().valid("draft", "active", "out_of_stock"),
+    status: Joi.string().valid("draft", "active", "out_of_stock", "removed"),
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(48).default(10),
   }),

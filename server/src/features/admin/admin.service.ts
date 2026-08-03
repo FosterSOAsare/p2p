@@ -798,6 +798,14 @@ export async function resolveListingDispute(
           removalSnapshot: PrismaRuntime.DbNull,
         },
       });
+    } else {
+      // A rejection is the end of the road: clearing the flag stops further
+      // edits (update() gates on it) and stops a second dispute being filed,
+      // which submitDispute would otherwise allow once this one is closed.
+      await tx.listing.update({
+        where: { id: dispute.listingId },
+        data: { disputeAllowed: false },
+      });
     }
 
     return tx.listingDispute.update({

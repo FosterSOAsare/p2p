@@ -250,7 +250,10 @@ export async function remove(actor: Actor, listingId: string) {
 }
 
 /** The seller's own listings (any status) for the management page — paginated. */
-export async function mine(sellerId: string, params: { status?: "draft" | "active" | "out_of_stock"; page: number; limit: number }) {
+export async function mine(
+  sellerId: string,
+  params: { status?: "draft" | "active" | "out_of_stock" | "removed"; page: number; limit: number },
+) {
   const where: Prisma.ListingWhereInput = { sellerId, ...(params.status && { status: params.status }) };
   const [total, rows] = await prisma.$transaction([
     prisma.listing.count({ where }),

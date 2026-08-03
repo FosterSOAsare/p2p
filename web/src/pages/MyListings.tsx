@@ -21,6 +21,7 @@ const STATUS_TABS = [
   { id: 'active', label: 'Active' },
   { id: 'draft', label: 'Drafts' },
   { id: 'out_of_stock', label: 'Out of Stock' },
+  { id: 'removed', label: 'Removed' },
 ] as const
 
 function StatusBadge({ status }: { status: MyListingCard['status'] }) {
@@ -180,13 +181,17 @@ export function MyListings() {
                 >
                   <ExternalLink size={14} />
                 </Link>
-                <Link
-                  to={`/listings/${l.id}`}
-                  title="Edit listing"
-                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-all"
-                >
-                  <Pencil size={14} />
-                </Link>
+                {/* A takedown that can't be disputed — or whose dispute was
+                    rejected — is final, so there's nothing left to edit. */}
+                {!(l.status === 'removed' && (!l.disputeAllowed || l.disputeStatus === 'rejected')) && (
+                  <Link
+                    to={`/listings/${l.id}`}
+                    title="Edit listing"
+                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-all"
+                  >
+                    <Pencil size={14} />
+                  </Link>
+                )}
                 <button
                   onClick={() => setDeleteTarget(l)}
                   title="Delete listing"
