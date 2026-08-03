@@ -301,6 +301,55 @@ export async function postDealMessage(fromUserId: string, toUserId: string, body
   });
 }
 
+/**
+ * The two parties' conversation as dispute evidence, windowed to one deal.
+ *
+ * Deliberately reads the pair's thread rather than `escrow.messages`: that
+ * relation only holds `escrowId`-stamped rows, and the only writer of that
+ * column is postDealMessage — so it would hand an arbitrator the lifecycle
+ * notices and none of the human exchange that actually decides the case.
+ *
+ * The window is anchored on those notices instead of guessed at: the deal's
+ * FIRST notice marks when the pair started talking about it. `fallbackFrom`
+ * (the escrow's createdAt) covers a deal whose notices never posted — they're
+ * best-effort, so their absence must not blank the transcript.
+ *
+ * There is deliberately no upper bound while a dispute is open. The last notice
+ * is the dispute-open line itself, and the deal page tells both parties to post
+ * their evidence in the chat *after* that — capping there would drop precisely
+ * what the arbitrator needs. `until` closes the window at the ruling instead.
+ */
+export async function listDealTranscript(
+  escrowId: string,
+  a: string,
+  b: string,
+  opts: { fallbackFrom: Date; until?: Date | null },
+): Promise<MessageDto[]> {
+  const [conversation, firstNotice] = await Promise.all([
+    prisma.conversation.findUnique({
+      where: { userAId_userBId: pairKey(a, b) },
+      select: { id: true },
+    }),
+    prisma.message.findFirst({
+      where: { escrowId },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    }),
+  ]);
+  if (!conversation) return [];
+
+  const from = firstNotice?.createdAt ?? opts.fallbackFrom;
+  const rows = await prisma.message.findMany({
+    where: {
+      conversationId: conversation.id,
+      createdAt: opts.until ? { gte: from, lte: opts.until } : { gte: from },
+    },
+    orderBy: { createdAt: "asc" },
+    include: withSender,
+  });
+  return rows.map(toMessageDto);
+}
+
 // ---------- REST (legacy; the web client now uses the socket) ----------
 
 /** All my conversations, most recent activity first, with unread counts. */

@@ -2,7 +2,7 @@
 
 End-to-end flows in the P2P Marketplace Escrow app. Each lists the steps, the endpoints/states involved, and status (✅ working · ⚠️ partial · ⛔ not built). Detail: [server/TODO.md](server/TODO.md) · [web/TODO.md](web/TODO.md).
 
-Roles: **Buyer** (any account) · **Seller** (KYC-verified) · **Admin** (provisioned). Escrow states: `created → funded → delivered → disbursed | disputed`, plus `cancelled` (seller pulls out of a funded order; buyer refunded in full).
+Roles: **Buyer** (any account) · **Seller** (KYC-verified) · **Admin** (provisioned). Escrow states: `created → funded → delivered → disbursed | disputed`, plus `cancelled` — reachable from `created` (either party walks away, no money moved) or from `funded` (seller pulls out; buyer refunded in full).
 
 ---
 
@@ -54,6 +54,8 @@ The golden path. All transitions go through the single `transition()` gateway (s
 3. **Release** — Buyer clicks *Confirm Receipt & Release* → `POST /:id/release` → **`disbursed`**; seller wallet credited (amount − seller fee half), `escrow_release` txn. *(Release only after delivery — no early release.)*
 4. **Review** — either party `POST /:id/review` (1–5, one per party); buyer→seller review surfaces on the listing + seller profile rating. *(Hidden on admin-resolved deals.)*
 
+**Cancel** — Seller at a still-`funded` order → `POST /:id/cancel {reason?}` → **`cancelled`**: buyer refunded the full `fundingTotal` (platform keeps no fee), listing stock restored, reason relayed in the deal chat and by email. Not offered once `delivered` — from there it's release-or-dispute.
+
 Money on a GH₵200 order: buyer funds 201.50 → seller gets 198.50 → fee 3.00. **Auto-release is disabled** — release is manual.
 
 ---
@@ -62,18 +64,20 @@ Money on a GH₵200 order: buyer funds 201.50 → seller gets 198.50 → fee 3.0
 Off-marketplace contract between two accounts — no listing, no KYC required.
 
 1. **Create** — `/escrow/new` → `POST /api/escrows` `{title, description?, amount, currency(GHS|TRX), role(buyer|seller), counterpartyUsername?}` → **`created`** + unique share code. Known username fills the counterparty; unknown ⇒ joinable by code.
-2. **Share / join** — share code (`GET /api/escrows/code/:code` public preview) → counterparty `POST /code/:code/accept` fills the empty side. Creator may `PATCH /:id` while still `created`.
+2. **Share / join** — leave the counterparty blank and the deal detail response carries a `share` block (join URL + QR data-URL), rendered on the deal page. The link lands on `/join/:code` → public preview (`GET /api/escrows/code/:code`) showing terms, which side you'd take and what you'd pay/receive; signed-out visitors are bounced through `/login?redirect=` and back. Accepting (`POST /code/:code/accept`) fills the empty side and redirects to the deal — at which point `share` goes null and the QR disappears. Creator may `PATCH /:id` while still `created`.
 3. **Fund** — `POST /:id/fund` (`created→funded`) — **fiat simulated only**; TRX throws 501 (crypto rail unbuilt).
 4. Then **deliver → release → review** exactly as §5.
 
-⛔ **Not built:** QR share (`GET /:id/qr`), on-chain TRX funding/payout, milestone-based deals.
+**Cancel** — while still `created`, either party may `POST /:id/cancel {reason?}` → **`cancelled`**. No wallet was ever debited, so nothing is refunded and no stock is involved; it just clears a deal (or a never-accepted invite) out of the deals list. Works on TRX deals too, since no money effects run.
+
+⛔ **Not built:** on-chain TRX funding/payout, milestone-based deals.
 
 ---
 
-## 7. Dispute & arbitration ✅ (server + admin client) · ⚠️ (evidence chat empty)
+## 7. Dispute & arbitration ✅ (server + admin client)
 
-1. **Open** — Buyer or seller at a `funded`/`delivered` deal → `POST /:id/dispute` `{reason, description}` → **`disputed`**; the deal **freezes** (no further party actions; `autoReleaseAt` nulled).
-2. **Review** — Admin at `/admin/disputes` (queue, status tab in URL) opens the detail drawer: deal terms, both parties, amounts, timeline, and the **deal chat as evidence** (persisted messages + the deal's system notices).
+1. **Open** — Buyer or seller at a `funded`/`delivered` deal → `POST /:id/dispute` `{reason, description}` → **`disputed`**; the deal **freezes** (no further party actions; `autoReleaseAt` nulled). The *pair* freezes too: while a dispute is open between two users, neither can start another deal with the other — checkout, standalone create and join-by-code all 409 (`assertNoOpenDispute`). The form takes reason + description only — photos and receipts go in the deal chat, which is what the arbitrator reads (§7.2).
+2. **Review** — Admin at `/admin/disputes` (queue, status tab in URL) opens the detail drawer: deal terms, both parties, amounts, timeline, and the **evidence transcript** — what the two parties actually said about *this* deal (chat, image/file attachments and the escrow's own system notices interleaved) without handing over the pair's whole history. Read from the `Conversation`, not `escrow.messages`: only `postDealMessage` stamps `Message.escrowId`, so that relation holds lifecycle notices alone. The window opens at the deal's **first** system notice (falling back to `escrow.createdAt`, since notices are best-effort) and stays open until the ruling — deliberately *not* capped at the last notice, which is the dispute-open line itself, with the parties' evidence posted after it.
 3. **Rule** — `POST /api/admin/disputes/:id/resolve {outcome: release | refund | split, buyerRefund?, rulingNote}` → calls `transition(RESOLVE_*)` → credits seller and/or buyer wallets (pro-rata fee on split), sets **`disbursed`**, records `outcome`/`ruledAmount*`/`rulingNote`/`resolvedById`, posts a "⚖️ Official Admin Ruling" chat line. 409 if already resolved.
 4. **After** — verdict renders on the deal page; **payout skips the 24h clearance hold** (admin was involved) → straight to available balance; **no review** offered on a dispute-resolved deal.
 

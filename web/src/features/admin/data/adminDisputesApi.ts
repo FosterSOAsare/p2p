@@ -37,17 +37,27 @@ export interface AdminDispute {
     status: string
     buyer: DisputeParty | null
     seller: DisputeParty | null
-    messageCount: number
+    /** Deal-linked lifecycle notices, not the length of the parties' chat. */
+    noticeCount: number
   }
   openedBy: { id: string; username: string }
   resolvedBy: { id: string; username: string } | null
 }
 
+/**
+ * One line of the evidence transcript — the server's `MessageDto`, so file
+ * evidence arrives with its Cloudinary metadata rather than a bare body string.
+ * `system` lines are the escrow's own lifecycle notices.
+ */
 export interface DisputeMessage {
   id: string
+  senderId: string
+  senderUsername: string
+  type: 'text' | 'file' | 'system'
   body: string
+  attachment: { url: string; name: string; mime: string; size: number } | null
+  escrowId: string | null
   createdAt: string
-  sender: DisputeParty
 }
 
 export interface DisputeEvent {

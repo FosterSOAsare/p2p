@@ -51,6 +51,11 @@ export interface Deal {
 
 export interface DealDetail extends Deal {
   creatorUsername: string
+  /**
+   * Present only while a side is still empty — the invite kit for handing the
+   * deal to someone. `dataUrl` is a base64 PNG QR of `joinUrl`.
+   */
+  share: { code: string; joinUrl: string; dataUrl: string } | null
   myReview: { rating: number; comment: string | null } | null
   events: { id: string; event: string; actorRole: string; createdAt: string }[]
   dispute: {
@@ -102,6 +107,51 @@ export function useDeal(id: string) {
     queryFn: () => api<{ deal: DealDetail }>(`/api/escrows/${id}`).then((r) => r.deal),
     retry: false,
     enabled: Boolean(id),
+  })
+}
+
+// ---------- join by share code ----------
+
+/**
+ * What a share link reveals before you commit. Public (no auth) and deliberately
+ * thin — terms and the creator's username, no party details or contact info.
+ */
+export interface PublicDealPreview {
+  code: string
+  title: string
+  description: string | null
+  amount: number
+  currency: 'GHS' | 'TRX'
+  rail: 'fiat' | 'crypto'
+  status: EscrowStatus
+  feeSplit: FeeSplit
+  buyerFee: number
+  sellerFee: number
+  fundingTotal: number
+  sellerPayout: number
+  creator: { username: string; avatarUrl: string | null }
+  /** The creator's side — you take the opposite one. */
+  creatorIsBuyer: boolean
+  joinable: boolean
+  createdAt: string
+}
+
+export function usePublicDeal(code: string) {
+  return useQuery({
+    queryKey: ['escrows', 'public', code] as const,
+    queryFn: () => api<PublicDealPreview>(`/api/escrows/code/${code}`),
+    enabled: Boolean(code),
+    retry: false,
+  })
+}
+
+export function useAcceptDealByCode() {
+  const invalidate = useInvalidateDeals()
+  return useMutation({
+    mutationFn: (code: string) =>
+      api<{ deal: DealDetail }>(`/api/escrows/code/${code}/accept`, { method: 'POST' }),
+    // Both sides are filled now, so the creator's `share` QR is gone on next read.
+    onSuccess: ({ deal }) => invalidate(deal.id),
   })
 }
 

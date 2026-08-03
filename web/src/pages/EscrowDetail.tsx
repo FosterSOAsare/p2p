@@ -14,13 +14,11 @@ import {
   Copy,
   Check,
   Star,
-  Upload,
   Pencil,
   X,
   Ban,
   RotateCcw,
 } from 'lucide-react'
-import { useUploadSingleFile } from '../features/upload/data/uploadApi'
 import {
   useDeal,
   useFundDeal,
@@ -59,7 +57,6 @@ export function EscrowDetail() {
   const dispute = useDisputeDeal()
   const review = useReviewDeal()
   const updateEscrow = useUpdateEscrow()
-  const uploadSingle = useUploadSingleFile()
 
   const [confirmRelease, setConfirmRelease] = useState(false)
   const [deliverOpen, setDeliverOpen] = useState(false)
@@ -111,17 +108,8 @@ export function EscrowDetail() {
     )
   }
 
-  const handleDisputeProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    uploadSingle.mutate(file, {
-      onSuccess: (uploaded) => {
-        setDisputeDesc((prev) => `${prev}\n\n📷 Photo Evidence: ${uploaded.url}`.trim())
-      },
-    })
-  }
   const [copied, setCopied] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
 
@@ -161,6 +149,14 @@ export function EscrowDetail() {
     navigator.clipboard.writeText(deal.code).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
+    })
+  }
+
+  const copyJoinUrl = () => {
+    if (!deal.share) return
+    navigator.clipboard.writeText(deal.share.joinUrl).then(() => {
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 1500)
     })
   }
 
@@ -320,6 +316,44 @@ export function EscrowDetail() {
             {actionError != null && (
               <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-[11px] font-semibold text-rose-700 dark:bg-rose-950/60 dark:border-rose-800 dark:text-rose-300">
                 {apiErrorMessage(actionError)}
+              </div>
+            )}
+
+            {/* Only present while a side is unfilled — nobody was invited by
+                username, so this is the only way to hand the deal over. */}
+            {deal.share && (
+              <div className="space-y-3 rounded-xl border border-primary-200 dark:border-primary-800 bg-primary-50/50 dark:bg-primary-950/30 p-4">
+                <div className="space-y-0.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-primary-700 dark:text-primary-400">
+                    Waiting for the other party
+                  </p>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                    Share this link or code. Whoever opens it takes the {deal.myRole === 'buyer' ? 'seller' : 'buyer'} side
+                    of the deal.
+                  </p>
+                </div>
+
+                <img
+                  src={deal.share.dataUrl}
+                  alt={`QR code to join deal ${deal.share.code}`}
+                  className="mx-auto h-40 w-40 rounded-xl border border-slate-200 dark:border-slate-700 bg-white p-1.5"
+                />
+
+                <div className="flex items-center gap-1.5">
+                  <input
+                    readOnly
+                    value={deal.share.joinUrl}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 py-2 text-[11px] text-slate-700 dark:text-slate-300 focus:outline-none"
+                  />
+                  <button
+                    onClick={copyJoinUrl}
+                    className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-2 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    {linkCopied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                    {linkCopied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -491,7 +525,7 @@ export function EscrowDetail() {
                   ))}
                 </select>
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <textarea
                     value={disputeDesc}
                     onChange={(e) => setDisputeDesc(e.target.value)}
@@ -499,24 +533,10 @@ export function EscrowDetail() {
                     placeholder="Explain the problem clearly (min 10 chars)..."
                     className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-rose-500 focus:outline-none resize-none"
                   />
-
-                  <div className="flex items-center justify-end">
-                    <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white cursor-pointer bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
-                      {uploadSingle.isPending ? (
-                        <Loader2 size={13} className="animate-spin text-rose-600" />
-                      ) : (
-                        <Upload size={13} className="text-slate-500" />
-                      )}
-                      {uploadSingle.isPending ? 'Uploading Photo...' : 'Attach Photo Evidence'}
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        className="hidden"
-                        disabled={uploadSingle.isPending}
-                        onChange={handleDisputeProofUpload}
-                      />
-                    </label>
-                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Photos and receipts belong in the deal chat — the admin reviewing this case sees every attachment
+                    you&apos;ve sent since the deal opened.
+                  </p>
                 </div>
 
                 <div className="flex gap-2 pt-1">

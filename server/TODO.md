@@ -7,14 +7,6 @@ Only what's still outstanding is listed here — see `FLOWS.md` for the endpoint
 
 ---
 
-## Messaging
-
-- [ ] **Merge realtime messaging (`feat/messaging`) into `main`.** Socket.IO on the API port, JWT handshake auth, `user:`/`convo:` rooms, persist-then-emit for chat, file and system messages, plus the `MessageType`/attachment migration. `main` currently has only the REST endpoints.
-
-## Deals (`/api/escrows`)
-
-- [ ] **Dispute evidence attachments** — store uploaded proof as a real list on the dispute (Cloudinary URL + name/mime) instead of the client appending `📷 Photo Evidence: <url>` into the description string. Surface it in `GET /admin/disputes/:id` alongside the chat transcript.
-
 ## Seller
 
 - [ ] Promote/boost listing (paid placement)

@@ -32,6 +32,35 @@ async function generateShareCode(tx: Tx): Promise<string> {
   throw ApiError.conflict("Could not allocate a share code, please retry");
 }
 
+// ---------- Shared guards ----------
+
+/**
+ * Two parties with money frozen in arbitration have no business starting a new
+ * deal — settle the open one first. Guards checkout, standalone creation and
+ * join-by-code, in both role orientations (the seller can't invite a buyer they
+ * are mid-dispute with either).
+ *
+ * Keys off `escrow.status` rather than `Dispute.status`: a ruling transitions
+ * the deal to `disbursed`, so `disputed` means exactly "arbitration in progress".
+ */
+async function assertNoOpenDispute(tx: Tx, a: string, b: string) {
+  const frozen = await tx.escrow.findFirst({
+    where: {
+      status: "disputed",
+      OR: [
+        { buyerId: a, sellerId: b },
+        { buyerId: b, sellerId: a },
+      ],
+    },
+    select: { code: true, title: true },
+  });
+  if (frozen) {
+    throw ApiError.conflict(
+      `There's an open dispute between you two on "${frozen.title}" (${frozen.code}). It has to be resolved before you can start another deal together.`,
+    );
+  }
+}
+
 // ---------- Checkout: order → payment → escrow born funded → seller notified ----------
 
 export interface CheckoutInput {
@@ -63,6 +92,7 @@ export async function checkoutFromListing(buyerId: string, input: CheckoutInput)
     if (listing.quantity < input.quantity) {
       throw ApiError.badRequest(`Only ${listing.quantity} unit(s) left in stock`);
     }
+    await assertNoOpenDispute(tx, buyerId, listing.seller.id);
 
     // Money math — integer pesewas, fee stored once (marketplace = fiat rail)
     const amountP = toPesewas(Number(listing.price)) * input.quantity;
@@ -192,6 +222,7 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
   }
 
   const escrow = await prisma.$transaction(async (tx) => {
+    if (invitedUserId) await assertNoOpenDispute(tx, creatorId, invitedUserId);
     const code = await generateShareCode(tx);
     return tx.escrow.create({
       data: {
@@ -345,6 +376,7 @@ export async function acceptByCode(userId: string, code: string) {
     if (found.creatorId === userId) throw ApiError.badRequest("You created this deal");
     if (found.buyerId === userId || found.sellerId === userId) return found; // already joined — idempotent
     if (found.buyerId && found.sellerId) throw ApiError.conflict("This deal already has both parties");
+    await assertNoOpenDispute(tx, userId, found.creatorId);
 
     const data = found.buyerId ? { sellerId: userId } : { buyerId: userId };
     const claimed = await tx.escrow.updateMany({
@@ -795,23 +827,14 @@ export async function list(userId: string, params: { role?: "buyer" | "seller"; 
 }
 
 /**
- * QR data-URL for a deal's share/join link — a convenience for handing a
- * standalone deal to a counterparty. Party-only. Note: since invites are
- * primarily username-based, this is optional/nice-to-have (see TODO.md).
- * The join route (`/join/:code`) mirrors the public preview endpoint.
+ * The invite kit for a deal that still has an empty side: the join URL and a QR
+ * of it. Built inline in getDetail rather than behind its own endpoint — the
+ * deal page already makes that request, and one source means the QR can't drift
+ * from the link it encodes. `/join/:code` mirrors the public preview endpoint.
  */
-export async function getShareQr(actor: { id: string }, id: string) {
-  const escrow = await prisma.escrow.findUnique({
-    where: { id },
-    select: { code: true, buyerId: true, sellerId: true, creatorId: true },
-  });
-  if (!escrow) throw ApiError.notFound("Deal not found");
-  const isParty = [escrow.buyerId, escrow.sellerId, escrow.creatorId].includes(actor.id);
-  if (!isParty) throw ApiError.forbidden("You are not a party to this deal");
-
-  const joinUrl = `${env.WEB_ORIGIN}/join/${escrow.code}`;
-  const dataUrl = await QRCode.toDataURL(joinUrl, { width: 240, margin: 1 });
-  return { code: escrow.code, joinUrl, dataUrl };
+async function buildShareInvite(code: string) {
+  const joinUrl = `${env.WEB_ORIGIN}/join/${code}`;
+  return { code, joinUrl, dataUrl: await QRCode.toDataURL(joinUrl, { width: 240, margin: 1 }) };
 }
 
 export async function getDetail(actor: { id: string }, id: string) {
@@ -833,9 +856,18 @@ export async function getDetail(actor: { id: string }, id: string) {
 
   const myReview = escrow.reviews.find((r) => r.reviewerId === actor.id);
 
+  // A deal with an empty side has no counterparty to notify in-app, so the
+  // creator has to hand it over out of band — that's the only case that needs
+  // (and pays for) the QR. Same condition as getPublicByCode's `joinable`.
+  const share =
+    escrow.status === "created" && (!escrow.buyerId || !escrow.sellerId)
+      ? await buildShareInvite(escrow.code)
+      : null;
+
   return {
     ...serialize(escrow, actor.id),
     creatorUsername: escrow.creator.username,
+    share,
     myReview: myReview ? { rating: myReview.rating, comment: myReview.comment } : null,
     events: escrow.events.map((ev) => ({
       id: ev.id,

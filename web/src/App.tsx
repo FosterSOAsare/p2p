@@ -30,6 +30,8 @@ import { SellerProfile } from './pages/SellerProfile'
 import { AdminKycList } from './pages/AdminKycList'
 import { AdminKycDetail } from './pages/AdminKycDetail'
 import { AdminDisputesList } from './pages/AdminDisputesList'
+import { AdminDisputeDetail } from './pages/AdminDisputeDetail'
+import { JoinDeal } from './pages/JoinDeal'
 import { AdminUsersList } from './pages/AdminUsersList'
 import { AdminDashboard } from './pages/AdminDashboard'
 import { NotFound } from './pages/NotFound'
@@ -54,6 +56,8 @@ function App() {
         <Route path="deals" element={<Deals />} />
         <Route path="escrow/new" element={<NewEscrow />} />
         <Route path="escrow/:id" element={<EscrowDetail />} />
+        {/* Share-link / QR landing — public, so the terms are readable before signing in */}
+        <Route path="join/:code" element={<JoinDeal />} />
         <Route path="sell" element={<VendorKyc />} />
         <Route path="vendor/kyc" element={<VendorKyc />} />
         {/* Single role-aware dashboard (admin → console, verified seller → store, buyer → overview) */}
@@ -73,6 +77,7 @@ function App() {
           <Route path="admin/kyc" element={<AdminKycList />} />
           <Route path="admin/kyc/:id" element={<AdminKycDetail />} />
           <Route path="admin/disputes" element={<AdminDisputesList />} />
+          <Route path="admin/disputes/:id" element={<AdminDisputeDetail />} />
           <Route path="admin/users" element={<AdminUsersList />} />
         </Route>
         <Route path="terms" element={<Terms />} />

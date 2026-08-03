@@ -9,7 +9,7 @@ import type {
   UserRole,
 } from "../../generated/prisma/client";
 import { transition } from "../escrows/escrows.service";
-import { postDealMessage } from "../messages/messages.service";
+import { listDealTranscript, postDealMessage } from "../messages/messages.service";
 
 // ---------- KYC review queue ----------
 
@@ -135,7 +135,9 @@ export async function listDisputes(status: "open" | "resolved" | "all") {
       status: d.escrow.status,
       buyer: d.escrow.buyer,
       seller: d.escrow.seller,
-      messageCount: d.escrow._count.messages,
+      // Deal-linked system notices only — the parties' chat isn't stamped with
+      // escrowId, so this is a lifecycle count, not a conversation length.
+      noticeCount: d.escrow._count.messages,
     },
     openedBy: d.openedBy,
     resolvedBy: d.resolvedBy,
@@ -150,10 +152,6 @@ export async function getDispute(id: string) {
         include: {
           buyer: { select: { id: true, username: true, avatarUrl: true, email: true } },
           seller: { select: { id: true, username: true, avatarUrl: true, email: true } },
-          messages: {
-            orderBy: { createdAt: "asc" },
-            include: { sender: { select: { id: true, username: true, avatarUrl: true } } },
-          },
           events: { orderBy: { createdAt: "asc" } },
         },
       },
@@ -163,6 +161,17 @@ export async function getDispute(id: string) {
   });
 
   if (!d) throw ApiError.notFound("Dispute not found");
+
+  // Evidence = what the parties actually said about this deal. Starts at the
+  // deal's first system notice; runs to the ruling, or to now while still open
+  // (post-dispute messages are where the parties argue their case).
+  const transcript =
+    d.escrow.buyerId && d.escrow.sellerId
+      ? await listDealTranscript(d.escrowId, d.escrow.buyerId, d.escrow.sellerId, {
+          fallbackFrom: d.escrow.createdAt,
+          until: d.resolvedAt,
+        })
+      : [];
 
   return {
     id: d.id,
@@ -186,12 +195,7 @@ export async function getDispute(id: string) {
       status: d.escrow.status,
       buyer: d.escrow.buyer,
       seller: d.escrow.seller,
-      messages: d.escrow.messages.map((m) => ({
-        id: m.id,
-        body: m.body,
-        createdAt: m.createdAt.toISOString(),
-        sender: m.sender,
-      })),
+      messages: transcript,
       events: d.escrow.events,
     },
     openedBy: d.openedBy,

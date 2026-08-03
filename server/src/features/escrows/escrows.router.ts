@@ -19,8 +19,9 @@ escrowsRouter.post("/", validate(escrowsValidation.createStandalone), escrowsCon
 escrowsRouter.post("/code/:code/accept", validate(escrowsValidation.codeParam), escrowsController.acceptByCode);
 
 escrowsRouter.get("/", validate(escrowsValidation.list), escrowsController.list);
+// No separate /qr route — the share QR rides along on the detail response,
+// which is the request the deal page already makes (see getDetail).
 escrowsRouter.get("/:id", validate(escrowsValidation.idParam), escrowsController.getDetail);
-escrowsRouter.get("/:id/qr", validate(escrowsValidation.idParam), escrowsController.getShareQr);
 escrowsRouter.patch("/:id", validate(escrowsValidation.updateDeal), escrowsController.updateDeal);
 
 // State transitions — one endpoint per event, guarded by the machine

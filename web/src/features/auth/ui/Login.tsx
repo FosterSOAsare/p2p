@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
@@ -27,7 +27,14 @@ function FieldError({ message }: { message?: string }) {
 
 export function Login() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [showPassword, setShowPassword] = useState(false)
+
+  // Return leg for anything that bounces a signed-out visitor here (a deal
+  // invite link, say). Same-origin paths only — an absolute URL would turn this
+  // into an open redirect off the back of our own login page.
+  const redirectParam = searchParams.get('redirect')
+  const redirectTo = redirectParam?.startsWith('/') && !redirectParam.startsWith('//') ? redirectParam : '/marketplace'
 
   const {
     register,
@@ -44,7 +51,7 @@ export function Login() {
     login.mutate(
       { identifier: values.identifier, password: values.password },
       {
-        onSuccess: () => navigate('/marketplace'),
+        onSuccess: () => navigate(redirectTo),
         onError: (err) => {
           // Unverified email → server re-sent the link; route to the verify screen.
           const details =
