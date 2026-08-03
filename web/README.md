@@ -2,7 +2,7 @@
 
 React + Vite + TypeScript front-end for the Group 2 P2P Marketplace Escrow project. Talks to the
 [API server](../server) over REST. Buyers browse and buy, sellers list and fulfil, admins review
-KYC and arbitrate disputes — all against a 5-state escrow (`created → funded → delivered → disbursed | disputed`).
+KYC and arbitrate disputes — all against a 6-state escrow (`created → funded → delivered → disbursed | disputed | cancelled`).
 
 > Fiat (GHS) payments are **simulated**; the TRX crypto rail is **not built yet**. See [../FLOWS.md](../FLOWS.md)
 > for every flow and [TODO.md](./TODO.md) for the per-persona status.

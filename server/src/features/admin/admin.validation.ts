@@ -76,7 +76,7 @@ export const userStatus: RequestSchema = {
 
 export const escrowList: RequestSchema = {
   query: Joi.object({
-    status: Joi.string().valid("created", "funded", "delivered", "disbursed", "disputed").optional(),
+    status: Joi.string().valid("created", "funded", "delivered", "disbursed", "disputed", "cancelled").optional(),
     search: Joi.string().trim().allow("").optional(),
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(20),

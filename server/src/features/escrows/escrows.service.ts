@@ -376,6 +376,17 @@ export async function acceptByCode(userId: string, code: string) {
 
 // ---------- The transition gateway (the TaaS load-bearing pattern) ----------
 
+interface TransitionPayload {
+  carrier?: string;
+  trackingNumber?: string;
+  note?: string;
+  reason?: DisputeReason;
+  description?: string;
+  buyerRefund?: number;
+  /** Free-text explanation the seller gives when cancelling a funded order. */
+  cancelReason?: string;
+}
+
 /**
  * The ONLY code that mutates escrow.status. Consults the machine table for
  * legality + actor role, applies money effects inside the same transaction,
@@ -385,7 +396,7 @@ export async function transition(
   escrowId: string,
   event: EscrowEvent,
   actor: Actor,
-  payload?: { carrier?: string; trackingNumber?: string; note?: string; reason?: DisputeReason; description?: string; buyerRefund?: number },
+  payload?: TransitionPayload,
 ) {
   const escrow = await prisma.$transaction(async (tx) => {
     const current = await tx.escrow.findUnique({ where: { id: escrowId } });
@@ -420,7 +431,9 @@ export async function transition(
     return tx.escrow.findUniqueOrThrow({ where: { id: current.id } });
   });
 
-  await notifyAfterTransition(escrow, event, actor).catch(() => undefined);
+  await notifyAfterTransition(escrow, event, actor, payload).catch((err) =>
+    console.error(`[escrow:${escrow.id}] ${event} notifications failed —`, (err as Error).message),
+  );
   return escrow;
 }
 
@@ -436,7 +449,7 @@ async function applyEffects(
   tx: Tx,
   escrow: Escrow,
   event: EscrowEvent,
-  payload?: { carrier?: string; trackingNumber?: string; note?: string; reason?: DisputeReason; description?: string; buyerRefund?: number },
+  payload?: TransitionPayload,
 ): Promise<Prisma.EscrowUpdateInput> {
   const amount = Number(escrow.amount);
   const fee = Number(escrow.feeAmount);
@@ -477,6 +490,38 @@ async function applyEffects(
     case "RELEASE": {
       await payout(tx, escrow, money.sellerPayout);
       return { disbursedAt: new Date(), autoReleaseAt: null };
+    }
+
+    case "CANCEL": {
+      // Two shapes of cancellation reach here. A `created` deal never debited
+      // anyone — refunding it would mint money — and it never held stock, since
+      // only checkout (which mints `funded` outright) touches a listing. So the
+      // money effects belong strictly to the funded case.
+      if (escrow.status === "funded") {
+        // The seller can't fulfil. Nothing shipped, so the buyer is made whole —
+        // item + their fee share. The platform charges nothing on a cancellation.
+        await refundBuyer(tx, escrow, money.fundingTotal);
+
+        // Put the units back on the shelf; checkout decremented them at payment.
+        if (escrow.listingId && escrow.quantity) {
+          await tx.listing.update({
+            where: { id: escrow.listingId },
+            data: { quantity: { increment: escrow.quantity } },
+          });
+          // …and un-sell-out the listing, but only if that's why it went dark
+          // (a seller who since drafted it stays drafted).
+          await tx.listing.updateMany({
+            where: { id: escrow.listingId, status: "out_of_stock", quantity: { gt: 0 } },
+            data: { status: "active" },
+          });
+        }
+      }
+
+      return {
+        cancelledAt: new Date(),
+        cancelReason: payload?.cancelReason?.trim() || null,
+        autoReleaseAt: null,
+      };
     }
 
     case "DISPUTE": {
@@ -549,7 +594,7 @@ async function refundBuyer(tx: Tx, escrow: Escrow, refundAmount: number) {
   );
 }
 
-async function notifyAfterTransition(escrow: Escrow, event: EscrowEvent, actor: Actor) {
+async function notifyAfterTransition(escrow: Escrow, event: EscrowEvent, actor: Actor, payload?: TransitionPayload) {
   if (!escrow.buyerId || !escrow.sellerId) return;
   const money = `GH₵ ${Number(escrow.amount).toFixed(2)}`;
 
@@ -570,6 +615,33 @@ async function notifyAfterTransition(escrow: Escrow, event: EscrowEvent, actor: 
         escrow.id,
       );
       break;
+    case "CANCEL": {
+      if (actor === "system") break;
+      const why = payload?.cancelReason?.trim();
+      const suffix = why ? `\n\nReason: ${why}` : "";
+      // Either party can cancel before funding, so address the *other* one.
+      const other = actor.id === escrow.buyerId ? escrow.sellerId : escrow.buyerId;
+
+      if (escrow.fundedAt) {
+        // Funded orders are seller-cancel only. The buyer gets the funding total
+        // back (item + their fee share), not just the item price.
+        const refunded = breakdown(Number(escrow.amount), Number(escrow.feeAmount), escrow.feeSplit).fundingTotal;
+        await postDealMessage(
+          actor.id,
+          other,
+          `🚫 The seller cancelled "${escrow.title}" (${escrow.code}). GH₵ ${refunded.toFixed(2)} has been refunded to your wallet in full.${suffix}`,
+          escrow.id,
+        );
+      } else {
+        await postDealMessage(
+          actor.id,
+          other,
+          `🚫 "${escrow.title}" (${escrow.code}) was cancelled before it was funded. No money changed hands.${suffix}`,
+          escrow.id,
+        );
+      }
+      break;
+    }
     case "DISPUTE":
       await postDealMessage(escrow.buyerId, escrow.sellerId, `⚠️ A dispute was opened on "${escrow.title}" (${escrow.code}). Funds are frozen until an admin rules.`, escrow.id);
       break;
@@ -582,7 +654,7 @@ async function notifyAfterTransition(escrow: Escrow, event: EscrowEvent, actor: 
 /** Lifecycle emails for release/dispute events. Money & dispute mail always
  *  sends (not gated by the shipment-updates preference). */
 async function sendTransitionEmails(escrow: Escrow, event: EscrowEvent, actor: Actor) {
-  if (event !== "RELEASE" && event !== "DISPUTE" && !event.startsWith("RESOLVE_")) return;
+  if (event !== "RELEASE" && event !== "CANCEL" && event !== "DISPUTE" && !event.startsWith("RESOLVE_")) return;
   if (!escrow.buyerId || !escrow.sellerId) return;
 
   const [buyer, seller] = await Promise.all([
@@ -591,11 +663,19 @@ async function sendTransitionEmails(escrow: Escrow, event: EscrowEvent, actor: A
   ]);
   if (!buyer || !seller) return;
 
-  const payout = breakdown(Number(escrow.amount), Number(escrow.feeAmount), escrow.feeSplit).sellerPayout.toFixed(2);
+  const money = breakdown(Number(escrow.amount), Number(escrow.feeAmount), escrow.feeSplit);
+  const payout = money.sellerPayout.toFixed(2);
 
   switch (event) {
     case "RELEASE":
       await mailer.fundsRelease(seller.email, seller.fullName, escrow.title, payout, escrow.code);
+      break;
+    case "CANCEL":
+      // Only for a funded order — that template is about the refund, and an
+      // unfunded deal has none. Pre-funding cancels are in-app only.
+      if (escrow.fundedAt) {
+        await mailer.orderCancelled(buyer.email, buyer.fullName, escrow.title, money.fundingTotal.toFixed(2), escrow.code);
+      }
       break;
     case "DISPUTE": {
       // Notify the party who didn't open it (or both, on a system-opened dispute).
@@ -624,6 +704,8 @@ export const fund = (userId: string, id: string) => transition(id, "FUND", { id:
 export const deliver = (userId: string, id: string, payload: { carrier?: string; trackingNumber?: string; note?: string }) =>
   transition(id, "DELIVER", { id: userId }, payload);
 export const release = (userId: string, id: string) => transition(id, "RELEASE", { id: userId });
+export const cancel = (userId: string, id: string, payload: { reason?: string }) =>
+  transition(id, "CANCEL", { id: userId }, { cancelReason: payload.reason });
 
 export async function dispute(userId: string, id: string, payload: { reason: DisputeReason; description: string }) {
   const existing = await prisma.dispute.findUnique({ where: { escrowId: id } });
@@ -638,6 +720,7 @@ export async function dispute(userId: string, id: string, payload: { reason: Dis
 export async function leaveReview(userId: string, escrowId: string, input: { rating: number; comment?: string }) {
   const escrow = await prisma.escrow.findUnique({ where: { id: escrowId } });
   if (!escrow) throw ApiError.notFound("Deal not found");
+  // `cancelled` is excluded by construction — nothing was traded, so no rating is earned.
   if (escrow.status !== "disbursed") throw ApiError.badRequest("You can only review a completed deal");
 
   const isBuyer = escrow.buyerId === userId;
@@ -804,12 +887,14 @@ function serialize(e: EscrowWithParties, userId: string) {
     carrier: e.carrier,
     trackingNumber: e.trackingNumber,
     deliveryNote: e.deliveryNote,
+    cancelReason: e.cancelReason,
     autoReleaseAt: e.autoReleaseAt?.toISOString() ?? null,
     createdAt: e.createdAt.toISOString(),
     fundedAt: e.fundedAt?.toISOString() ?? null,
     deliveredAt: e.deliveredAt?.toISOString() ?? null,
     disbursedAt: e.disbursedAt?.toISOString() ?? null,
     disputedAt: e.disputedAt?.toISOString() ?? null,
+    cancelledAt: e.cancelledAt?.toISOString() ?? null,
   };
 }
 
@@ -818,12 +903,18 @@ function availableActions(e: Escrow, userId: string): string[] {
   const isBuyer = e.buyerId === userId;
   const isSeller = e.sellerId === userId;
   switch (e.status) {
-    case "created":
-      if (isBuyer && e.sellerId) return ["FUND"];
-      return [];
+    case "created": {
+      // No money has moved, so either party can walk away — including a creator
+      // whose invite was never accepted (they still fill one of the two slots).
+      const actions: string[] = [];
+      if (isBuyer && e.sellerId) actions.push("FUND");
+      if (isBuyer || isSeller) actions.push("CANCEL");
+      return actions;
+    }
     case "funded":
       // Seller ships; buyer can't confirm receipt until the seller marks it delivered.
-      if (isSeller) return ["DELIVER", "DISPUTE"];
+      // CANCEL is the seller's out while nothing has shipped yet.
+      if (isSeller) return ["DELIVER", "CANCEL", "DISPUTE"];
       if (isBuyer) return ["DISPUTE"];
       return [];
     case "delivered":

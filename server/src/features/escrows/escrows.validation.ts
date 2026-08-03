@@ -61,6 +61,14 @@ export const deliver: RequestSchema = {
   }),
 };
 
+export const cancel: RequestSchema = {
+  params: Joi.object({ id: Joi.string().guid().required() }),
+  body: Joi.object({
+    // Optional — relayed to the buyer in the deal thread and nothing else.
+    reason: Joi.string().trim().max(300).allow("", null),
+  }),
+};
+
 export const dispute: RequestSchema = {
   params: Joi.object({ id: Joi.string().guid().required() }),
   body: Joi.object({
@@ -84,7 +92,7 @@ export const review: RequestSchema = {
 export const list: RequestSchema = {
   query: Joi.object({
     role: Joi.string().valid("buyer", "seller"),
-    status: Joi.string().valid("created", "funded", "delivered", "disbursed", "disputed"),
+    status: Joi.string().valid("created", "funded", "delivered", "disbursed", "disputed", "cancelled"),
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(50).default(10),
   }),

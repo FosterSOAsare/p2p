@@ -1,7 +1,7 @@
 # Server TODO — open items
 
 Express + TS · Prisma 7 + Neon Postgres · JWT Bearer (access + rotating refresh) · argon2id.
-5-state escrow `created → funded → delivered → disbursed | disputed`. GHS fiat/momo runs on a real wallet balance (Paystack test mode); TRX (TRON Shasta) is **not built**. Fees: fiat 1.5% (min GH₵2, cap GH₵150) / crypto 1.0%, divided per deal by `FeeSplit` (`buyer` | `seller` | `split`), stored once, invariant `fundingTotal = sellerPayout + fee`.
+6-state escrow `created → funded → delivered → disbursed | disputed | cancelled`. GHS fiat/momo runs on a real wallet balance (Paystack test mode); TRX (TRON Shasta) is **not built**. Fees: fiat 1.5% (min GH₵2, cap GH₵150) / crypto 1.0%, divided per deal by `FeeSplit` (`buyer` | `seller` | `split`), stored once, invariant `fundingTotal = sellerPayout + fee`.
 
 Only what's still outstanding is listed here — see `FLOWS.md` for the endpoints that already exist.
 
@@ -13,7 +13,7 @@ Only what's still outstanding is listed here — see `FLOWS.md` for the endpoint
 
 ## Deals (`/api/escrows`)
 
-- [ ] **Cancel an unfunded deal** — *(assigned elsewhere)* creator-only, allowed only while `created` (no money has moved). Prefer deleting a never-funded row over adding a sixth escrow status, so the 5-state machine stays intact.
+- [ ] **Cancel an unfunded deal** — *(assigned elsewhere)* creator-only, allowed only while `created` (no money has moved). Either delete the never-funded row or reuse the `cancelled` status the seller-cancel flow added — the transition table (`escrow-machine.ts`) is the only place that needs the new row.
 - [ ] **Dispute evidence attachments** — store uploaded proof as a real list on the dispute (Cloudinary URL + name/mime) instead of the client appending `📷 Photo Evidence: <url>` into the description string. Surface it in `GET /admin/disputes/:id` alongside the chat transcript.
 
 ## Seller

@@ -5,8 +5,8 @@ import type { FeeSplit } from './fees'
 
 // ---------- shared deal shape (server serialize()) ----------
 
-export type EscrowStatus = 'created' | 'funded' | 'delivered' | 'disbursed' | 'disputed'
-export type EscrowAction = 'FUND' | 'DELIVER' | 'RELEASE' | 'DISPUTE'
+export type EscrowStatus = 'created' | 'funded' | 'delivered' | 'disbursed' | 'disputed' | 'cancelled'
+export type EscrowAction = 'FUND' | 'DELIVER' | 'RELEASE' | 'CANCEL' | 'DISPUTE'
 
 export interface DealParty {
   username: string
@@ -38,12 +38,15 @@ export interface Deal {
   carrier: string | null
   trackingNumber: string | null
   deliveryNote: string | null
+  /** Seller's optional explanation, captured at cancel time. */
+  cancelReason: string | null
   autoReleaseAt: string | null
   createdAt: string
   fundedAt: string | null
   deliveredAt: string | null
   disbursedAt: string | null
   disputedAt: string | null
+  cancelledAt: string | null
 }
 
 export interface DealDetail extends Deal {
@@ -142,6 +145,16 @@ export function useReleaseDeal() {
   return useMutation({
     mutationFn: (id: string) => api<{ deal: DealDetail }>(`/api/escrows/${id}/release`, { method: 'POST' }),
     onSuccess: (_d, id) => invalidate(id),
+  })
+}
+
+/** Seller backs out of a funded order — buyer refunded in full, stock restored. */
+export function useCancelDeal() {
+  const invalidate = useInvalidateDeals()
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      api<{ deal: DealDetail }>(`/api/escrows/${id}/cancel`, { method: 'POST', body: { reason } }),
+    onSuccess: (_d, { id }) => invalidate(id),
   })
 }
 

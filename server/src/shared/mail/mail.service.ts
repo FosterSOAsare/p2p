@@ -97,6 +97,9 @@ export const mailer = {
   fundsRelease: (to: string, sellerName: string, title: string, payout: string, code: string) =>
     sendMail(to, `Payout released: ${title}`, "funds-release", { name: sellerName, title, payout, code }),
 
+  orderCancelled: (to: string, buyerName: string, title: string, refund: string, code: string) =>
+    sendMail(to, `Order cancelled: ${title}`, "order-cancelled", { name: buyerName, title, refund, code }),
+
   disputeCreated: (to: string, name: string, title: string, code: string) =>
     sendMail(to, `Dispute opened: ${title}`, "dispute-created", { name, title, code }),
 

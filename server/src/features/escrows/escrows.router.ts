@@ -27,5 +27,6 @@ escrowsRouter.patch("/:id", validate(escrowsValidation.updateDeal), escrowsContr
 escrowsRouter.post("/:id/fund", validate(escrowsValidation.idParam), escrowsController.fund);
 escrowsRouter.post("/:id/deliver", validate(escrowsValidation.deliver), escrowsController.deliver);
 escrowsRouter.post("/:id/release", validate(escrowsValidation.idParam), escrowsController.release);
+escrowsRouter.post("/:id/cancel", validate(escrowsValidation.cancel), escrowsController.cancel);
 escrowsRouter.post("/:id/dispute", validate(escrowsValidation.dispute), escrowsController.dispute);
 escrowsRouter.post("/:id/review", validate(escrowsValidation.review), escrowsController.review);

@@ -2,7 +2,7 @@
 
 End-to-end flows in the P2P Marketplace Escrow app. Each lists the steps, the endpoints/states involved, and status (✅ working · ⚠️ partial · ⛔ not built). Detail: [server/TODO.md](server/TODO.md) · [web/TODO.md](web/TODO.md).
 
-Roles: **Buyer** (any account) · **Seller** (KYC-verified) · **Admin** (provisioned). Escrow states: `created → funded → delivered → disbursed | disputed`.
+Roles: **Buyer** (any account) · **Seller** (KYC-verified) · **Admin** (provisioned). Escrow states: `created → funded → delivered → disbursed | disputed`, plus `cancelled` (seller pulls out of a funded order; buyer refunded in full).
 
 ---
 

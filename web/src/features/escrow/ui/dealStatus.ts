@@ -2,7 +2,7 @@ import type { EscrowStatus } from '../data/ordersApi'
 
 type BadgeTone = 'neutral' | 'info' | 'warning' | 'success' | 'danger'
 
-/** Badge tone + human label per escrow status (5-state model). */
+/** Badge tone + human label per escrow status. */
 export function statusBadge(status: EscrowStatus): { tone: BadgeTone; label: string } {
   switch (status) {
     case 'created':
@@ -15,6 +15,8 @@ export function statusBadge(status: EscrowStatus): { tone: BadgeTone; label: str
       return { tone: 'success', label: 'Completed' }
     case 'disputed':
       return { tone: 'danger', label: 'Disputed' }
+    case 'cancelled':
+      return { tone: 'neutral', label: 'Cancelled — Refunded' }
     default:
       return { tone: 'neutral', label: status }
   }
@@ -32,5 +34,6 @@ export const ACTION_META: Record<string, { label: string; tone: 'primary' | 'suc
   FUND: { label: 'Fund Escrow', tone: 'primary' },
   DELIVER: { label: 'Mark as Delivered', tone: 'primary' },
   RELEASE: { label: 'Confirm Receipt & Release', tone: 'success' },
+  CANCEL: { label: 'Cancel Order', tone: 'danger' },
   DISPUTE: { label: 'Open Dispute', tone: 'danger' },
 }

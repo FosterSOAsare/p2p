@@ -10,6 +10,7 @@ const TABS: { id: string; label: string; status?: EscrowStatus }[] = [
   { id: 'delivered', label: 'To Confirm', status: 'delivered' },
   { id: 'disbursed', label: 'Completed', status: 'disbursed' },
   { id: 'disputed', label: 'Disputed', status: 'disputed' },
+  { id: 'cancelled', label: 'Cancelled', status: 'cancelled' },
 ]
 
 /** Shared filter+paginate+render body for the deals / orders / sales lists. */

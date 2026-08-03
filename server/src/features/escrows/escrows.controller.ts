@@ -63,6 +63,12 @@ export const release = asyncHandler(async (req, res) => {
   res.json({ deal });
 });
 
+export const cancel = asyncHandler(async (req, res) => {
+  await escrowsService.cancel(req.user!.id, req.params.id as string, req.body);
+  const deal = await escrowsService.getDetail(req.user!, req.params.id as string);
+  res.json({ deal });
+});
+
 export const dispute = asyncHandler(async (req, res) => {
   await escrowsService.dispute(req.user!.id, req.params.id as string, req.body);
   const deal = await escrowsService.getDetail(req.user!, req.params.id as string);

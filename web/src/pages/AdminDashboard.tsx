@@ -21,6 +21,7 @@ const DEAL_STATUSES: { id: DealStatus; label: string; className: string }[] = [
   { id: 'delivered', label: 'Delivered', className: 'text-amber-600 dark:text-amber-400' },
   { id: 'disbursed', label: 'Completed', className: 'text-emerald-600 dark:text-emerald-400' },
   { id: 'disputed', label: 'Disputed', className: 'text-rose-600 dark:text-rose-400' },
+  { id: 'cancelled', label: 'Cancelled', className: 'text-slate-500 dark:text-slate-400' },
 ]
 
 function StatCard({

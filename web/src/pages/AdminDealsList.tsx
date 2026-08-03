@@ -17,6 +17,7 @@ const STATUS_TABS: { id: StatusTab; label: string }[] = [
   { id: 'delivered', label: 'Delivered' },
   { id: 'disbursed', label: 'Completed' },
   { id: 'disputed', label: 'Disputed' },
+  { id: 'cancelled', label: 'Cancelled' },
 ]
 
 const STATUS_STYLES: Record<AdminDealStatus, string> = {
@@ -25,6 +26,7 @@ const STATUS_STYLES: Record<AdminDealStatus, string> = {
   delivered: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-200 dark:border-amber-800',
   disbursed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
   disputed: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-rose-200 dark:border-rose-800',
+  cancelled: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-300 dark:border-slate-600',
 }
 
 export function AdminDealsList() {

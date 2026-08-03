@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { api } from '../../shared/libs/api'
 
-export type AdminDealStatus = 'created' | 'funded' | 'delivered' | 'disbursed' | 'disputed'
+export type AdminDealStatus = 'created' | 'funded' | 'delivered' | 'disbursed' | 'disputed' | 'cancelled'
 
 export interface AdminDealParty {
   id: string

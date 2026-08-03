@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../shared/libs/api'
 
-export type DealStatus = 'created' | 'funded' | 'delivered' | 'disbursed' | 'disputed'
+export type DealStatus = 'created' | 'funded' | 'delivered' | 'disbursed' | 'disputed' | 'cancelled'
 
 export interface AdminStats {
   users: number

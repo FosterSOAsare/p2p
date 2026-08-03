@@ -444,6 +444,7 @@ export async function getStats() {
     delivered: 0,
     disbursed: 0,
     disputed: 0,
+    cancelled: 0,
   };
   for (const g of dealGroups) dealsByStatus[g.status] = g._count._all;
   const totalDeals = Object.values(dealsByStatus).reduce((a, b) => a + b, 0);

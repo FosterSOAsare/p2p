@@ -1,5 +1,5 @@
 // P2P Marketplace Escrow — simplified from the TaaS schema to the proposal scope:
-// 5-state escrow, simulated GHS wallet, real TRX (Shasta testnet), usernames,
+// 6-state escrow, simulated GHS wallet, real TRX (Shasta testnet), usernames,
 // share-code/QR join, disputes w/ admin ruling + time-locked auto-resolution.
 // Enum values are lowercase to match the web client's vocabulary exactly.
 
@@ -53,6 +53,7 @@ enum EscrowStatus {
   delivered
   disbursed
   disputed
+  cancelled
 }
 
 enum MilestoneStatus {
@@ -353,12 +354,14 @@ model Escrow {
   carrier         String?
   trackingNumber  String?
   deliveryNote    String?
+  cancelReason    String? // why the seller pulled out (optional, shown to the buyer)
   // time-locked auto-release (set on deliver; frozen by dispute)
   autoReleaseAt   DateTime?
   fundedAt        DateTime?
   deliveredAt     DateTime?
   disbursedAt     DateTime?
   disputedAt      DateTime?
+  cancelledAt     DateTime? // seller pulled out of a funded order; buyer refunded in full
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 

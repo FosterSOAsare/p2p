@@ -1,7 +1,8 @@
 # P2P Marketplace Escrow — API Server
 
 Express + TypeScript backend for the Group 2 P2P Marketplace Escrow project.
-Escrow deals move through **5 states** — `created → funded → delivered → disbursed | disputed` — with
+Escrow deals move through **6 states** — `created → funded → delivered → disbursed | disputed`, plus
+`cancelled` when a seller pulls out of a funded order — with
 standalone (off-marketplace) deals, share-code join, a per-pair chat, and admin dispute ruling.
 
 > **Simulation notice:** all fiat / mobile-money (GHS) payments are **simulated** end-to-end — no
@@ -114,7 +115,7 @@ server/
 - **User / Session / KycProfile** — username-first identity (login by email *or* username), rotating refresh-token sessions, a single lightweight KYC submission (dual optional payout: momo + TRX address) reviewed by an admin (no tiers).
 - **Wallet / Transaction** — one simulated GHS balance per user + signed-amount history; atomic guarded debits.
 - **Category / Listing / SavedListing / VendorBlock / Review** — marketplace CRUD, bookmarks, vendor blocks (+reason), post-deal reviews.
-- **Escrow** — the core: share `code`, creator + nullable buyer/seller (join-by-code fills the empty side), amount + `feeAmount`, GHS/TRX + fiat/crypto rail, 5-state `status`, dispatch fields, timestamps.
+- **Escrow** — the core: share `code`, creator + nullable buyer/seller (join-by-code fills the empty side), amount + `feeAmount`, GHS/TRX + fiat/crypto rail, 6-state `status`, dispatch fields, timestamps.
 - **Conversation / Message** — one thread per user pair (Binance-style); `postDealMessage()` injects system lines.
 - **EscrowEvent** — append-only state timeline. **Dispute** — reason + `release | refund | split` ruling with amounts.
 - **Milestone / CryptoEscrow** — defined for future digital-goods and TRX rails; **not yet used by any code**.
