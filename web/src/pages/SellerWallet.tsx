@@ -81,6 +81,10 @@ export function SellerWallet() {
         onSuccess: () => {
           setWithdrawSuccess(`Successfully paid out ${formatMoney(numAmount)} to ${withdrawDestination}!`)
           setWithdrawAmount('')
+          setWithdrawDestination('')
+          // Close the modal — the confirmation is shown on the page behind it,
+          // so the payout result stays visible next to the updated balance.
+          setWithdrawModalOpen(false)
           txQuery.refetch()
           refetchWallet()
         },
@@ -93,6 +97,21 @@ export function SellerWallet() {
 
   return (
     <div className="py-6 space-y-6 sm:space-y-8">
+      {/* Payout confirmation — shown here once the modal closes */}
+      {withdrawSuccess && !withdrawModalOpen && (
+        <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 p-4 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+          <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
+          <span className="flex-1">{withdrawSuccess}</span>
+          <button
+            onClick={() => setWithdrawSuccess(null)}
+            aria-label="Dismiss"
+            className="shrink-0 text-emerald-600/70 hover:text-emerald-800 dark:hover:text-emerald-200 cursor-pointer"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-emerald-50 dark:bg-slate-900 p-6 sm:p-8 text-slate-900 dark:text-white shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -342,13 +361,6 @@ export function SellerWallet() {
                 <X size={18} />
               </button>
             </div>
-
-            {withdrawSuccess && (
-              <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
-                <span>{withdrawSuccess}</span>
-              </div>
-            )}
 
             {withdrawError && (
               <div className="rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 p-3 text-xs text-rose-800 dark:text-rose-300 flex items-center gap-2">
