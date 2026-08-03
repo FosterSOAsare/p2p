@@ -57,9 +57,7 @@ function App() {
         <Route path="deals" element={<Deals />} />
         <Route path="escrow/new" element={<NewEscrow />} />
         <Route path="escrow/:id" element={<EscrowDetail />} />
-        {/* Share-link / QR landing — public preview, sign-in prompted if needed */}
-        <Route path="join/:code" element={<JoinDeal />} />
-        {/* Share-link / QR landing — public, so the terms are readable before signing in */}
+        {/* Share-link / QR landing — public, so the deal is readable before signing in */}
         <Route path="join/:code" element={<JoinDeal />} />
         <Route path="sell" element={<VendorKyc />} />
         <Route path="vendor/kyc" element={<VendorKyc />} />
