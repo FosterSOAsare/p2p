@@ -27,7 +27,7 @@ export function useMessageNotifications() {
     if (!meId) return
     const socket = getSocket()
 
-    const refresh = () => queryClient.invalidateQueries({ queryKey: messageKeys.conversations })
+    const refresh = () => queryClient.invalidateQueries({ queryKey: messageKeys.conversations() })
 
     socket.on('notify:message', refresh) // a message landed in some thread
     socket.on('message:read', refresh) // you read one — here or on another device

@@ -3,6 +3,7 @@ import { Heart, Loader2, Trash2, Lock, ArrowLeft, Store, ExternalLink } from 'lu
 import { useMe } from '../features/auth/data/authApi'
 import { useSavedListings, useUnsaveListing } from '../features/user/data/usersApi'
 import { formatMoney } from '../features/shared/libs/currency'
+import { formatDate } from '../features/shared/libs/date'
 
 export function Bookmarks() {
   const { data: me, isLoading: meLoading } = useMe()
@@ -103,7 +104,12 @@ export function Bookmarks() {
                 >
                   {item.title}
                 </Link>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">{item.short}</p>
+                {/* The card already carries category, seller and condition, and the
+                    saved-listings endpoint sends no blurb — so this slot shows when
+                    it was bookmarked, which nothing else does. */}
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">
+                  Saved {formatDate(item.savedAt)}
+                </p>
               </div>
 
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">

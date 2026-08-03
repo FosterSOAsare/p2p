@@ -26,6 +26,7 @@ import {
   Scale,
   Users,
   MessageSquare,
+  PackageSearch,
 } from 'lucide-react'
 import { Footer } from './Footer'
 
@@ -262,6 +263,9 @@ export function Layout() {
                           </Link>
                           <Link to="/admin/disputes" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                             <Scale size={15} /> Disputes Arbitration
+                          </Link>
+                          <Link to="/admin/listings" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <PackageSearch size={15} /> Listings Moderation
                           </Link>
                           <Link to="/admin/users" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                             <Users size={15} /> User Management

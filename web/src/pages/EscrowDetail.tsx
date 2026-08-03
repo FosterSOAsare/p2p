@@ -111,7 +111,7 @@ export function EscrowDetail() {
   }
 
   const [copied, setCopied] = useState(false)
-  const [linkCopied, setLinkCopied] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
 
@@ -152,14 +152,6 @@ export function EscrowDetail() {
     navigator.clipboard.writeText(deal.code).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    })
-  }
-
-  const copyJoinUrl = () => {
-    if (!deal.share) return
-    navigator.clipboard.writeText(deal.share.joinUrl).then(() => {
-      setLinkCopied(true)
-      setTimeout(() => setLinkCopied(false), 1500)
     })
   }
 
@@ -327,44 +319,6 @@ export function EscrowDetail() {
             {actionError != null && (
               <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-[11px] font-semibold text-rose-700 dark:bg-rose-950/60 dark:border-rose-800 dark:text-rose-300">
                 {apiErrorMessage(actionError)}
-              </div>
-            )}
-
-            {/* Only present while a side is unfilled — nobody was invited by
-                username, so this is the only way to hand the deal over. */}
-            {deal.share && (
-              <div className="space-y-3 rounded-xl border border-primary-200 dark:border-primary-800 bg-primary-50/50 dark:bg-primary-950/30 p-4">
-                <div className="space-y-0.5">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-primary-700 dark:text-primary-400">
-                    Waiting for the other party
-                  </p>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Share this link or code. Whoever opens it takes the {deal.myRole === 'buyer' ? 'seller' : 'buyer'} side
-                    of the deal.
-                  </p>
-                </div>
-
-                <img
-                  src={deal.share.dataUrl}
-                  alt={`QR code to join deal ${deal.share.code}`}
-                  className="mx-auto h-40 w-40 rounded-xl border border-slate-200 dark:border-slate-700 bg-white p-1.5"
-                />
-
-                <div className="flex items-center gap-1.5">
-                  <input
-                    readOnly
-                    value={deal.share.joinUrl}
-                    onFocus={(e) => e.currentTarget.select()}
-                    className="min-w-0 flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-2.5 py-2 text-[11px] text-slate-700 dark:text-slate-300 focus:outline-none"
-                  />
-                  <button
-                    onClick={copyJoinUrl}
-                    className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-2 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
-                  >
-                    {linkCopied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
-                    {linkCopied ? 'Copied' : 'Copy'}
-                  </button>
-                </div>
               </div>
             )}
 
