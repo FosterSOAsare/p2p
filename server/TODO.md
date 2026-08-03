@@ -13,7 +13,6 @@ Only what's still outstanding is listed here — see `FLOWS.md` for the endpoint
 
 ## Deals (`/api/escrows`)
 
-- [ ] **Cancel an unfunded deal** — *(assigned elsewhere)* creator-only, allowed only while `created` (no money has moved). Either delete the never-funded row or reuse the `cancelled` status the seller-cancel flow added — the transition table (`escrow-machine.ts`) is the only place that needs the new row.
 - [ ] **Dispute evidence attachments** — store uploaded proof as a real list on the dispute (Cloudinary URL + name/mime) instead of the client appending `📷 Photo Evidence: <url>` into the description string. Surface it in `GET /admin/disputes/:id` alongside the chat transcript.
 
 ## Seller

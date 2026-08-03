@@ -234,10 +234,13 @@ export function EscrowDetail() {
               <div className="mt-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 space-y-1.5 text-xs">
                 <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
                   <Ban size={18} className="text-slate-500 dark:text-slate-400" />
-                  Order cancelled by the seller
+                  {cancelRefunds ? 'Order cancelled by the seller' : 'Deal cancelled before funding'}
                 </div>
                 <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px]">
-                  Nothing was delivered, so the escrow was refunded in full — {formatMoney(deal.fundingTotal, deal.currency)} back to the buyer&apos;s wallet, no platform fee charged. Cancelled {formatDateTime(deal.cancelledAt!)}.
+                  {cancelRefunds
+                    ? `Nothing was delivered, so the escrow was refunded in full — ${formatMoney(deal.fundingTotal, deal.currency)} back to the buyer’s wallet, no platform fee charged. `
+                    : 'No money was ever funded into this escrow, so nothing changed hands. '}
+                  Cancelled {formatDateTime(deal.cancelledAt!)}.
                 </p>
                 {deal.cancelReason && (
                   <p className="whitespace-pre-line rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
@@ -390,24 +393,28 @@ export function EscrowDetail() {
 
             {has('CANCEL') && !cancelOpen && (
               <button onClick={() => setCancelOpen(true)} disabled={busy} className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-sm disabled:opacity-50">
-                <Ban size={15} /> Cancel Order & Refund Buyer
+                <Ban size={15} /> {cancelRefunds ? 'Cancel Order & Refund Buyer' : 'Cancel Deal'}
               </button>
             )}
 
             {has('CANCEL') && cancelOpen && (
               <div className="space-y-3 rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 shadow-sm">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                  Cancel this order
+                  {cancelRefunds ? 'Cancel this order' : 'Cancel this deal'}
                 </p>
 
                 <div className="rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 text-xs text-slate-700 dark:text-slate-300 flex items-start gap-2.5">
                   <RotateCcw size={16} className="text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />
                   <div className="space-y-0.5 leading-relaxed">
                     <p className="font-bold text-slate-900 dark:text-white">
-                      {formatMoney(deal.fundingTotal, deal.currency)} goes back to @{deal.buyer?.username ?? 'the buyer'}
+                      {cancelRefunds
+                        ? `${formatMoney(deal.fundingTotal, deal.currency)} goes back to @${deal.buyer?.username ?? 'the buyer'}`
+                        : 'Nothing has been funded yet'}
                     </p>
                     <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                      A full refund including the platform fee — you earn nothing on this deal. Stock is returned to the listing. This can&apos;t be undone.
+                      {cancelRefunds
+                        ? 'A full refund including the platform fee — you earn nothing on this deal. Stock is returned to the listing. This can’t be undone.'
+                        : 'No money has moved, so there is nothing to refund. The deal closes for both sides and can’t be reopened — you’d need to create a new one.'}
                     </p>
                   </div>
                 </div>
@@ -417,7 +424,11 @@ export function EscrowDetail() {
                   onChange={(e) => setCancelReason(e.target.value)}
                   rows={2}
                   maxLength={300}
-                  placeholder="Why are you cancelling? (optional — shared with the buyer)"
+                  placeholder={
+                    cancelRefunds
+                      ? 'Why are you cancelling? (optional — shared with the buyer)'
+                      : 'Why are you cancelling? (optional — shared with the other party)'
+                  }
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 px-3.5 py-2 text-xs text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none resize-none"
                 />
 
@@ -432,13 +443,14 @@ export function EscrowDetail() {
                     disabled={cancelDeal.isPending}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 py-2.5 text-xs font-bold text-white hover:bg-rose-700 cursor-pointer disabled:opacity-50 shadow-sm"
                   >
-                    {cancelDeal.isPending ? <Loader2 size={13} className="animate-spin" /> : <Ban size={14} />} Cancel & Refund
+                    {cancelDeal.isPending ? <Loader2 size={13} className="animate-spin" /> : <Ban size={14} />}
+                    {cancelRefunds ? 'Cancel & Refund' : 'Cancel Deal'}
                   </button>
                   <button
                     onClick={() => setCancelOpen(false)}
                     className="rounded-xl border border-slate-300 dark:border-slate-700 px-3 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
                   >
-                    Keep Order
+                    {cancelRefunds ? 'Keep Order' : 'Keep Deal'}
                   </button>
                 </div>
               </div>
@@ -533,9 +545,11 @@ export function EscrowDetail() {
             {isCancelled && (
               <div className="rounded-xl bg-slate-50 dark:bg-slate-950 p-4 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                 <Ban size={18} className="text-slate-500 dark:text-slate-400 shrink-0" />
-                {deal.myRole === 'seller'
-                  ? 'You cancelled this order — the buyer was refunded in full.'
-                  : `Cancelled by the seller — ${formatMoney(deal.fundingTotal, deal.currency)} refunded to your wallet.`}
+                {!cancelRefunds
+                  ? 'This deal was cancelled before funding. No money changed hands.'
+                  : deal.myRole === 'seller'
+                    ? 'You cancelled this order — the buyer was refunded in full.'
+                    : `Cancelled by the seller — ${formatMoney(deal.fundingTotal, deal.currency)} refunded to your wallet.`}
               </div>
             )}
 

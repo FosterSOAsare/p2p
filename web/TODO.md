@@ -6,7 +6,6 @@
 ## Buyer
 
 - [ ] **Join-by-code screen** — enter a share code to preview and accept a deal (server `GET /code/:code` + `POST /code/:code/accept` already exist), plus a QR share screen for the creator.
-- [ ] **Cancel an unfunded deal** — *(assigned elsewhere)* creator-only action on a `created` deal, so a never-joined invite can be cleared instead of sitting in the deals list forever. The seller's funded-order cancel is done and its Cancelled tab/badge can be reused.
 - [ ] **Dispute evidence as attachments** — the dispute form currently pastes `📷 Photo Evidence: <url>` into the description as text; upload to a real attachment list instead and render thumbnails.
 - [ ] Report listing (stretch)
 
