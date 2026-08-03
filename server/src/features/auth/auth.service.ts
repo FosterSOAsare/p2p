@@ -5,6 +5,7 @@ import { ApiError } from "../../shared/lib/errors";
 import { env } from "../../shared/config/env";
 import type { User } from "../../generated/prisma/client";
 import { mailer } from "../../shared/mail/mail.service";
+import { notify } from "../notifications/notifications.service";
 import * as tokenService from "./token.service";
 import type {
   AuthResult,
@@ -229,6 +230,14 @@ export async function resetPassword(token: string, newPassword: string): Promise
     where: { userId: user.id, revokedAt: null },
     data: { revokedAt: new Date() },
   });
+
+  await notify({
+    userId: user.id,
+    category: "system",
+    title: "Your password was reset",
+    body: "Your password changed and every device was signed out. If this wasn't you, reset it again immediately.",
+    link: "/settings",
+  });
 }
 
 /** Changes the password, revokes every session, and returns a fresh pair so
@@ -248,6 +257,17 @@ export async function changePassword(
     where: { userId, revokedAt: null },
     data: { revokedAt: new Date() },
   });
+
+  // A durable in-app record survives an attacker who controls the mailbox —
+  // which is the point of flagging a password change at all.
+  await notify({
+    userId,
+    category: "system",
+    title: "Your password was changed",
+    body: "Your password changed and your other devices were signed out. If this wasn't you, reset it immediately.",
+    link: "/settings",
+  });
+
   return startSession(user, ctx);
 }
 

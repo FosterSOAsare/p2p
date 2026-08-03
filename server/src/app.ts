@@ -10,6 +10,7 @@ import { kycRouter } from "./features/kyc/kyc.router";
 import { adminRouter } from "./features/admin/admin.router";
 import { categoriesRouter, listingsRouter } from "./features/listings/listings.router";
 import { messagesRouter } from "./features/messages/messages.router";
+import { notificationsRouter } from "./features/notifications/notifications.router";
 import { walletRouter } from "./features/wallet/wallet.router";
 import { paystackWebhook } from "./features/wallet/wallet.controller";
 import { escrowsRouter } from "./features/escrows/escrows.router";
@@ -45,6 +46,7 @@ export function createApp() {
   app.use("/api/listings", listingsRouter);
   app.use("/api/categories", categoriesRouter);
   app.use("/api/messages", messagesRouter);
+  app.use("/api/notifications", notificationsRouter);
   app.use("/api/wallet", walletRouter);
   app.use("/api/escrows", escrowsRouter);
   app.use("/api/upload", uploadRouter);

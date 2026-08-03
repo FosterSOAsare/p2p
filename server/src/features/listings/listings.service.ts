@@ -2,7 +2,7 @@ import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
 import type { Prisma } from "../../generated/prisma/client";
 import { removalReasonText } from "./removal-reasons";
-import { postDealMessage } from "../messages/messages.service";
+import { notifyAdmins } from "../notifications/notifications.service";
 import { mailer } from "../../shared/mail/mail.service";
 
 export interface ListQuery {
@@ -347,15 +347,21 @@ export async function submitDispute(
     },
   });
 
-  // Notify the admin who removed it — they hold the context to review it.
-  if (listing.removedById) {
-    const seller = await prisma.user.findUnique({ where: { id: sellerId }, select: { username: true } });
-    await postDealMessage(
-      sellerId,
-      listing.removedById,
-      `📄 @${seller?.username ?? "A seller"} submitted a dispute for the removed listing "${listing.title}".`,
-    ).catch(() => undefined);
+  const seller = await prisma.user.findUnique({ where: { id: sellerId }, select: { username: true } });
+  const sellerName = seller?.username ?? "A seller";
 
+  // Every admin, not just the one who removed it: the review queue can't stall
+  // because that person is away — and a listing removed before removedById was
+  // set would otherwise reach nobody at all.
+  await notifyAdmins({
+    category: "listing",
+    title: "New listing appeal",
+    body: `@${sellerName} is disputing the removal of "${listing.title}".`,
+    link: "/admin/listings",
+  });
+
+  // Email still goes to the admin who removed it — they hold the context.
+  if (listing.removedById) {
     prisma.user
       .findUnique({ where: { id: listing.removedById }, select: { email: true, fullName: true } })
       .then(

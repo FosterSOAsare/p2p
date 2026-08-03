@@ -9,11 +9,10 @@ import type {
   UserRole,
 } from "../../generated/prisma/client";
 import type { ListingRemovalReason } from "../../generated/prisma/client";
-// Value import: Prisma.DbNull is needed at runtime to clear a Json column.
-import { Prisma as PrismaRuntime } from "../../generated/prisma/client";
 import { transition } from "../escrows/escrows.service";
 import { breakdown } from "../escrows/money";
 import { listDealTranscript, postDealMessage } from "../messages/messages.service";
+import { notify } from "../notifications/notifications.service";
 import { mailer } from "../../shared/mail/mail.service";
 import { removalReasonText } from "../listings/removal-reasons";
 
@@ -47,6 +46,13 @@ export async function approveKyc(adminId: string, id: string) {
     data: { status: "verified", rejectionReason: null, reviewedById: adminId, reviewedAt: new Date() },
     include: kycWithUser,
   });
+  await notify({
+    userId: kyc.userId,
+    category: "kyc",
+    title: "You're verified",
+    body: "Your identity check passed. You can now list items and sell on the marketplace.",
+    link: "/dashboard",
+  });
   return toAdminKyc(kyc);
 }
 
@@ -56,6 +62,13 @@ export async function rejectKyc(adminId: string, id: string, reason: string) {
     where: { id },
     data: { status: "rejected", rejectionReason: reason, reviewedById: adminId, reviewedAt: new Date() },
     include: kycWithUser,
+  });
+  await notify({
+    userId: kyc.userId,
+    category: "kyc",
+    title: "Identity check not approved",
+    body: `${reason} You can correct your details and submit again.`,
+    link: "/vendor/kyc",
   });
   return toAdminKyc(kyc);
 }
@@ -648,16 +661,22 @@ export async function removeListing(
   const reasonText = removalReasonText(input.reason, note);
   const canDispute = input.disputeAllowed ?? false;
 
-  // Tell the seller — in-app thread first, then email. Best-effort: a delivery
+  // Tell the seller — notification first, then email. Best-effort: a delivery
   // problem must not roll back a completed moderation action.
-  await postDealMessage(
-    adminId,
-    listing.sellerId,
-    `🚫 Your listing "${listing.title}" has been removed by an administrator.\nReason: ${reasonText}` +
-      (canDispute
-        ? `\nYou can correct the listing and submit a dispute for review.`
-        : `\nThis removal cannot be disputed.`),
-  ).catch(() => undefined);
+  //
+  // A notification rather than a chat message on purpose: moderation shouldn't
+  // arrive from the acting admin's personal account, and it shouldn't land in
+  // the pair Conversation that listDealTranscript later reads as evidence. The
+  // seller's reply path is the appeal, not a chat bubble.
+  await notify({
+    userId: listing.sellerId,
+    category: "listing",
+    title: "Your listing was removed",
+    body:
+      `"${listing.title}" was removed by an administrator. Reason: ${reasonText}` +
+      (canDispute ? " You can submit a dispute for review." : " This removal can't be disputed."),
+    link: `/listings/${listingId}`,
+  });
 
   prisma.user
     .findUnique({ where: { id: listing.sellerId }, select: { email: true, fullName: true } })
@@ -771,7 +790,6 @@ export async function resolveListingDispute(
           removedAt: null,
           removedById: null,
           disputeAllowed: false,
-          removalSnapshot: PrismaRuntime.DbNull,
         },
       });
     } else {
@@ -797,13 +815,15 @@ export async function resolveListingDispute(
   });
 
   const title = dispute.listing.title;
-  await postDealMessage(
-    adminId,
-    dispute.sellerId,
-    approved
-      ? `✅ Your dispute for "${title}" was approved — the listing is live again.${note ? `\nNote: ${note}` : ""}`
-      : `❌ Your dispute for "${title}" was rejected. The listing stays removed.${note ? `\nNote: ${note}` : ""}`,
-  ).catch(() => undefined);
+  await notify({
+    userId: dispute.sellerId,
+    category: "listing",
+    title: approved ? "Your dispute was approved" : "Your dispute was rejected",
+    body: approved
+      ? `"${title}" is live again.${note ? ` Note: ${note}` : ""}`
+      : `"${title}" stays removed.${note ? ` Note: ${note}` : ""}`,
+    link: `/listings/${dispute.listingId}`,
+  });
 
   prisma.user
     .findUnique({ where: { id: dispute.sellerId }, select: { email: true, fullName: true } })

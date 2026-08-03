@@ -2,6 +2,7 @@ import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
 import type { KycProfile } from "../../generated/prisma/client";
 import type { KycStatusResponse, KycSubmissionInput } from "./kyc.model";
+import { notifyAdmins } from "../notifications/notifications.service";
 
 /**
  * Submit (or resubmit after rejection). Pending and verified submissions can't
@@ -29,6 +30,17 @@ export async function submit(userId: string, input: KycSubmissionInput): Promise
     create: { userId, ...data },
     update: { ...data, status: "pending", rejectionReason: null, reviewedById: null, reviewedAt: null },
   });
+
+  // Nothing reached the review queue before this — a submission just sat in
+  // `pending` until an admin happened to open /admin/kyc.
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { username: true } });
+  await notifyAdmins({
+    category: "kyc",
+    title: existing ? "KYC resubmitted" : "New KYC submission",
+    body: `@${user?.username ?? "A user"} submitted identity documents for review.`,
+    link: "/admin/kyc",
+  });
+
   return toStatusResponse(kyc);
 }
 

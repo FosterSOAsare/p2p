@@ -57,7 +57,6 @@ export interface ListingDetailData {
       id: string
       status: 'open' | 'approved' | 'rejected'
       explanation: string
-      corrections: string | null
       reviewNote: string | null
       createdAt: string
     } | null

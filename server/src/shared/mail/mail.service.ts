@@ -94,8 +94,19 @@ export const mailer = {
   newOrder: (to: string, sellerName: string, title: string, amount: string, code: string) =>
     sendMail(to, `New order: ${title}`, "new-order", { name: sellerName, title, amount, code }),
 
+  /** Standalone deals only — marketplace checkout is already covered by newOrder. */
+  dealFunded: (to: string, sellerName: string, title: string, amount: string, code: string) =>
+    sendMail(to, `Deal funded: ${title}`, "deal-funded", { name: sellerName, title, amount, code }),
+
+  orderDelivered: (to: string, buyerName: string, title: string, tracking: string, code: string) =>
+    sendMail(to, `Marked delivered: ${title}`, "order-delivered", { name: buyerName, title, tracking, code }),
+
   fundsRelease: (to: string, sellerName: string, title: string, payout: string, code: string) =>
     sendMail(to, `Payout released: ${title}`, "funds-release", { name: sellerName, title, payout, code }),
+
+  /** Buyer-side counterpart to fundsRelease, for the timer-driven release only. */
+  autoRelease: (to: string, buyerName: string, title: string, payout: string, code: string) =>
+    sendMail(to, `Escrow auto-released: ${title}`, "auto-release", { name: buyerName, title, payout, code }),
 
   orderCancelled: (to: string, buyerName: string, title: string, refund: string, code: string) =>
     sendMail(to, `Order cancelled: ${title}`, "order-cancelled", { name: buyerName, title, refund, code }),

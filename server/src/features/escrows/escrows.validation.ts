@@ -19,7 +19,8 @@ export const checkout: RequestSchema = {
   body: Joi.object({
     listingId: Joi.string().guid().required(),
     quantity: Joi.number().integer().min(1).max(100).default(1),
-    // Simulated payment method (recorded, not charged). TODO(payments): real charge.
+    // Recorded on the `funded` event for the receipt only — checkout always
+    // debits the buyer's wallet, whichever method they topped it up with.
     paymentMethod: Joi.string().valid("momo", "card").default("momo"),
   }),
 };

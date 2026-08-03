@@ -3,6 +3,9 @@ import { NavLink, Link, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useMe, useLogout } from '../../auth/data/authApi'
 import { useMessageNotifications } from '../../messages/data/useMessageNotifications'
 import { useUnreadTotal } from '../../messages/data/messagesApi'
+import { useNotificationEvents } from '../../notifications/data/useNotificationEvents'
+import { useUnreadNotifications } from '../../notifications/data/notificationsApi'
+import { NotificationPanel } from '../../notifications/ui/NotificationPanel'
 import type { LucideIcon } from 'lucide-react'
 import {
   Handshake,
@@ -27,6 +30,7 @@ import {
   Users,
   MessageSquare,
   PackageSearch,
+  Bell,
 } from 'lucide-react'
 import { Footer } from './Footer'
 
@@ -56,6 +60,7 @@ export function Layout() {
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const { data: me } = useMe()
   const logout = useLogout()
   const isLoggedIn = Boolean(me)
@@ -63,6 +68,11 @@ export function Layout() {
   // Opens the session-wide socket and keeps the inbox/unread counts fresh.
   useMessageNotifications()
   const unreadTotal = useUnreadTotal()
+
+  // Same socket, different room traffic — notices arrive on every page, which
+  // is the whole point of a notification.
+  useNotificationEvents()
+  const unreadNotifications = useUnreadNotifications()
 
   // Role-aware navigation: admin (account role) > seller (KYC-verified) > buyer.
   // /dashboard renders the right component per persona, so every role points there.
@@ -217,6 +227,19 @@ export function Layout() {
                         </>
                       )}
 
+                      {/* Opens the panel rather than routing — the panel is the
+                          only notifications surface, so there's nowhere to go. */}
+                      <button
+                        onClick={() => {
+                          setUserDropdownOpen(false)
+                          setNotificationsOpen(true)
+                        }}
+                        className={`w-full cursor-pointer ${dropdownLinkClass}`}
+                      >
+                        <Bell size={15} /> Notifications
+                        {unreadNotifications > 0 && <UnreadDot count={unreadNotifications} />}
+                      </button>
+
                       {/* Outside the !isAdmin gate — admins hold threads too
                           (dispute follow-ups), and their nav omits Messages. */}
                       <Link to="/messages" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
@@ -308,6 +331,24 @@ export function Layout() {
               )}
             </div>
 
+            {/* Notifications bell — outside the `hidden sm:flex` group above so
+                it stays reachable on mobile, where the panel goes full-width. */}
+            {isLoggedIn && (
+              <button
+                onClick={() => setNotificationsOpen(true)}
+                aria-label={unreadNotifications > 0 ? `Notifications (${unreadNotifications} unread)` : 'Notifications'}
+                title="Notifications"
+                className="relative flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <Bell size={17} />
+                {unreadNotifications > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-slate-950">
+                    {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Dark / Light Mode Toggle Button */}
             <button
               onClick={toggleTheme}
@@ -394,6 +435,18 @@ export function Layout() {
                   </Link>
                 )}
                 {isLoggedIn && (
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false)
+                      setNotificationsOpen(true)
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900 cursor-pointer"
+                  >
+                    <Bell size={16} /> Notifications
+                    {unreadNotifications > 0 && <UnreadDot count={unreadNotifications} />}
+                  </button>
+                )}
+                {isLoggedIn && (
                   <Link
                     to="/messages"
                     onClick={() => setMobileMenuOpen(false)}
@@ -452,6 +505,10 @@ export function Layout() {
         )}
       </main>
       {!isChatPage && <Footer />}
+
+      {isLoggedIn && (
+        <NotificationPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
+      )}
     </div>
   )
 }

@@ -16,12 +16,6 @@ Only what's still outstanding is listed here — see `FLOWS.md` for the endpoint
 - [ ] Deals **force-override** (manual hold / release / refund) + oversight detail endpoint
 - [ ] Audit log · support tickets
 
-## Listings moderation
-
-Takedown → seller appeal → admin ruling is built end to end. Outstanding:
-
-- [ ] Drop `corrections` from `ListingDispute` (and the `removalSnapshot` diff it exists to support) — the appeal is an explanation, not a resubmission.
-
 ## Crypto
 
 - [ ] **TRX crypto rail** (TRON Shasta / TronGrid): `GET /:id/crypto`, `POST /:id/crypto/check`, on-chain fund/payout/refund. Standalone TRX deals can be *created* but `fund`/`payout`/`refund` throw 501. `CryptoEscrow` model unused.
