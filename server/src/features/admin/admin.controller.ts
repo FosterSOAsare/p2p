@@ -61,3 +61,23 @@ export const getStats = asyncHandler(async (_req, res) => {
   const stats = await adminService.getStats();
   res.json(stats);
 });
+
+export const listListings = asyncHandler(async (req, res) => {
+  const result = await adminService.listListings(req.query as any);
+  res.json(result);
+});
+
+export const removeListing = asyncHandler(async (req, res) => {
+  const listing = await adminService.removeListing(req.user!.id, req.params.id as string, req.body);
+  res.json({ listing });
+});
+
+export const listListingDisputes = asyncHandler(async (req, res) => {
+  const result = await adminService.listListingDisputes((req.query as any).status);
+  res.json(result);
+});
+
+export const resolveListingDispute = asyncHandler(async (req, res) => {
+  const dispute = await adminService.resolveListingDispute(req.user!.id, req.params.id as string, req.body);
+  res.json({ dispute });
+});

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { auth, requireSeller } from "../../shared/middleware/auth.middleware";
+import { auth, optionalAuth, requireSeller } from "../../shared/middleware/auth.middleware";
 import { validate } from "../../shared/middleware/validate.middleware";
 import * as listingsController from "./listings.controller";
 import * as listingsValidation from "./listings.validation";
@@ -16,8 +16,12 @@ listingsRouter.post("/", auth, requireSeller, validate(listingsValidation.create
 listingsRouter.patch("/:id", auth, requireSeller, validate(listingsValidation.update), listingsController.update);
 listingsRouter.delete("/:id", auth, requireSeller, validate(listingsValidation.idParam), listingsController.remove);
 
+// Appeal a takedown (owner only; the service checks eligibility)
+listingsRouter.post("/:id/dispute", auth, validate(listingsValidation.dispute), listingsController.submitDispute);
+
 // ---- Public detail (after /mine) ----
-listingsRouter.get("/:id", validate(listingsValidation.idParam), listingsController.getById);
+// optionalAuth so the owner/an admin can still open their own removed listing.
+listingsRouter.get("/:id", optionalAuth, validate(listingsValidation.idParam), listingsController.getById);
 
 export const categoriesRouter = Router();
 

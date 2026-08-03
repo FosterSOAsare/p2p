@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Layers, Tag, Star, ExternalLink, Trash2, Loader2, Package } from 'lucide-react'
 import { ConfirmDialog } from '../features/shared/ui/ConfirmDialog'
 import { ListingForm } from '../features/seller/ui/ListingForm'
+import { ListingDisputePanel } from '../features/seller/ui/ListingDisputePanel'
 import { useListing } from '../features/marketplace/data/marketplaceApi'
 import { useUpdateListing, useDeleteListing } from '../features/seller/data/listingsApi'
 import { imagesFromText, CONDITIONS, type ListingForm as ListingFormValues } from '../features/seller/data/schemas'
@@ -141,6 +142,10 @@ export function ListingDetail() {
         <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-3">
           Edit Listing
         </h3>
+        {listing.removal && (
+          <ListingDisputePanel listingId={listing.id} removal={listing.removal} />
+        )}
+
         <ListingForm
           defaultValues={{
             title: listing.title,

@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, SendHorizonal, ShieldCheck, Lock, Paperclip, Loader2 } from 'lucide-react'
-import { useSellerProfile } from '../features/user/data/usersApi'
 import { useUploadSingleFile } from '../features/upload/data/uploadApi'
+import { useThread, useSendMessage, useMarkThreadRead } from '../features/messages/data/messagesApi'
+import { apiErrorMessage } from '../features/shared/libs/api'
 
-interface LocalMessage {
-  id: number
-  body: string
-  mine: boolean
-  at: string
-}
+/** Time-of-day label for a bubble. */
+const timeOf = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 
 export function MessageThread() {
   const { username = '' } = useParams()
@@ -17,45 +15,42 @@ export function MessageThread() {
   const redirectParam = searchParams.get('redirect')
   const backTo = redirectParam && redirectParam.startsWith('/') ? redirectParam : `/seller/${username}`
 
-  const profileQuery = useSellerProfile(username)
-  const counterparty = profileQuery.data
+  const threadQuery = useThread(username)
+  const sendMessage = useSendMessage(username)
+  const markRead = useMarkThreadRead(username)
   const uploadSingle = useUploadSingleFile()
 
-  const [messages, setMessages] = useState<LocalMessage[]>([])
   const [draft, setDraft] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  const counterparty = threadQuery.data?.counterparty
+  const messages = threadQuery.data?.messages ?? []
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
 
+  // Clear the unread badge once the thread is on screen.
+  const hasThread = Boolean(threadQuery.data)
+  useEffect(() => {
+    if (hasThread) markRead.mutate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasThread, username])
+
   const handleChatFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
     uploadSingle.mutate(file, {
-      onSuccess: (uploaded) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: prev.length + 1,
-            body: `📷 Attached Evidence / Proof File:\n${uploaded.url}`,
-            mine: true,
-            at: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          },
-        ])
-      },
+      onSuccess: (uploaded) => sendMessage.mutate(`📷 Attached Evidence / Proof File:\n${uploaded.url}`),
     })
+    e.target.value = '' // allow re-picking the same file
   }
 
   const send = (e: React.FormEvent) => {
     e.preventDefault()
     const body = draft.trim()
     if (!body) return
-    setMessages((prev) => [
-      ...prev,
-      { id: prev.length + 1, body, mine: true, at: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) },
-    ])
+    sendMessage.mutate(body)
     setDraft('')
   }
 
@@ -100,11 +95,19 @@ export function MessageThread() {
             Messages are immutably logged and become dispute evidence for any deal between you two.
           </div>
 
-          {messages.length === 0 && (
+          {threadQuery.isLoading ? (
+            <div className="pt-8 text-center">
+              <Loader2 size={22} className="mx-auto animate-spin text-primary-600 dark:text-primary-400" />
+            </div>
+          ) : threadQuery.isError ? (
+            <p className="text-center text-xs text-rose-600 dark:text-rose-400 pt-8">
+              {apiErrorMessage(threadQuery.error)}
+            </p>
+          ) : messages.length === 0 ? (
             <p className="text-center text-xs text-slate-400 dark:text-slate-500 pt-8">
               Say hello — ask about a listing or coordinate a delivery.
             </p>
-          )}
+          ) : null}
 
           {messages.map((m) => (
             <div key={m.id} className={`flex ${m.mine ? 'justify-end' : 'justify-start'}`}>
@@ -116,7 +119,9 @@ export function MessageThread() {
                 }`}
               >
                 <p className="leading-relaxed whitespace-pre-line">{m.body}</p>
-                <p className={`mt-0.5 text-[10px] ${m.mine ? 'text-primary-100' : 'text-slate-400'}`}>{m.at}</p>
+                <p className={`mt-0.5 text-[10px] ${m.mine ? 'text-primary-100' : 'text-slate-400'}`}>
+                  {timeOf(m.createdAt)}
+                </p>
               </div>
             </div>
           ))}
@@ -150,18 +155,18 @@ export function MessageThread() {
           />
           <button
             type="submit"
-            disabled={!draft.trim()}
+            disabled={!draft.trim() || sendMessage.isPending}
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600 text-white hover:bg-primary-700 transition-all cursor-pointer disabled:opacity-40 shrink-0"
             aria-label="Send message"
           >
-            <SendHorizonal size={16} />
+            {sendMessage.isPending ? <Loader2 size={16} className="animate-spin" /> : <SendHorizonal size={16} />}
           </button>
         </form>
       </div>
 
-      <p className="text-center text-[11px] text-slate-400 dark:text-slate-500">
-        UI preview — messages are local until the realtime (WebSocket) integration lands.
-      </p>
+      {sendMessage.isError && (
+        <p className="text-center text-[11px] text-rose-600 dark:text-rose-400">{apiErrorMessage(sendMessage.error)}</p>
+      )}
     </div>
   )
 }

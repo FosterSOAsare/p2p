@@ -8,7 +8,7 @@ export const list = asyncHandler(async (req, res) => {
 });
 
 export const getById = asyncHandler(async (req, res) => {
-  const listing = await listingsService.getById(req.params.id as string);
+  const listing = await listingsService.getById(req.params.id as string, req.user);
   res.json(listing);
 });
 
@@ -38,4 +38,9 @@ export const mine = asyncHandler(async (req, res) => {
     req.query as unknown as { status?: "draft" | "active" | "out_of_stock"; page: number; limit: number },
   );
   res.json(result);
+});
+
+export const submitDispute = asyncHandler(async (req, res) => {
+  const dispute = await listingsService.submitDispute(req.user!.id, req.params.id as string, req.body);
+  res.status(201).json({ dispute });
 });

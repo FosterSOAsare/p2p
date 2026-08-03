@@ -28,6 +28,8 @@ function StatusBadge({ status }: { status: MyListingCard['status'] }) {
     return <span className="rounded-full bg-emerald-100 dark:bg-emerald-950 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">Active</span>
   if (status === 'out_of_stock')
     return <span className="rounded-full bg-amber-100 dark:bg-amber-950 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">Out of Stock</span>
+  if (status === 'removed')
+    return <span className="rounded-full bg-rose-100 dark:bg-rose-950 px-2.5 py-0.5 text-[10px] font-bold text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">Removed</span>
   return <span className="rounded-full bg-slate-200 dark:bg-slate-800 px-2.5 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">Draft</span>
 }
 
@@ -163,6 +165,11 @@ export function MyListings() {
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   {formatMoney(l.price)} · {l.category} · qty {l.quantity} · listed {formatDate(l.createdAt)}
                 </p>
+                {l.removalReason && (
+                  <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 mt-0.5">
+                    Removed by an administrator — {l.removalReason}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">

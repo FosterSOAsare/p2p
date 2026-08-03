@@ -132,7 +132,8 @@ export async function markRead(userId: string, username: string) {
  * Posts a deal-linked system line into the pair's conversation — the escrow
  * module calls this on state transitions so all orders live in the one thread.
  */
-export async function postDealMessage(fromUserId: string, toUserId: string, body: string, escrowId: string) {
+/** `escrowId` is optional: moderation notices aren't tied to a deal. */
+export async function postDealMessage(fromUserId: string, toUserId: string, body: string, escrowId?: string) {
   const key = pairKey(fromUserId, toUserId);
   const conversation = await prisma.conversation.upsert({
     where: { userAId_userBId: key },

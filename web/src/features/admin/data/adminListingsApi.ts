@@ -1,0 +1,150 @@
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api } from '../../shared/libs/api'
+
+export type ListingStatus = 'draft' | 'active' | 'out_of_stock' | 'removed'
+
+export type RemovalReason =
+  | 'prohibited_item'
+  | 'duplicate'
+  | 'misleading'
+  | 'spam'
+  | 'guidelines'
+  | 'fraud'
+  | 'other'
+
+/** Mirrors the server's removal-reasons module — keep the wording in step. */
+export const REMOVAL_REASONS: { id: RemovalReason; label: string }[] = [
+  { id: 'prohibited_item', label: 'Prohibited or restricted item' },
+  { id: 'duplicate', label: 'Duplicate listing' },
+  { id: 'misleading', label: 'Misleading or inaccurate information' },
+  { id: 'spam', label: 'Spam or low-quality content' },
+  { id: 'guidelines', label: 'Violates community guidelines' },
+  { id: 'fraud', label: 'Fraudulent or suspicious activity' },
+  { id: 'other', label: 'Other' },
+]
+
+export interface AdminListingRow {
+  id: string
+  title: string
+  price: number
+  currency: 'GHS' | 'TRX'
+  category: string
+  quantity: number
+  image: string | null
+  status: ListingStatus
+  createdAt: string
+  seller: { username: string; avatarUrl: string | null }
+  removal: {
+    reason: RemovalReason | null
+    reasonText: string | null
+    removedAt: string
+    removedBy: string | null
+    disputeAllowed: boolean
+    disputeStatus: 'open' | 'approved' | 'rejected' | null
+  } | null
+}
+
+export interface AdminListingsResponse {
+  listings: AdminListingRow[]
+  total: number
+  page: number
+  pages: number
+}
+
+export const adminListingKeys = {
+  all: ['admin', 'listings'] as const,
+  list: (query: string) => [...adminListingKeys.all, 'list', query] as const,
+}
+
+export function useAdminListings(query: string) {
+  return useQuery({
+    queryKey: adminListingKeys.list(query),
+    queryFn: () => api<AdminListingsResponse>(`/api/admin/listings${query ? `?${query}` : ''}`),
+    placeholderData: keepPreviousData,
+    retry: false,
+  })
+}
+
+export function useRemoveListing() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      id,
+      reason,
+      note,
+      disputeAllowed,
+    }: {
+      id: string
+      reason: RemovalReason
+      note?: string
+      disputeAllowed: boolean
+    }) =>
+      api<{ listing: AdminListingRow }>(`/api/admin/listings/${id}/remove`, {
+        method: 'POST',
+        body: { reason, disputeAllowed, ...(note ? { note } : {}) },
+      }).then((r) => r.listing),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminListingKeys.all })
+      // The listing leaves the public marketplace too.
+      qc.invalidateQueries({ queryKey: ['listings'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'stats'] })
+    },
+  })
+}
+
+// ---------- Seller appeals ----------
+
+export type ListingDisputeStatus = 'open' | 'approved' | 'rejected'
+
+/** Listing fields captured at removal / as they stand now — for the diff. */
+export interface ListingSnapshot {
+  title: string
+  description: string | null
+  price: number
+  category: string
+  condition: string | null
+  quantity: number
+  images: string[]
+  location: string | null
+}
+
+export interface AdminListingDispute {
+  id: string
+  status: ListingDisputeStatus
+  explanation: string
+  corrections: string | null
+  reviewNote: string | null
+  reviewedBy: string | null
+  reviewedAt: string | null
+  createdAt: string
+  seller: { username: string; avatarUrl: string | null }
+  listing: { id: string; status: ListingStatus; image: string | null; removalReasonText: string | null }
+  before: ListingSnapshot | null
+  after: ListingSnapshot
+  changedFields: string[]
+}
+
+export function useAdminListingDisputes(status: 'open' | 'resolved' | 'all') {
+  return useQuery({
+    queryKey: [...adminListingKeys.all, 'disputes', status] as const,
+    queryFn: () =>
+      api<{ disputes: AdminListingDispute[]; total: number }>(`/api/admin/listing-disputes?status=${status}`),
+    placeholderData: keepPreviousData,
+    retry: false,
+  })
+}
+
+export function useResolveListingDispute() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, decision, note }: { id: string; decision: 'approve' | 'reject'; note?: string }) =>
+      api<{ dispute: AdminListingDispute }>(`/api/admin/listing-disputes/${id}/resolve`, {
+        method: 'POST',
+        body: { decision, ...(note ? { note } : {}) },
+      }).then((r) => r.dispute),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminListingKeys.all })
+      qc.invalidateQueries({ queryKey: ['listings'] })
+    },
+  })
+}

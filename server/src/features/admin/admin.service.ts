@@ -8,8 +8,13 @@ import type {
   Prisma,
   UserRole,
 } from "../../generated/prisma/client";
+import type { ListingRemovalReason } from "../../generated/prisma/client";
+// Value import: Prisma.DbNull is needed at runtime to clear a Json column.
+import { Prisma as PrismaRuntime } from "../../generated/prisma/client";
 import { transition } from "../escrows/escrows.service";
 import { postDealMessage } from "../messages/messages.service";
+import { mailer } from "../../shared/mail/mail.service";
+import { removalReasonText } from "../listings/removal-reasons";
 
 // ---------- KYC review queue ----------
 
@@ -459,4 +464,328 @@ export async function getStats() {
     // Completed (disbursed) GHS volume — the only "settled" money in the simulated fiat rail.
     ghsVolume: Number(volume._sum.amount ?? 0),
   };
+}
+
+// ---------- Listings moderation ----------
+
+const listingRowSelect = {
+  id: true,
+  title: true,
+  price: true,
+  currency: true,
+  category: true,
+  quantity: true,
+  images: true,
+  status: true,
+  createdAt: true,
+  removalReason: true,
+  removalNote: true,
+  removedAt: true,
+  disputeAllowed: true,
+  seller: { select: { id: true, username: true, avatarUrl: true } },
+  removedBy: { select: { username: true } },
+  disputes: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, status: true } },
+} satisfies Prisma.ListingSelect;
+
+type ListingRow = Prisma.ListingGetPayload<{ select: typeof listingRowSelect }>;
+
+function toAdminListing(l: ListingRow) {
+  return {
+    id: l.id,
+    title: l.title,
+    price: Number(l.price),
+    currency: l.currency,
+    category: l.category,
+    quantity: l.quantity,
+    image: l.images[0] ?? null,
+    status: l.status,
+    createdAt: l.createdAt.toISOString(),
+    seller: { username: l.seller.username, avatarUrl: l.seller.avatarUrl },
+    removal: l.removedAt
+      ? {
+          reason: l.removalReason,
+          reasonText: l.removalReason ? removalReasonText(l.removalReason, l.removalNote) : null,
+          removedAt: l.removedAt.toISOString(),
+          removedBy: l.removedBy?.username ?? null,
+          disputeAllowed: l.disputeAllowed,
+          disputeStatus: l.disputes[0]?.status ?? null,
+        }
+      : null,
+  };
+}
+
+/** Moderation browse — every listing, drafts and removed ones included. */
+export async function listListings(params: {
+  search?: string;
+  status?: "draft" | "active" | "out_of_stock" | "removed";
+  page: number;
+  limit: number;
+}) {
+  const { search, status, page, limit } = params;
+  const where: Prisma.ListingWhereInput = {
+    ...(status ? { status } : {}),
+    ...(search
+      ? {
+          OR: [
+            { title: { contains: search, mode: "insensitive" } },
+            { category: { contains: search, mode: "insensitive" } },
+            { seller: { username: { contains: search.replace(/^@/, ""), mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [rows, total] = await prisma.$transaction([
+    prisma.listing.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: listingRowSelect,
+    }),
+    prisma.listing.count({ where }),
+  ]);
+
+  return {
+    listings: rows.map(toAdminListing),
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  };
+}
+
+/**
+ * Take a listing down. Soft state (status → `removed`) rather than a delete, so
+ * listings attached to escrow deals keep their history. The seller is told in
+ * their message thread and by email, both carrying the reason.
+ */
+export async function removeListing(
+  adminId: string,
+  listingId: string,
+  input: { reason: ListingRemovalReason; note?: string; disputeAllowed?: boolean },
+) {
+  const listing = await prisma.listing.findUnique({
+    where: { id: listingId },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      sellerId: true,
+      description: true,
+      price: true,
+      category: true,
+      condition: true,
+      quantity: true,
+      images: true,
+      location: true,
+    },
+  });
+  if (!listing) throw ApiError.notFound("Listing not found");
+  if (listing.status === "removed") throw ApiError.conflict("This listing has already been removed");
+  if (input.reason === "other" && !input.note?.trim()) {
+    throw ApiError.badRequest("Describe the reason when choosing Other");
+  }
+
+  const note = input.note?.trim() || null;
+  const updated = await prisma.listing.update({
+    where: { id: listingId },
+    data: {
+      status: "removed",
+      removalReason: input.reason,
+      removalNote: note,
+      removedAt: new Date(),
+      removedById: adminId,
+      disputeAllowed: input.disputeAllowed ?? false,
+      // Freeze the current fields so a reviewer can diff the seller's corrections.
+      removalSnapshot: {
+        title: listing.title,
+        description: listing.description,
+        price: Number(listing.price),
+        category: listing.category,
+        condition: listing.condition,
+        quantity: listing.quantity,
+        images: listing.images,
+        location: listing.location,
+      },
+    },
+    select: listingRowSelect,
+  });
+
+  const reasonText = removalReasonText(input.reason, note);
+  const canDispute = input.disputeAllowed ?? false;
+
+  // Tell the seller — in-app thread first, then email. Best-effort: a delivery
+  // problem must not roll back a completed moderation action.
+  await postDealMessage(
+    adminId,
+    listing.sellerId,
+    `🚫 Your listing "${listing.title}" has been removed by an administrator.\nReason: ${reasonText}` +
+      (canDispute
+        ? `\nYou can correct the listing and submit a dispute for review.`
+        : `\nThis removal cannot be disputed.`),
+  ).catch(() => undefined);
+
+  prisma.user
+    .findUnique({ where: { id: listing.sellerId }, select: { email: true, fullName: true } })
+    .then(
+      (seller) =>
+        seller &&
+        mailer.listingRemoved(seller.email, seller.fullName, listing.title, reasonText, canDispute),
+    )
+    .catch(() => undefined);
+
+  return toAdminListing(updated);
+}
+
+// ---------- Listing disputes (seller appeals against a takedown) ----------
+
+const disputeInclude = {
+  listing: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      price: true,
+      category: true,
+      condition: true,
+      quantity: true,
+      images: true,
+      location: true,
+      status: true,
+      removalReason: true,
+      removalNote: true,
+      removalSnapshot: true,
+    },
+  },
+  seller: { select: { username: true, avatarUrl: true } },
+  reviewedBy: { select: { username: true } },
+} satisfies Prisma.ListingDisputeInclude;
+
+type DisputeWithListing = Prisma.ListingDisputeGetPayload<{ include: typeof disputeInclude }>;
+
+function toAdminDispute(d: DisputeWithListing) {
+  const snapshot = (d.listing.removalSnapshot ?? null) as Record<string, unknown> | null;
+  // Current values, so the reviewer can see exactly what changed since removal.
+  const current = {
+    title: d.listing.title,
+    description: d.listing.description,
+    price: Number(d.listing.price),
+    category: d.listing.category,
+    condition: d.listing.condition,
+    quantity: d.listing.quantity,
+    images: d.listing.images,
+    location: d.listing.location,
+  };
+  const changedFields = snapshot
+    ? Object.keys(current).filter(
+        (k) => JSON.stringify(snapshot[k] ?? null) !== JSON.stringify((current as Record<string, unknown>)[k] ?? null),
+      )
+    : [];
+
+  return {
+    id: d.id,
+    status: d.status,
+    explanation: d.explanation,
+    corrections: d.corrections,
+    reviewNote: d.reviewNote,
+    reviewedBy: d.reviewedBy?.username ?? null,
+    reviewedAt: d.reviewedAt?.toISOString() ?? null,
+    createdAt: d.createdAt.toISOString(),
+    seller: { username: d.seller.username, avatarUrl: d.seller.avatarUrl },
+    listing: {
+      id: d.listing.id,
+      status: d.listing.status,
+      image: d.listing.images[0] ?? null,
+      removalReasonText: d.listing.removalReason
+        ? removalReasonText(d.listing.removalReason, d.listing.removalNote)
+        : null,
+    },
+    before: snapshot,
+    after: current,
+    changedFields,
+  };
+}
+
+export async function listListingDisputes(status: "open" | "resolved" | "all") {
+  const where: Prisma.ListingDisputeWhereInput =
+    status === "all" ? {} : status === "open" ? { status: "open" } : { status: { in: ["approved", "rejected"] } };
+
+  const rows = await prisma.listingDispute.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    include: disputeInclude,
+  });
+  return { disputes: rows.map(toAdminDispute), total: rows.length };
+}
+
+/**
+ * Rule on an appeal. Approving reinstates the listing (clearing the takedown
+ * trail); rejecting leaves it removed and closes the appeal.
+ */
+export async function resolveListingDispute(
+  adminId: string,
+  id: string,
+  input: { decision: "approve" | "reject"; note?: string },
+) {
+  const dispute = await prisma.listingDispute.findUnique({
+    where: { id },
+    select: { id: true, status: true, listingId: true, sellerId: true, listing: { select: { title: true } } },
+  });
+  if (!dispute) throw ApiError.notFound("Dispute not found");
+  if (dispute.status !== "open") throw ApiError.conflict("This dispute has already been reviewed");
+
+  const approved = input.decision === "approve";
+  const note = input.note?.trim() || null;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (approved) {
+      // Reinstate first, so the dispute we return below carries the fresh
+      // listing state rather than a pre-update snapshot.
+      await tx.listing.update({
+        where: { id: dispute.listingId },
+        data: {
+          status: "active",
+          removalReason: null,
+          removalNote: null,
+          removedAt: null,
+          removedById: null,
+          disputeAllowed: false,
+          removalSnapshot: PrismaRuntime.DbNull,
+        },
+      });
+    }
+
+    return tx.listingDispute.update({
+      where: { id },
+      data: {
+        status: approved ? "approved" : "rejected",
+        reviewNote: note,
+        reviewedById: adminId,
+        reviewedAt: new Date(),
+      },
+      include: disputeInclude,
+    });
+  });
+
+  const title = dispute.listing.title;
+  await postDealMessage(
+    adminId,
+    dispute.sellerId,
+    approved
+      ? `✅ Your dispute for "${title}" was approved — the listing is live again.${note ? `\nNote: ${note}` : ""}`
+      : `❌ Your dispute for "${title}" was rejected. The listing stays removed.${note ? `\nNote: ${note}` : ""}`,
+  ).catch(() => undefined);
+
+  prisma.user
+    .findUnique({ where: { id: dispute.sellerId }, select: { email: true, fullName: true } })
+    .then(
+      (seller) =>
+        seller &&
+        (approved
+          ? mailer.listingDisputeApproved(seller.email, seller.fullName, title, note)
+          : mailer.listingDisputeRejected(seller.email, seller.fullName, title, note)),
+    )
+    .catch(() => undefined);
+
+  return toAdminDispute(updated);
 }

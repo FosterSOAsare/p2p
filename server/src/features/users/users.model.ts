@@ -1,5 +1,7 @@
 /** DTOs for the users feature (profile & settings). */
 
+import type { ListingStatus } from "../../generated/prisma/client";
+
 export interface UpdateProfileInput {
   fullName?: string;
   phone?: string | null;
@@ -19,7 +21,7 @@ export interface SavedListingCard {
   currency: "GHS" | "TRX";
   category: string;
   condition: string | null;
-  status: "draft" | "active" | "out_of_stock";
+  status: ListingStatus;
   image: string | null;
   sellerUsername: string;
   savedAt: string;

@@ -22,6 +22,17 @@ adminRouter.get("/users", validate(adminValidation.userList), adminController.li
 adminRouter.get("/users/:id", validate(adminValidation.userParam), adminController.getUser);
 adminRouter.patch("/users/:id/status", validate(adminValidation.userStatus), adminController.setUserStatus);
 
+adminRouter.get("/listings", validate(adminValidation.listingList), adminController.listListings);
+adminRouter.post("/listings/:id/remove", validate(adminValidation.listingRemove), adminController.removeListing);
+
+// Seller appeals against a takedown ("/listing-disputes" kept distinct from escrow "/disputes")
+adminRouter.get("/listing-disputes", validate(adminValidation.listingDisputeList), adminController.listListingDisputes);
+adminRouter.post(
+  "/listing-disputes/:id/resolve",
+  validate(adminValidation.listingDisputeResolve),
+  adminController.resolveListingDispute,
+);
+
 adminRouter.get("/escrows", validate(adminValidation.escrowList), adminController.listEscrows);
 
 adminRouter.get("/stats", adminController.getStats);

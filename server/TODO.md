@@ -67,7 +67,8 @@ Legend: `[x]` done · `[ ]` not built · 🔒 auth required · 👑 admin · �
 - [x] **Users** `GET /users` (search/role/status/paginate) · `GET /users/:id` · `PATCH /users/:id/status` (suspend/reinstate; can't change own)
 - [x] **Deals oversight** `GET /escrows?status=&search=&paginate` (read-only; parties + open-dispute flag)
 - [x] `GET /stats` — KPIs dashboard (users + suspended, active listings, KYC pending, open disputes, deals per status, settled GHS volume). Client: AdminDashboard (`/admin`).
-- [ ] Listings moderation (browse all incl. drafts, takedown w/ reason)
+- [x] **Listings moderation** `GET /listings?status=&search=&paginate` (all listings incl. drafts & removed) · `POST /listings/:id/remove {reason, note?, disputeAllowed}` — soft takedown (`status: removed`, audit trail + field snapshot), notifies the seller in-app + by email with the reason. Client: AdminListingsList (`/admin/listings`).
+- [x] **Listing disputes (seller appeals)** — admin opts in per takedown via `disputeAllowed`. Seller: `POST /api/listings/:id/dispute {explanation, corrections?}` (owner-only; may edit the listing while removed but never its status). Admin: `GET /admin/listing-disputes?status=` · `POST /admin/listing-disputes/:id/resolve {decision, note?}` — approve reinstates the listing, reject keeps it removed. Both sides notified in-app + by email; the review UI diffs the snapshot against the corrected listing. Client: Disputes tab on `/admin/listings`, appeal panel on the seller's listing page.
 - [ ] Deals **force-override** (manual hold / release / refund) + oversight detail endpoint
 - [ ] Dispute **appeals** (one per dispute, senior/different admin) · audit log · support tickets
 

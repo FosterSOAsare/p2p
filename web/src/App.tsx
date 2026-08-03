@@ -16,6 +16,7 @@ import { ChangePassword } from './features/auth/ui/ChangePassword'
 import { Deals } from './pages/Deals'
 import { NewEscrow } from './pages/NewEscrow'
 import { EscrowDetail } from './pages/EscrowDetail'
+import { JoinDeal } from './pages/JoinDeal'
 import { Dashboard } from './pages/Dashboard'
 import { UserSettings } from './pages/UserSettings'
 import { Bookmarks } from './pages/Bookmarks'
@@ -31,6 +32,7 @@ import { AdminKycList } from './pages/AdminKycList'
 import { AdminKycDetail } from './pages/AdminKycDetail'
 import { AdminDisputesList } from './pages/AdminDisputesList'
 import { AdminUsersList } from './pages/AdminUsersList'
+import { AdminListingsList } from './pages/AdminListingsList'
 import { AdminDashboard } from './pages/AdminDashboard'
 import { NotFound } from './pages/NotFound'
 import { Terms } from './pages/Terms'
@@ -53,6 +55,8 @@ function App() {
         <Route path="deals" element={<Deals />} />
         <Route path="escrow/new" element={<NewEscrow />} />
         <Route path="escrow/:id" element={<EscrowDetail />} />
+        {/* Share-link / QR landing — public preview, sign-in prompted if needed */}
+        <Route path="join/:code" element={<JoinDeal />} />
         <Route path="sell" element={<VendorKyc />} />
         <Route path="vendor/kyc" element={<VendorKyc />} />
         {/* Single role-aware dashboard (admin → console, verified seller → store, buyer → overview) */}
@@ -72,6 +76,7 @@ function App() {
           <Route path="admin/kyc" element={<AdminKycList />} />
           <Route path="admin/kyc/:id" element={<AdminKycDetail />} />
           <Route path="admin/disputes" element={<AdminDisputesList />} />
+          <Route path="admin/listings" element={<AdminListingsList />} />
           <Route path="admin/users" element={<AdminUsersList />} />
         </Route>
         <Route path="terms" element={<Terms />} />

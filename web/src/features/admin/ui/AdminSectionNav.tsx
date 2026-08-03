@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, ShieldCheck, Scale, Users, Handshake } from 'lucide-react'
+import { LayoutDashboard, ShieldCheck, Scale, Users, Handshake, PackageSearch } from 'lucide-react'
 
 const items = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/admin/kyc', label: 'KYC Reviews', icon: ShieldCheck },
   { to: '/admin/disputes', label: 'Disputes', icon: Scale },
+  { to: '/admin/listings', label: 'Listings', icon: PackageSearch },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/deals', label: 'Deals', icon: Handshake },
 ]
