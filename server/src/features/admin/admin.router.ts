@@ -16,6 +16,7 @@ adminRouter.post("/kyc/:id/reject", validate(adminValidation.kycReject), adminCo
 
 adminRouter.get("/disputes", validate(adminValidation.disputeList), adminController.listDisputes);
 adminRouter.get("/disputes/:id", validate(adminValidation.disputeParam), adminController.getDispute);
+adminRouter.post("/disputes/:id/note", validate(adminValidation.disputeNote), adminController.postDisputeNote);
 adminRouter.post("/disputes/:id/resolve", validate(adminValidation.disputeResolve), adminController.resolveDispute);
 
 adminRouter.get("/users", validate(adminValidation.userList), adminController.listUsers);

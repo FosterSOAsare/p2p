@@ -36,12 +36,14 @@ real API and typecheck clean. Two "finished-looking" features are **not function
 - [ ] **One verifiable Shasta tx (S)** — a real testnet escrow release, link on Tronscan — the proposal's crypto
   proof point.
 
-## Phase 3 — Standalone escrow completeness  ⏱ finishes the off-marketplace flow
+## Phase 3 — Standalone escrow completeness  ✅ done
 
-- [ ] **Join-by-code screen (S)** — client page for `GET /api/escrows/code/:code` (public preview) →
-  `POST /code/:code/accept`. Endpoints already exist; only the screen is missing.
-- [ ] **QR share (S)** — `GET /api/escrows/:id/qr` (qrcode pkg) + a share panel on the deal (link + QR).
-  `qrcode.react` is already a client dependency.
+- [x] **Join-by-code screen** — `/join/:code` renders the public preview (`GET /api/escrows/code/:code`):
+  terms, which side you'd take, what you'd pay or receive. Signed-out visitors go through
+  `/login?redirect=` and back. Joining (`POST /code/:code/accept`) redirects to the deal.
+- [x] **QR share** — the deal detail response carries a `share` block (join URL + QR data-URL) whenever a
+  side is still empty; the deal page renders it as a QR + copyable link, and it disappears once someone
+  joins. No separate `/:id/qr` endpoint — it rides on the request the page already makes.
 
 ## Phase 4 — Admin completeness  ⏱ nice-to-have depth
 

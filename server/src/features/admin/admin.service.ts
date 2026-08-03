@@ -9,6 +9,7 @@ import type {
   UserRole,
 } from "../../generated/prisma/client";
 import { transition } from "../escrows/escrows.service";
+import { breakdown } from "../escrows/money";
 import { listDealTranscript, postDealMessage } from "../messages/messages.service";
 
 // ---------- KYC review queue ----------
@@ -193,14 +194,53 @@ export async function getDispute(id: string) {
       feeAmount: Number(d.escrow.feeAmount),
       currency: d.escrow.currency,
       status: d.escrow.status,
+      // The arbitrator is deciding where money goes, so send the same breakdown
+      // the parties agreed to — who carries the fee changes what each side nets.
+      feeSplit: d.escrow.feeSplit,
+      ...breakdown(Number(d.escrow.amount), Number(d.escrow.feeAmount), d.escrow.feeSplit),
       buyer: d.escrow.buyer,
       seller: d.escrow.seller,
+      disputedAt: d.escrow.disputedAt?.toISOString() ?? null,
       messages: transcript,
       events: d.escrow.events,
     },
     openedBy: d.openedBy,
     resolvedBy: d.resolvedBy,
   };
+}
+
+/**
+ * An arbitrator's question to both parties, dropped into their deal thread as a
+ * `system` line so it reads as coming from the platform rather than from either
+ * side. No socket needed here — postDealMessage persists and emits, so the
+ * parties get it live over the sockets they already hold.
+ *
+ * Note `senderId` ends up being the buyer: Message requires a sender and the
+ * admin isn't in the pair's conversation. `type: "system"` is what disambiguates
+ * it — both clients render those centred, never as the buyer's bubble. Same
+ * approach the ruling verdict has always used.
+ */
+export async function postDisputeNote(adminId: string, id: string, body: string) {
+  const d = await prisma.dispute.findUnique({
+    where: { id },
+    include: { escrow: { select: { id: true, buyerId: true, sellerId: true } } },
+  });
+  if (!d) throw ApiError.notFound("Dispute not found");
+  if (d.status !== "open") throw ApiError.conflict("This dispute is already resolved");
+  if (!d.escrow.buyerId || !d.escrow.sellerId) {
+    throw ApiError.badRequest("This deal is missing a party to message");
+  }
+
+  const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { username: true } });
+
+  await postDealMessage(
+    d.escrow.buyerId,
+    d.escrow.sellerId,
+    `⚖️ Admin${admin ? ` @${admin.username}` : ""} asks: ${body}`,
+    d.escrowId,
+  );
+
+  return getDispute(id);
 }
 
 export async function resolveDispute(

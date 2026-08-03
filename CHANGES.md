@@ -58,11 +58,12 @@ dev/no-Paystack fallback.
   dispute-created, dispute-resolved (order emails respect `emailShipmentUpdates`).
 - **`server/src/features/wallet/wallet.service.ts`** — withdrawal receipt.
 
-### 4. QR share endpoint
-- **`server/src/features/escrows/`** (`escrows.service.ts` `getShareQr`,
-  `escrows.controller.ts`, `escrows.router.ts`) — `GET /api/escrows/:id/qr`
-  returns a join-link QR data-URL (party-only). Optional/nice-to-have since
-  invites are username-based.
+### 4. QR share
+- **`server/src/features/escrows/escrows.service.ts`** (`buildShareInvite`) — the
+  deal detail response carries `share: { code, joinUrl, dataUrl }` while a side is
+  still empty, `null` otherwise. Superseded the standalone `GET /api/escrows/:id/qr`
+  endpoint: the deal page already fetches detail, and one source keeps the QR from
+  drifting from the link it encodes. Party access is inherited from `getDetail`.
 
 ### Supporting
 - **`server/src/shared/config/env.ts`** — Paystack + mail env vars,

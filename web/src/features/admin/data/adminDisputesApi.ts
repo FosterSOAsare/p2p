@@ -33,7 +33,7 @@ export interface AdminDispute {
     code: string
     title: string
     amount: number
-    currency: string
+    currency: 'GHS' | 'TRX'
     status: string
     buyer: DisputeParty | null
     seller: DisputeParty | null
@@ -79,10 +79,18 @@ export interface AdminDisputeDetail extends Omit<AdminDispute, 'escrow' | 'opene
     title: string
     amount: number
     feeAmount: number
-    currency: string
+    currency: 'GHS' | 'TRX'
     status: string
+    /** Who carried the platform fee, and the resulting per-side figures. */
+    feeSplit: 'buyer' | 'seller' | 'split'
+    buyerFee: number
+    sellerFee: number
+    fundingTotal: number
+    sellerPayout: number
     buyer: (DisputeParty & { email: string }) | null
     seller: (DisputeParty & { email: string }) | null
+    /** When the freeze began — the transcript divider anchors to it. */
+    disputedAt: string | null
     messages: DisputeMessage[]
     events: DisputeEvent[]
   }
@@ -110,6 +118,21 @@ export function useAdminDisputeDetail(id: string | null) {
     queryFn: () => api<AdminDisputeDetail>(`/api/admin/disputes/${id}`),
     enabled: Boolean(id),
     retry: false,
+  })
+}
+
+/**
+ * Ask both parties something, in their own deal thread. Plain REST — the admin
+ * holds no socket. The server persists and emits, so the parties see it live.
+ */
+export function useAddDisputeNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string }) =>
+      api<AdminDisputeDetail>(`/api/admin/disputes/${id}/note`, { method: 'POST', body: { body } }),
+    // The response is the refreshed dispute, so the case record already has the
+    // new line — seed it rather than round-tripping again.
+    onSuccess: (updated) => qc.setQueryData(adminDisputeKeys.detail(updated.id), updated),
   })
 }
 

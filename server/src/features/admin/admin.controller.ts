@@ -32,6 +32,11 @@ export const getDispute = asyncHandler(async (req, res) => {
   res.json(dispute);
 });
 
+export const postDisputeNote = asyncHandler(async (req, res) => {
+  const dispute = await adminService.postDisputeNote(req.user!.id, req.params.id as string, req.body.body);
+  res.status(201).json(dispute);
+});
+
 export const resolveDispute = asyncHandler(async (req, res) => {
   const dispute = await adminService.resolveDispute(req.user!.id, req.params.id as string, req.body);
   res.json(dispute);

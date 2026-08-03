@@ -576,7 +576,7 @@ export function EscrowDetail() {
             {deal.status === 'disbursed' && (
               <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 p-4 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold text-emerald-900 dark:text-emerald-300 flex items-center gap-2">
                 <CheckCircle2 size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-                {deal.myRole === 'seller' ? 'Payout released to your wallet.' : 'Completed — funds released to the seller.'}
+                {deal.myRole === 'seller' ? 'Payout released to your wallet.' : 'Completed — funds released to counterparty.'}
               </div>
             )}
 

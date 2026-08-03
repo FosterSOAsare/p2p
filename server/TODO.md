@@ -15,7 +15,7 @@ Only what's still outstanding is listed here — see `FLOWS.md` for the endpoint
 
 - [ ] Listings moderation (browse all incl. drafts, takedown w/ reason)
 - [ ] Deals **force-override** (manual hold / release / refund) + oversight detail endpoint
-- [ ] Dispute **appeals** (one per dispute, senior/different admin) · audit log · support tickets
+- [ ] Audit log · support tickets
 
 ## Crypto
 

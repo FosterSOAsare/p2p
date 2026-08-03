@@ -36,6 +36,17 @@ export const disputeParam: RequestSchema = {
   }),
 };
 
+export const disputeNote: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+  body: Joi.object({
+    body: Joi.string().trim().min(3).max(1000).required().messages({
+      "string.empty": "Write something to send to the parties",
+    }),
+  }),
+};
+
 export const disputeResolve: RequestSchema = {
   params: Joi.object({
     id: Joi.string().guid().required(),
