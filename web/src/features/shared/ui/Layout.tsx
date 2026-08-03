@@ -85,6 +85,9 @@ export function Layout() {
         { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
         { to: '/admin/kyc', label: 'KYC Queue', icon: ShieldCheck },
         { to: '/admin/disputes', label: 'Disputes', icon: Scale },
+        // Next to Disputes — the two moderation queues belong together, and a
+        // listing appeal is reviewed from here.
+        { to: '/admin/listings', label: 'Listings', icon: PackageSearch },
         { to: '/admin/users', label: 'Users', icon: Users },
         { to: '/deals', label: 'Deals', icon: Handshake },
       ]
