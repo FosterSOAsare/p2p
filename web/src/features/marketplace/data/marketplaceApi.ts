@@ -49,6 +49,19 @@ export interface ListingDetailData {
   images: string[]
   location: string | null
   status: string
+  /** Present only for the owner/an admin viewing a removed listing. */
+  removal: {
+    reasonText: string
+    disputeAllowed: boolean
+    dispute: {
+      id: string
+      status: 'open' | 'approved' | 'rejected'
+      explanation: string
+      corrections: string | null
+      reviewNote: string | null
+      createdAt: string
+    } | null
+  } | null
   views: number
   createdAt: string
   seller: {

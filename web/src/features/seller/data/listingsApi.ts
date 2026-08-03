@@ -15,7 +15,11 @@ export interface MyListingCard {
   location: string | null
   views: number
   reviewCount: number
-  status: 'draft' | 'active' | 'out_of_stock'
+  status: 'draft' | 'active' | 'out_of_stock' | 'removed'
+  /** Set when an admin removed the listing — the reason shown to the seller. */
+  removalReason: string | null
+  disputeAllowed: boolean
+  disputeStatus: 'open' | 'approved' | 'rejected' | null
   createdAt: string
 }
 
@@ -81,5 +85,21 @@ export function useDeleteListing() {
   return useMutation({
     mutationFn: (id: string) => api(`/api/listings/${id}`, { method: 'DELETE' }),
     onSuccess: invalidate,
+  })
+}
+
+/** Appeal a takedown. The seller should correct the listing first. */
+export function useSubmitListingDispute() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, explanation, corrections }: { id: string; explanation: string; corrections?: string }) =>
+      api<{ dispute: { id: string; status: string } }>(`/api/listings/${id}/dispute`, {
+        method: 'POST',
+        body: { explanation, ...(corrections ? { corrections } : {}) },
+      }).then((r) => r.dispute),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['listings'] })
+      qc.invalidateQueries({ queryKey: ['my-listings'] })
+    },
   })
 }

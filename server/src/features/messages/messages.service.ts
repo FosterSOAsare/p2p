@@ -415,3 +415,58 @@ export async function getThread(userId: string, username: string) {
     })),
   };
 }
+
+/** Send a message — creates the pair's conversation on first contact. */
+export async function sendMessage(userId: string, username: string, body: string) {
+  const other = await resolveCounterparty(userId, username);
+  const key = pairKey(userId, other.id);
+
+  const conversation = await prisma.conversation.upsert({
+    where: { userAId_userBId: key },
+    create: key,
+    update: { updatedAt: new Date() },
+  });
+
+  const message = await prisma.message.create({
+    data: { conversationId: conversation.id, senderId: userId, body },
+  });
+
+  return {
+    id: message.id,
+    body: message.body,
+    mine: true,
+    escrowId: message.escrowId,
+    createdAt: message.createdAt.toISOString(),
+  };
+}
+
+/** Mark everything the counterparty sent as read. */
+export async function markRead(userId: string, username: string) {
+  const other = await prisma.user.findUnique({ where: { username }, select: { id: true } });
+  if (!other) throw ApiError.notFound("User not found");
+  const conversation = await prisma.conversation.findUnique({
+    where: { userAId_userBId: pairKey(userId, other.id) },
+  });
+  if (!conversation) return;
+  await prisma.message.updateMany({
+    where: { conversationId: conversation.id, senderId: { not: userId }, readAt: null },
+    data: { readAt: new Date() },
+  });
+}
+
+/**
+ * Posts a deal-linked system line into the pair's conversation — the escrow
+ * module calls this on state transitions so all orders live in the one thread.
+ */
+/** `escrowId` is optional: moderation notices aren't tied to a deal. */
+export async function postDealMessage(fromUserId: string, toUserId: string, body: string, escrowId?: string) {
+  const key = pairKey(fromUserId, toUserId);
+  const conversation = await prisma.conversation.upsert({
+    where: { userAId_userBId: key },
+    create: key,
+    update: { updatedAt: new Date() },
+  });
+  await prisma.message.create({
+    data: { conversationId: conversation.id, senderId: fromUserId, body, escrowId },
+  });
+}

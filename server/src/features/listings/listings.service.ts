@@ -1,6 +1,9 @@
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
 import type { Prisma } from "../../generated/prisma/client";
+import { removalReasonText } from "./removal-reasons";
+import { postDealMessage } from "../messages/messages.service";
+import { mailer } from "../../shared/mail/mail.service";
 
 export interface ListQuery {
   search?: string;
@@ -76,7 +79,7 @@ export async function list(params: ListQuery) {
   };
 }
 
-export async function getById(id: string) {
+export async function getById(id: string, viewer?: { id: string; role: "user" | "admin" }) {
   const listing = await prisma.listing.findUnique({
     where: { id },
     include: {
@@ -92,9 +95,15 @@ export async function getById(id: string) {
         orderBy: { createdAt: "desc" },
         include: { reviewer: { select: { username: true } } },
       },
+      disputes: { orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
   if (!listing) throw ApiError.notFound("Listing not found");
+  // A removed listing is gone as far as the marketplace is concerned; the row
+  // only survives so deals that reference it keep their history. The owner (and
+  // admins) still see it — that's how a seller corrects it to appeal.
+  const isOwnerOrAdmin = viewer && (viewer.role === "admin" || viewer.id === listing.sellerId);
+  if (listing.status === "removed" && !isOwnerOrAdmin) throw ApiError.notFound("Listing not found");
 
   // Best-effort view counter — awaited so it doesn't race another query on the
   // same pg connection (fire-and-forget triggers pg's concurrent-query warning).
@@ -115,6 +124,24 @@ export async function getById(id: string) {
     status: listing.status,
     views: listing.views,
     createdAt: listing.createdAt.toISOString(),
+    // Takedown context — only meaningful to the owner/admin viewing a removed listing.
+    removal:
+      listing.status === "removed" && listing.removalReason
+        ? {
+            reasonText: removalReasonText(listing.removalReason, listing.removalNote),
+            disputeAllowed: listing.disputeAllowed,
+            dispute: listing.disputes[0]
+              ? {
+                  id: listing.disputes[0].id,
+                  status: listing.disputes[0].status,
+                  explanation: listing.disputes[0].explanation,
+                  corrections: listing.disputes[0].corrections,
+                  reviewNote: listing.disputes[0].reviewNote,
+                  createdAt: listing.disputes[0].createdAt.toISOString(),
+                }
+              : null,
+          }
+        : null,
     seller: {
       username: listing.seller.username,
       avatarUrl: listing.seller.avatarUrl,
@@ -181,7 +208,18 @@ export async function create(sellerId: string, input: ListingInput) {
 }
 
 export async function update(actor: Actor, listingId: string, input: ListingInput) {
-  await assertOwnership(actor, listingId);
+  const existing = await assertOwnership(actor, listingId);
+
+  // A removed listing is under moderation: the seller may correct the content to
+  // support an appeal, but only an admin (via a dispute ruling) can put it back
+  // on the marketplace — otherwise a seller could simply un-remove themselves.
+  if (existing.status === "removed" && actor.role !== "admin") {
+    if (!existing.disputeAllowed) throw ApiError.forbidden("This listing was removed and can't be edited");
+    if (input.status !== undefined) {
+      throw ApiError.forbidden("Submit a dispute to have this listing reinstated");
+    }
+  }
+
   const listing = await prisma.listing.update({
     where: { id: listingId },
     data: {
@@ -221,11 +259,19 @@ export async function mine(sellerId: string, params: { status?: "draft" | "activ
       orderBy: { createdAt: "desc" },
       skip: (params.page - 1) * params.limit,
       take: params.limit,
-      include: cardInclude,
+      include: { ...cardInclude, disputes: { orderBy: { createdAt: "desc" }, take: 1 } },
     }),
   ]);
   return {
-    listings: rows.map((l) => ({ ...toCard(l), status: l.status, description: l.description })),
+    listings: rows.map((l) => ({
+      ...toCard(l),
+      status: l.status,
+      description: l.description,
+      // Present only on admin-removed listings, so the seller sees why.
+      removalReason: l.removedAt && l.removalReason ? removalReasonText(l.removalReason, l.removalNote) : null,
+      disputeAllowed: l.disputeAllowed,
+      disputeStatus: l.disputes[0]?.status ?? null,
+    })),
     total,
     page: params.page,
     pages: Math.max(1, Math.ceil(total / params.limit)),
@@ -260,5 +306,76 @@ function toCard(l: ListingWithSeller) {
     })(),
     reviewCount: l.reviews.length,
     createdAt: l.createdAt.toISOString(),
+  };
+}
+
+// ---------- Seller appeals against a takedown ----------
+
+/**
+ * Open a dispute on a removed listing. Only the owner, only when the admin
+ * allowed appeals, and only one open dispute at a time. The seller is expected
+ * to have corrected the listing first — `update()` permits edits while removed
+ * so long as an appeal is available.
+ */
+export async function submitDispute(
+  sellerId: string,
+  listingId: string,
+  input: { explanation: string; corrections?: string },
+) {
+  const listing = await prisma.listing.findUnique({
+    where: { id: listingId },
+    select: { id: true, title: true, status: true, sellerId: true, disputeAllowed: true, removedById: true },
+  });
+  if (!listing) throw ApiError.notFound("Listing not found");
+  if (listing.sellerId !== sellerId) throw ApiError.forbidden("This isn't your listing");
+  if (listing.status !== "removed") throw ApiError.badRequest("Only removed listings can be disputed");
+  if (!listing.disputeAllowed) throw ApiError.forbidden("This removal can't be disputed");
+
+  const existing = await prisma.listingDispute.findFirst({
+    where: { listingId, status: "open" },
+    select: { id: true },
+  });
+  if (existing) throw ApiError.conflict("A dispute for this listing is already under review");
+
+  const dispute = await prisma.listingDispute.create({
+    data: {
+      listingId,
+      sellerId,
+      explanation: input.explanation.trim(),
+      corrections: input.corrections?.trim() || null,
+    },
+  });
+
+  // Notify the admin who removed it — they hold the context to review it.
+  if (listing.removedById) {
+    const seller = await prisma.user.findUnique({ where: { id: sellerId }, select: { username: true } });
+    await postDealMessage(
+      sellerId,
+      listing.removedById,
+      `📄 @${seller?.username ?? "A seller"} submitted a dispute for the removed listing "${listing.title}".`,
+    ).catch(() => undefined);
+
+    prisma.user
+      .findUnique({ where: { id: listing.removedById }, select: { email: true, fullName: true } })
+      .then(
+        (admin) =>
+          admin &&
+          mailer.listingDisputeSubmitted(
+            admin.email,
+            admin.fullName,
+            listing.title,
+            seller?.username ?? "a seller",
+            input.explanation.trim(),
+          ),
+      )
+      .catch(() => undefined);
+  }
+
+  return {
+    id: dispute.id,
+    status: dispute.status,
+    explanation: dispute.explanation,
+    corrections: dispute.corrections,
+    createdAt: dispute.createdAt.toISOString(),
   };
 }

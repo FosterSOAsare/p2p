@@ -60,3 +60,15 @@ export const update: RequestSchema = {
     status: Joi.string().valid("draft", "active", "out_of_stock"),
   }).min(1),
 };
+
+export const dispute: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+  body: Joi.object({
+    explanation: Joi.string().trim().min(10).max(2000).required().messages({
+      "string.min": "Explain in a little more detail (at least 10 characters)",
+    }),
+    corrections: Joi.string().trim().max(2000).allow("", null),
+  }),
+};

@@ -108,4 +108,31 @@ export const mailer = {
 
   withdrawal: (to: string, name: string, amount: string, destination: string) =>
     sendMail(to, "Withdrawal processed", "withdrawal", { name, amount, destination }),
+
+  listingRemoved: (to: string, name: string, title: string, reason: string, disputeAllowed = false) =>
+    sendMail(to, `Listing removed: ${title}`, "listing-removed", {
+      name,
+      title,
+      reason,
+      disputeNote: disputeAllowed
+        ? "You can correct the listing and submit a dispute for review."
+        : "This removal cannot be disputed.",
+    }),
+
+  listingDisputeSubmitted: (to: string, name: string, title: string, seller: string, explanation: string) =>
+    sendMail(to, `Listing dispute: ${title}`, "listing-dispute-submitted", { name, title, seller, explanation }),
+
+  listingDisputeApproved: (to: string, name: string, title: string, note: string | null) =>
+    sendMail(to, `Listing reinstated: ${title}`, "listing-dispute-approved", {
+      name,
+      title,
+      note: note || "No additional notes.",
+    }),
+
+  listingDisputeRejected: (to: string, name: string, title: string, note: string | null) =>
+    sendMail(to, `Dispute not upheld: ${title}`, "listing-dispute-rejected", {
+      name,
+      title,
+      note: note || "No additional notes.",
+    }),
 };

@@ -281,3 +281,55 @@ export function useUpdateEscrow() {
     onSuccess: (_d, { id }) => invalidate(id),
   })
 }
+
+// ---------- Share code: public preview, join, QR ----------
+
+export interface CodePreview {
+  code: string
+  title: string
+  description: string | null
+  amount: number
+  currency: 'GHS' | 'TRX'
+  rail: 'fiat' | 'crypto'
+  status: EscrowStatus
+  creator: { username: string; avatarUrl: string | null }
+  creatorIsBuyer: boolean
+  joinable: boolean
+  createdAt: string
+}
+
+/** Public — no auth needed, so an invitee can see the deal before signing in. */
+export function useCodePreview(code: string) {
+  return useQuery({
+    queryKey: ['escrows', 'code', code],
+    queryFn: () => api<CodePreview>(`/api/escrows/code/${code}`),
+    enabled: Boolean(code),
+    retry: false,
+  })
+}
+
+export function useAcceptByCode() {
+  const invalidate = useInvalidateDeals()
+  return useMutation({
+    mutationFn: (code: string) =>
+      api<{ deal: DealDetail }>(`/api/escrows/code/${code}/accept`, { method: 'POST' }).then((r) => r.deal),
+    onSuccess: () => invalidate(),
+  })
+}
+
+export interface ShareQr {
+  code: string
+  joinUrl: string
+  dataUrl: string
+}
+
+/** QR + join link for a deal — party-only. */
+export function useShareQr(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['escrows', 'qr', id],
+    queryFn: () => api<ShareQr>(`/api/escrows/${id}/qr`),
+    enabled: Boolean(id) && enabled,
+    retry: false,
+    staleTime: Infinity, // the code never changes for a deal
+  })
+}

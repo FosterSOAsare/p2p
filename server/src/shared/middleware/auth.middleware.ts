@@ -37,6 +37,17 @@ export async function auth(req: Request, _res: Response, next: NextFunction) {
   }
 }
 
+/**
+ * Attaches req.user when a valid token is present but never rejects — for public
+ * routes that reveal a little more to the right viewer (e.g. a seller opening
+ * their own removed listing).
+ */
+export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.headers.authorization?.startsWith("Bearer ")) return next();
+  // A bad/expired token just means "anonymous" here — never an error.
+  await auth(req, res, () => next());
+}
+
 /** Use after auth() on admin-only routes. */
 export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
   if (req.user?.role !== "admin") return next(ApiError.forbidden("Admin access required"));
