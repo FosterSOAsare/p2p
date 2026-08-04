@@ -127,8 +127,4 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     marginBottom: Spacing.three,
   },
-  metaItem: {
-    borderRadius: Spacing.four,
-    padding: Spacing.four,
-  },
 });

@@ -26,10 +26,10 @@ export function HeroSection() {
           </ThemedText>
 
           <View style={styles.actions}>
-            <Link href="/explore" style={styles.primaryButton}>
+            <Link href="/marketplace" style={styles.primaryButton}>
               <ThemedText type="linkPrimary">Browse marketplace</ThemedText>
             </Link>
-            <Link href="/explore" style={styles.secondaryButton}>
+            <Link href="/marketplace" style={styles.secondaryButton}>
               <ThemedText type="link">Start escrow</ThemedText>
             </Link>
           </View>
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
   },
   heroOverlay: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(15, 23, 42, 0.44)',
   },
   heroCopy: {

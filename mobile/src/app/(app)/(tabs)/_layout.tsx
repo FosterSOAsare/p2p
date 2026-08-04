@@ -39,28 +39,28 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="home"
+        name="home/index"
         options={{
           title: 'Home',
           tabBarIcon: ({ color, size }) => <Home color={color} size={size} />,
         }}
       />
       <Tabs.Screen
-        name="marketplace"
+        name="marketplace/index"
         options={{
           title: 'Marketplace',
           tabBarIcon: ({ color, size }) => <Store color={color} size={size} />,
         }}
       />
       <Tabs.Screen
-        name="deals"
+        name="deals/index"
         options={{
           title: 'My Deals',
           tabBarIcon: ({ color, size }) => <ShieldCheck color={color} size={size} />,
         }}
       />
       <Tabs.Screen
-        name="activity"
+        name="activity/index"
         options={{
           title: 'Activity',
           tabBarIcon: ({ color, size }) => <Bell color={color} size={size} />,
@@ -69,7 +69,7 @@ export default function TabsLayout() {
       {/* Last entry, so it sits at the far right of the bar — the web keeps its
           profile pill at the right-hand end of the nav too. */}
       <Tabs.Screen
-        name="profile"
+        name="profile/index"
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, size }) => <User color={color} size={size} />,
