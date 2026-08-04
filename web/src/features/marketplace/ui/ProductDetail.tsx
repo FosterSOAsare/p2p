@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Loader2,
   Store,
+  PackageX,
 } from 'lucide-react'
 import { Reviews } from './Reviews'
 import { Badge } from '../../shared/ui/Badge'
@@ -78,6 +79,12 @@ export function ProductDetail() {
       </div>
     )
   }
+
+  // Checkout would 404 on the server anyway (`status !== 'active'`), so the
+  // buy path is closed here rather than letting the buyer discover it after a
+  // quantity picker and a Pay button. Status and quantity are checked
+  // separately: the last unit sells before the seller's row flips.
+  const outOfStock = product.status === 'out_of_stock' || product.quantity < 1
 
   const toggleSave = () => {
     if (!me) return navigate('/login')
@@ -222,7 +229,9 @@ export function ProductDetail() {
               </div>
               <div className="rounded-2xl bg-slate-50 dark:bg-slate-950 p-3">
                 <span className="text-[10px] text-slate-400 font-medium block">Stock Available</span>
-                <span className="font-semibold text-slate-900 dark:text-white">{product.quantity} units</span>
+                <span className={`font-semibold ${outOfStock ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
+                  {outOfStock ? 'Out of stock' : `${product.quantity} units`}
+                </span>
               </div>
             </div>
           </div>
@@ -289,13 +298,32 @@ export function ProductDetail() {
               </button>
             ) : (
               <div className="space-y-3">
-                <button
-                  onClick={() => navigate(`/checkout?listing=${product.id}`)}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 py-3.5 text-sm sm:text-base font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer"
-                >
-                  <Lock size={18} />
-                  Buy Now (Fund Escrow)
-                </button>
+                {outOfStock ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4 dark:border-rose-900 dark:bg-rose-950/40">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-400">
+                        <PackageX size={17} />
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white">
+                          Out of stock
+                        </h3>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">
+                          Every unit has sold. Message the seller to ask whether they're restocking, or
+                          save the listing to check back later.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => navigate(`/checkout?listing=${product.id}`)}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 py-3.5 text-sm sm:text-base font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer"
+                  >
+                    <Lock size={18} />
+                    Buy Now (Fund Escrow)
+                  </button>
+                )}
 
                 {(!me || (me.role !== 'admin' && me.kycStatus !== 'verified')) ? (
                   <div className="grid grid-cols-2 gap-2">
@@ -342,16 +370,19 @@ export function ProductDetail() {
               </div>
             )}
 
-            {/* Escrow Guarantee Policy */}
-            <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/40 p-3.5 space-y-1.5 text-xs text-emerald-900 dark:text-emerald-300">
-              <div className="flex items-center gap-1.5 font-semibold">
-                <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400" />
-                Escrow Guarantee & Protection Policy
+            {/* Escrow Guarantee Policy — hidden when sold out: it describes what
+                happens when you pay, and there's nothing to pay for. */}
+            {!outOfStock && (
+              <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/40 p-3.5 space-y-1.5 text-xs text-emerald-900 dark:text-emerald-300">
+                <div className="flex items-center gap-1.5 font-semibold">
+                  <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400" />
+                  Escrow Guarantee & Protection Policy
+                </div>
+                <p className="text-[11px] leading-relaxed text-emerald-800 dark:text-emerald-300">
+                  Your GH₵ payment stays locked in escrow. The seller is only paid after you confirm delivery and inspect the item.
+                </p>
               </div>
-              <p className="text-[11px] leading-relaxed text-emerald-800 dark:text-emerald-300">
-                Your GH₵ payment stays locked in escrow. The seller is only paid after you confirm delivery and inspect the item.
-              </p>
-            </div>
+            )}
 
             {/* Shipping & Returns */}
             <div className="space-y-3 pt-2 text-xs border-t border-slate-100 dark:border-slate-800">

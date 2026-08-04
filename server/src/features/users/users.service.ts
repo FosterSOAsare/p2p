@@ -22,7 +22,8 @@ export async function getPublicProfile(username: string) {
   if (!verified) throw ApiError.notFound("Seller not found");
   const [listings, salesCompleted, ratingAgg] = await Promise.all([
     prisma.listing.findMany({
-      where: { sellerId: user.id, status: "active" },
+      // Same rule as the marketplace grid — the storefront is a shopfront too.
+      where: { sellerId: user.id, status: "active", quantity: { gt: 0 } },
       orderBy: { createdAt: "desc" },
     }),
     prisma.escrow.count({ where: { sellerId: user.id, status: "disbursed" } }),

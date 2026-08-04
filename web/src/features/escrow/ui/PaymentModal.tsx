@@ -1,14 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X, Wallet, Smartphone, CreditCard, Loader2, ShieldCheck, CheckCircle2, ArrowRight } from 'lucide-react'
+import { X, Wallet, Loader2, ShieldCheck, ArrowRight, Coins } from 'lucide-react'
 import { formatMoney } from '../../shared/libs/currency'
+import { PayMethodPicker, payMethodLabel } from './PayMethodPicker'
 import type { PayMethod } from '../data/paymentsApi'
 
 interface PaymentModalProps {
   open: boolean
   /** Total the buyer must fund (item + their half of the escrow fee). */
   total: number
-  /** Spendable wallet balance (already cleared). */
+  /** Spendable wallet balance (already cleared). Ignored on the crypto rail. */
   balance: number
+  /**
+   * Which rail the deal settles on — the server derives it from the currency
+   * chosen at creation. Marketplace checkout is always fiat, hence the default.
+   * `crypto` deals are funded on-chain, so momo/card and the GHS wallet don't
+   * apply to them at all.
+   */
+  rail?: 'fiat' | 'crypto'
+  currency?: 'GHS' | 'TRX'
   isPending?: boolean
   errorMessage?: string | null
   onClose: () => void
@@ -18,11 +27,6 @@ interface PaymentModalProps {
   onPayWithProvider: (walletAmount: number, method: PayMethod) => void
 }
 
-const METHODS: { id: PayMethod; label: string; hint: string; icon: typeof Smartphone }[] = [
-  { id: 'momo', label: 'Mobile Money', hint: 'MTN · Telecel · AirtelTigo', icon: Smartphone },
-  { id: 'card', label: 'Card', hint: 'Visa · Mastercard', icon: CreditCard },
-]
-
 /** Round to pesewas so on-screen math always matches what the server charges. */
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -30,13 +34,17 @@ export function PaymentModal({
   open,
   total,
   balance,
+  rail = 'fiat',
+  currency = 'GHS',
   isPending = false,
   errorMessage,
   onClose,
   onPayFromWallet,
   onPayWithProvider,
 }: PaymentModalProps) {
-  const hasBalance = balance > 0
+  const isCrypto = rail === 'crypto'
+  // The wallet is GHS-only, so a TRX deal can't draw on it whatever the balance.
+  const hasBalance = balance > 0 && !isCrypto
   const maxFromWallet = round2(Math.min(balance, total))
 
   const [useWallet, setUseWallet] = useState(hasBalance)
@@ -72,7 +80,7 @@ export function PaymentModal({
     else onPayWithProvider(walletAmount, method)
   }
 
-  const methodLabel = METHODS.find((m) => m.id === method)!.label
+  const methodLabel = payMethodLabel(method)
 
   return (
     <div
@@ -111,9 +119,28 @@ export function PaymentModal({
               Total due
             </div>
             <div className="font-display text-3xl font-bold text-slate-900 dark:text-white mt-1">
-              {formatMoney(total)}
+              {formatMoney(total, currency)}
             </div>
           </div>
+
+          {/* Crypto rail — no wallet split, no provider. The server refuses a
+              crypto FUND outright, so don't offer a button that can't work. */}
+          {isCrypto && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900 dark:bg-amber-950/40">
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400">
+                  <Coins size={17} />
+                </span>
+                <div className="min-w-0">
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">Funded on-chain in TRX</h4>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                    This deal settles on the Tron network, so mobile money, card and your GH₵ wallet
+                    don't apply. The TRX rail isn't live yet — funding opens once it ships.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Wallet balance */}
           {hasBalance && (
@@ -198,34 +225,14 @@ export function PaymentModal({
             </div>
           )}
 
-          {/* Method — only when there's a balance left to cover */}
-          {!coveredByWallet && (
-            <div className="space-y-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Pay {formatMoney(remaining)} with
-              </div>
-              {METHODS.map(({ id, label, hint, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={() => setMethod(id)}
-                  disabled={isPending}
-                  className={`w-full flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all cursor-pointer disabled:opacity-50 ${
-                    method === id
-                      ? 'border-primary-500 bg-primary-50/50 dark:bg-primary-950/40 ring-1 ring-primary-500'
-                      : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <Icon size={19} className="shrink-0 text-primary-600 dark:text-primary-400" />
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-xs font-bold text-slate-900 dark:text-white">{label}</span>
-                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">{hint}</span>
-                  </span>
-                  {method === id && (
-                    <CheckCircle2 size={16} className="shrink-0 text-primary-600 dark:text-primary-400" />
-                  )}
-                </button>
-              ))}
-            </div>
+          {/* Method — only when there's a fiat balance left to cover */}
+          {!coveredByWallet && !isCrypto && (
+            <PayMethodPicker
+              value={method}
+              onChange={setMethod}
+              disabled={isPending}
+              heading={`Pay ${formatMoney(remaining)} with`}
+            />
           )}
 
           {errorMessage && (
@@ -236,11 +243,13 @@ export function PaymentModal({
 
           <button
             onClick={submit}
-            disabled={isPending}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer disabled:opacity-50"
+            disabled={isPending || isCrypto}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isPending ? (
               <Loader2 size={16} className="animate-spin" />
+            ) : isCrypto ? (
+              <Coins size={16} />
             ) : coveredByWallet ? (
               <Wallet size={16} />
             ) : (
@@ -248,9 +257,11 @@ export function PaymentModal({
             )}
             {isPending
               ? 'Processing…'
-              : coveredByWallet
-                ? `Pay ${formatMoney(total)} from wallet`
-                : `Continue to ${methodLabel}`}
+              : isCrypto
+                ? 'TRX funding coming soon'
+                : coveredByWallet
+                  ? `Pay ${formatMoney(total)} from wallet`
+                  : `Continue to ${methodLabel}`}
           </button>
 
           <p className="flex items-center justify-center gap-1.5 text-center text-[10px] text-slate-400 dark:text-slate-500">

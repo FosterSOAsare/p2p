@@ -2,17 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2, CheckCircle2, AlertTriangle, ArrowLeft } from 'lucide-react'
 import { api, apiErrorMessage } from '../features/shared/libs/api'
-import { pendingOrder } from '../features/escrow/data/paymentsApi'
+import { pendingAction } from '../features/escrow/data/paymentsApi'
 import type { VerifyDepositResult } from '../features/escrow/data/paymentsApi'
-import type { Deal } from '../features/escrow/data/ordersApi'
+import type { Deal, DealDetail } from '../features/escrow/data/ordersApi'
 import { useQueryClient } from '@tanstack/react-query'
 import { authKeys } from '../features/auth/data/authApi'
 
 type Phase = 'confirming' | 'placing' | 'done' | 'failed'
 
 /**
- * Landing page after the hosted payment. Confirms the payment, then places the
- * order that was stashed before the redirect and hands the buyer their deal.
+ * Landing page after the hosted payment. Confirms the payment, credits the
+ * wallet, then finishes whatever the buyer was doing before the redirect —
+ * placing an order, funding an existing deal, or simply topping up.
  */
 export function PaymentCallback() {
   const [searchParams] = useSearchParams()
@@ -32,7 +33,7 @@ export function PaymentCallback() {
     startedRef.current = true
 
     const run = async () => {
-      const order = pendingOrder.load()
+      const action = pendingAction.load()
 
       if (!reference) {
         setError('We could not identify this payment. If you were charged, your wallet will be credited automatically.')
@@ -53,7 +54,7 @@ export function PaymentCallback() {
               : 'This payment is still processing. Check your wallet in a moment.',
           )
           setPhase('failed')
-          pendingOrder.clear()
+          pendingAction.clear()
           return
         }
       } catch (err) {
@@ -62,31 +63,46 @@ export function PaymentCallback() {
         return
       }
 
-      // 2. Payment is in the wallet. Place the order it was meant for.
-      if (!order) {
-        // A plain top-up (no order attached) — send them to their wallet.
+      // 2. The money is in the wallet. Finish what it was meant for.
+      if (!action || action.kind === 'topup') {
         setPhase('done')
-        setTimeout(() => navigate('/dashboard', { replace: true }), 900)
+        const to = action?.returnTo ?? '/wallet'
+        pendingAction.clear()
+        setTimeout(() => navigate(to, { replace: true }), 900)
         return
       }
 
       setPhase('placing')
       try {
+        if (action.kind === 'fund') {
+          // The deal already exists — this only moves the wallet balance into it.
+          await api<{ deal: DealDetail }>(`/api/escrows/${action.escrowId}/fund`, { method: 'POST' })
+          pendingAction.clear()
+          queryClient.invalidateQueries({ queryKey: ['escrows'] })
+          queryClient.invalidateQueries({ queryKey: ['wallet'] })
+          setPhase('done')
+          navigate(`/escrow/${action.escrowId}`, { replace: true })
+          return
+        }
+
         const { deal } = await api<{ deal: Deal }>('/api/escrows/from-listing', {
           method: 'POST',
-          body: { listingId: order.listingId, quantity: order.quantity, paymentMethod: order.paymentMethod },
+          body: { listingId: action.listingId, quantity: action.quantity, paymentMethod: action.paymentMethod },
         })
-        pendingOrder.clear()
+        pendingAction.clear()
         queryClient.invalidateQueries({ queryKey: ['escrows'] })
         queryClient.invalidateQueries({ queryKey: ['wallet'] })
         setPhase('done')
         navigate(`/escrow/${deal.id}`, { replace: true })
       } catch (err) {
-        // Payment succeeded but the order didn't — the money is safe in the wallet.
-        pendingOrder.clear()
-        setError(
-          `${apiErrorMessage(err)} Your payment is safe in your wallet — you can complete the order from the listing.`,
-        )
+        // Payment succeeded but the follow-up didn't — the money is safe in the
+        // wallet either way, so say so rather than implying it was lost.
+        const retryHint =
+          action.kind === 'fund'
+            ? 'Your payment is safe in your wallet — open the deal and fund it again.'
+            : 'Your payment is safe in your wallet — you can complete the order from the listing.'
+        pendingAction.clear()
+        setError(`${apiErrorMessage(err)} ${retryHint}`)
         setPhase('failed')
       }
     }
