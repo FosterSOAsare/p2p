@@ -140,3 +140,9 @@ export const listingDisputeResolve: RequestSchema = {
     note: Joi.string().trim().max(1000).allow("", null),
   }),
 };
+
+export const listingParam: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+};
