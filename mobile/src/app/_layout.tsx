@@ -15,8 +15,11 @@ import {
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
 
+import { QueryClientProvider } from '@tanstack/react-query';
+
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { SavedProvider } from '@/context/SavedContext';
+import { queryClient } from '@/features/shared/data/queryClient';
 import { Colors } from '@/constants/theme';
 
 /**
@@ -81,13 +84,16 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <SavedProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
-            <RootNavigator />
-          </ThemeProvider>
-        </SavedProvider>
-      </AuthProvider>
+      {/* Above AuthProvider: signing in/out invalidates cached server data. */}
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <SavedProvider>
+            <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
+              <RootNavigator />
+            </ThemeProvider>
+          </SavedProvider>
+        </AuthProvider>
+      </QueryClientProvider>
     </SafeAreaProvider>
   );
 }
