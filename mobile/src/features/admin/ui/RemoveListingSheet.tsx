@@ -25,7 +25,8 @@ export function RemoveListingSheet({
   listing,
   onClose,
 }: {
-  listing: AdminListingRow;
+  /** Widened from `AdminListingRow` so the detail screen can open the same sheet. */
+  listing: Pick<AdminListingRow, 'id' | 'title'>;
   onClose: () => void;
 }) {
   const theme = useTheme();

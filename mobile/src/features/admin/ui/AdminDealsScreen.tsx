@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Handshake, Search, TriangleAlert } from 'lucide-react-native';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
@@ -51,7 +51,12 @@ const PILL: Record<AdminDealStatus, { bg: string; fg: string }> = {
 export function AdminDealsScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>('all');
+  // Seeded from `?status=` so a dashboard tile can deep-link straight into a
+  // filtered list; unrecognised values fall back to showing everything.
+  const { status } = useLocalSearchParams<{ status?: string }>();
+  const [tab, setTab] = useState<Tab>(
+    TABS.some((t) => t.id === status) ? (status as Tab) : 'all',
+  );
   const [search, setSearch] = useState('');
 
   const query = useMemo(() => {

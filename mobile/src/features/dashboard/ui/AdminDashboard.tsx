@@ -143,17 +143,38 @@ export function AdminDashboard() {
     <View style={styles.wrap}>
       <ConsoleHeader />
 
+      {/* Every figure is also a way in — tapping one opens the list behind it,
+          pre-filtered to exactly what the tile counted. */}
       <View style={styles.grid}>
-        <StatCard label="Total Users" value={String(s.users)} sub={`${s.suspendedUsers} suspended`} icon={Users} />
-        <StatCard label="Active Listings" value={String(s.activeListings)} icon={Package} accent="#0284c7" />
+        <StatCard
+          label="Total Users"
+          value={String(s.users)}
+          sub={`${s.suspendedUsers} suspended`}
+          icon={Users}
+          onPress={() => router.push('/admin/users')}
+        />
+        <StatCard
+          label="Active Listings"
+          value={String(s.activeListings)}
+          icon={Package}
+          accent="#0284c7"
+          onPress={() => router.push('/admin/listings?status=active')}
+        />
         <StatCard
           label="Settled Volume"
           value={money(s.ghsVolume)}
           sub="Completed deals"
           icon={Wallet}
           accent={theme.primary}
+          onPress={() => router.push('/admin/deals?status=disbursed')}
         />
-        <StatCard label="Total Deals" value={String(s.totalDeals)} icon={Handshake} accent="#7c3aed" />
+        <StatCard
+          label="Total Deals"
+          value={String(s.totalDeals)}
+          icon={Handshake}
+          accent="#7c3aed"
+          onPress={() => router.push('/admin/deals')}
+        />
       </View>
 
       {/* Where the work is — the console's real job on a phone */}
@@ -191,12 +212,16 @@ export function AdminDashboard() {
         <Text style={[styles.cardTitle, { color: theme.text }]}>Escrow deals by status</Text>
         <View style={styles.statusGrid}>
           {STATUS_ROWS.map((row) => (
-            <View key={row.id} style={styles.statusCell}>
+            <Pressable
+              key={row.id}
+              onPress={() => router.push(`/admin/deals?status=${row.id}`)}
+              style={({ pressed }) => [styles.statusCell, { opacity: pressed ? 0.6 : 1 }]}
+            >
               <Text style={[styles.statusValue, { color: row.color }]}>
                 {s.dealsByStatus[row.id] ?? 0}
               </Text>
               <Text style={[styles.statusLabel, { color: theme.textSecondary }]}>{row.label}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
       </View>

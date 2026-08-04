@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ban, CheckCircle2, Search, Users } from 'lucide-react-native';
 
+import { useLocalSearchParams } from 'expo-router';
+
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAdminUsers, useSetUserStatus, type AdminUserRow } from '../data/adminUsersApi';
@@ -38,7 +40,12 @@ const KYC_PILL: Record<AdminUserRow['kycStatus'], { bg: string; fg: string }> = 
 export function AdminUsersScreen() {
   const theme = useTheme();
   const { user: me } = useAuth();
-  const [tab, setTab] = useState<Tab>('all');
+  // Seeded from `?status=` so a dashboard tile can deep-link straight into a
+  // filtered list; unrecognised values fall back to showing everything.
+  const { status } = useLocalSearchParams<{ status?: string }>();
+  const [tab, setTab] = useState<Tab>(
+    TABS.some((t) => t.id === status) ? (status as Tab) : 'all',
+  );
   const [search, setSearch] = useState('');
 
   const query = useMemo(() => {

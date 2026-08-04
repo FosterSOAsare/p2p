@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Gavel, PackageSearch, Search, Trash2 } from 'lucide-react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { ChevronRight, Gavel, PackageSearch, Search, Trash2 } from 'lucide-react-native';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -60,7 +61,12 @@ const APPEAL_PILL = {
 
 export function AdminListingsScreen() {
   const theme = useTheme();
-  const [tab, setTab] = useState<Tab>('all');
+  // Seeded from `?status=` so a dashboard tile can deep-link straight into a
+  // filtered list; unrecognised values fall back to showing everything.
+  const { status } = useLocalSearchParams<{ status?: string }>();
+  const [tab, setTab] = useState<Tab>(
+    TABS.some((t) => t.id === status) ? (status as Tab) : 'all',
+  );
   const [search, setSearch] = useState('');
   const [removeTarget, setRemoveTarget] = useState<AdminListingRow | null>(null);
   const [appealTarget, setAppealTarget] = useState<AdminListingDispute | null>(null);
@@ -168,9 +174,13 @@ export function AdminListingsScreen() {
       ) : (
         <View style={styles.list}>
           {listings.map((l) => (
-            <View
+            <Pressable
               key={l.id}
-              style={[styles.row, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+              onPress={() => router.push(`/admin/listings/${l.id}`)}
+              style={({ pressed }) => [
+                styles.row,
+                { backgroundColor: theme.card, borderColor: theme.cardBorder, opacity: pressed ? 0.75 : 1 },
+              ]}
             >
               <View style={[styles.thumb, { backgroundColor: theme.backgroundElement }]}>
                 {l.image ? (
@@ -210,19 +220,28 @@ export function AdminListingsScreen() {
                 )}
               </View>
 
-              {l.status !== 'removed' ? (
-                <Pressable
-                  onPress={() => setRemoveTarget(l)}
-                  hitSlop={8}
-                  style={({ pressed }) => [
-                    styles.removeBtn,
-                    { backgroundColor: '#ef4444', opacity: pressed ? 0.8 : 1 },
-                  ]}
-                >
-                  <Trash2 size={14} color="#ffffff" />
-                </Pressable>
-              ) : null}
-            </View>
+              {/*
+                Always occupies the same width, even with nothing in it. A removed
+                listing has no Remove button, and if the slot collapsed the status
+                pill beside it would slide right on exactly those rows.
+              */}
+              <View style={styles.actionSlot}>
+                {l.status !== 'removed' ? (
+                  <Pressable
+                    onPress={() => setRemoveTarget(l)}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.removeBtn,
+                      { backgroundColor: '#ef4444', opacity: pressed ? 0.8 : 1 },
+                    ]}
+                  >
+                    <Trash2 size={14} color="#ffffff" />
+                  </Pressable>
+                ) : (
+                  <ChevronRight size={16} color={theme.textTertiary} />
+                )}
+              </View>
+            </Pressable>
           ))}
         </View>
       )}
@@ -261,10 +280,13 @@ const styles = StyleSheet.create({
   thumbImg: { width: '100%', height: '100%' },
   body: { flex: 1, gap: 3 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  title: { flexShrink: 1, fontSize: 14, fontFamily: Fonts.sans[700] },
+  // `flex: 1` (not `flexShrink`) so the title always claims the leftover width
+  // and the pill parks on the right edge — short and long titles line up.
+  title: { flex: 1, fontSize: 14, fontFamily: Fonts.sans[700] },
   meta: { fontSize: 12, fontFamily: Fonts.sans[400] },
   removed: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.sans[600] },
   date: { fontSize: 11, fontFamily: Fonts.sans[400] },
 
+  actionSlot: { width: 34, alignItems: 'center', justifyContent: 'center' },
   removeBtn: { width: 34, height: 34, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
 });
