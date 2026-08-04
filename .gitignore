@@ -7,3 +7,6 @@
 node_modules/
 dist/
 server/src/generated/
+
+# dev launcher runtime state (pids, generated runner scripts, logs)
+.p2p-run/
