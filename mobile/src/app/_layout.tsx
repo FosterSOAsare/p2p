@@ -55,6 +55,10 @@ function RootNavigator() {
       <Stack.Protected guard={!isAuthenticated}>
         <Stack.Screen name="(public)" />
       </Stack.Protected>
+
+      {/* Outside both guards: an invite link has to open either way, and the
+          deal's terms are meant to be readable before signing in. */}
+      <Stack.Screen name="join/[code]" />
     </Stack>
   );
 }

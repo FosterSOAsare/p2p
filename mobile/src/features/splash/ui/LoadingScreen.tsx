@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { useRouter } from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { useRouter, usePathname } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -44,6 +44,12 @@ function waveStyle(pulse: number, offset: number) {
 export function LoadingScreen() {
   const router = useRouter();
 
+  // Kept in a ref so the hand-off timer below reads the live route, not the
+  // value captured when the effect ran.
+  const pathname = usePathname();
+  const pathRef = useRef(pathname);
+  pathRef.current = pathname;
+
   // Shared values are the numbers Reanimated animates on the UI thread.
   const logoScale = useSharedValue(0.6);
   const logoOpacity = useSharedValue(0);
@@ -81,6 +87,10 @@ export function LoadingScreen() {
     }, HOLD_MS);
 
     const leave = setTimeout(() => {
+      // A deep link — a scanned join QR, say — can land the app elsewhere while
+      // this timer is still pending. Only hand off to login if the splash is
+      // still what's on screen, otherwise we'd stomp the link.
+      if (pathRef.current !== '/splash') return;
       // `replace` instead of `push` so the back gesture can't return here.
       router.replace('/login');
     }, HOLD_MS + EXIT_MS);
