@@ -12,7 +12,8 @@
 
 ## Admin
 
-- [ ] Deals force-override actions · audit log
+- [ ] Deal oversight detail page — `/admin/escrows/:id`. The list is built but rows open nothing;
+      needs the server detail endpoint first.
 
 ## Crypto
 

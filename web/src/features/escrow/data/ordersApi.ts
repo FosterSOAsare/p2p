@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '../../shared/libs/api'
 import { authKeys } from '../../auth/data/authApi'
 import type { FeeSplit } from './fees'
+import type { CheckoutMethod } from './paymentsApi'
 
 // ---------- shared deal shape (server serialize()) ----------
 
@@ -160,7 +161,8 @@ export function useAcceptDealByCode() {
 export interface CheckoutInput {
   listingId: string
   quantity: number
-  paymentMethod: 'momo' | 'card' // simulated — not charged
+  /** Recorded on the `funded` event — the debit itself is always from the wallet. */
+  paymentMethod: CheckoutMethod
 }
 
 export function useCheckout() {
@@ -317,19 +319,3 @@ export function useAcceptByCode() {
   })
 }
 
-export interface ShareQr {
-  code: string
-  joinUrl: string
-  dataUrl: string
-}
-
-/** QR + join link for a deal — party-only. */
-export function useShareQr(id: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ['escrows', 'qr', id],
-    queryFn: () => api<ShareQr>(`/api/escrows/${id}/qr`),
-    enabled: Boolean(id) && enabled,
-    retry: false,
-    staleTime: Infinity, // the code never changes for a deal
-  })
-}

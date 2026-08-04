@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   History,
   Clock,
+  Plus,
 } from 'lucide-react'
 import { useMe } from '../features/auth/data/authApi'
 import {
@@ -22,6 +23,8 @@ import {
   useWalletTransactions,
   useWithdraw,
 } from '../features/escrow/data/walletApi'
+import { useInitDeposit, pendingAction, type PayMethod } from '../features/escrow/data/paymentsApi'
+import { PayMethodPicker } from '../features/escrow/ui/PayMethodPicker'
 import { formatMoney } from '../features/shared/libs/currency'
 import { apiErrorMessage } from '../features/shared/libs/api'
 
@@ -33,6 +36,13 @@ export function SellerWallet() {
   const txQuery = useWalletTransactions(`page=${page}&limit=10`)
 
   const withdrawMutation = useWithdraw()
+  const initDeposit = useInitDeposit()
+
+  const [topUpModalOpen, setTopUpModalOpen] = useState(false)
+  const [topUpAmount, setTopUpAmount] = useState('')
+  const [topUpMethod, setTopUpMethod] = useState<PayMethod>('momo')
+  const [topUpError, setTopUpError] = useState<string | null>(null)
+  const [redirecting, setRedirecting] = useState(false)
 
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
   const [withdrawAmount, setWithdrawAmount] = useState('')
@@ -55,6 +65,37 @@ export function SellerWallet() {
   const balance = wallet?.balance ?? 0
   const pendingClearance = wallet?.pendingClearance ?? 0
   const escrowLocked = wallet?.escrowLocked ?? 0
+
+  /**
+   * Top up via the hosted provider page. Nothing is credited here — the wallet
+   * moves only once the charge is confirmed, which the callback route does on
+   * the way back (or the webhook does if the buyer never returns).
+   */
+  const handleTopUp = (e: React.FormEvent) => {
+    e.preventDefault()
+    setTopUpError(null)
+
+    const amount = parseFloat(topUpAmount)
+    if (isNaN(amount) || amount <= 0) {
+      setTopUpError('Enter a valid amount to add.')
+      return
+    }
+
+    setRedirecting(true)
+    initDeposit.mutate(
+      { amount, method: topUpMethod },
+      {
+        onSuccess: ({ authorizationUrl, reference }) => {
+          pendingAction.save({ kind: 'topup', reference, returnTo: '/wallet' })
+          window.location.href = authorizationUrl
+        },
+        onError: (err) => {
+          setRedirecting(false)
+          setTopUpError(apiErrorMessage(err))
+        },
+      },
+    )
+  }
 
   const handleWithdraw = (e: React.FormEvent) => {
     e.preventDefault()
@@ -128,6 +169,18 @@ export function SellerWallet() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Adding funds is what makes escrow deals fundable — without it the
+                only way money reaches a wallet is a marketplace checkout. */}
+            <button
+              onClick={() => {
+                setTopUpError(null)
+                setTopUpAmount('')
+                setTopUpModalOpen(true)
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer"
+            >
+              <Plus size={18} /> Add Funds
+            </button>
             <button
               onClick={() => {
                 setWithdrawError(null)
@@ -340,6 +393,91 @@ export function SellerWallet() {
           </div>
         )}
       </div>
+
+      {/* Add Funds Modal */}
+      {topUpModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="relative w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-950 text-primary-600 dark:text-primary-400">
+                  <Plus size={18} />
+                </div>
+                <h3 className="font-display font-bold text-slate-900 dark:text-white text-base">Add Funds</h3>
+              </div>
+              <button
+                onClick={() => setTopUpModalOpen(false)}
+                disabled={redirecting}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 disabled:opacity-40"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {topUpError && (
+              <div className="rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 p-3 text-xs text-rose-800 dark:text-rose-300 flex items-center gap-2">
+                <AlertCircle size={16} className="shrink-0 text-rose-600" />
+                <span>{topUpError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleTopUp} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Amount to Add (GH₵)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">GH₵</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    value={topUpAmount}
+                    onChange={(e) => setTopUpAmount(e.target.value)}
+                    placeholder="0.00"
+                    required
+                    disabled={redirecting}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 pl-12 pr-4 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Funds land in your wallet and can be used to fund any escrow deal.
+                </p>
+              </div>
+
+              <PayMethodPicker
+                value={topUpMethod}
+                onChange={setTopUpMethod}
+                disabled={redirecting}
+                heading="Pay with"
+              />
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTopUpModalOpen(false)}
+                  disabled={redirecting}
+                  className="w-1/2 rounded-xl border border-slate-300 dark:border-slate-700 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={redirecting || initDeposit.isPending}
+                  className="w-1/2 rounded-xl bg-primary-600 py-2.5 text-xs font-bold text-white hover:bg-primary-700 shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {redirecting || initDeposit.isPending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <ArrowDownLeft size={15} />
+                  )}
+                  Continue
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Withdraw Modal */}
       {withdrawModalOpen && (

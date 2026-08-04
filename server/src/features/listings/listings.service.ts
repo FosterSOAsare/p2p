@@ -25,6 +25,11 @@ type ListingWithSeller = Prisma.ListingGetPayload<{ include: typeof cardInclude 
 export async function list(params: ListQuery) {
   const where: Prisma.ListingWhereInput = {
     status: "active",
+    // Belt and braces alongside the status flip: checkout marks a listing
+    // `out_of_stock` the moment its last unit goes, but a seller can set the
+    // status back to active without restocking. Nothing unbuyable reaches the
+    // shopfront either way.
+    quantity: { gt: 0 },
     ...(params.category && { category: params.category }),
     ...(params.condition && { condition: params.condition }),
     ...(params.maxPrice && { price: { lte: params.maxPrice } }),
@@ -215,6 +220,14 @@ export async function update(actor: Actor, listingId: string, input: ListingInpu
   // let a seller quietly un-remove themselves.
   if (existing.status === "removed" && actor.role !== "admin") {
     throw ApiError.forbidden("This listing was removed and can't be edited");
+  }
+
+  // Activating a sold-out listing without restocking would produce a row the
+  // marketplace filters out anyway, leaving the seller staring at a listing
+  // they think is live. Fail loudly instead of hiding it.
+  const nextQuantity = input.quantity ?? existing.quantity;
+  if (input.status === "active" && nextQuantity < 1) {
+    throw ApiError.badRequest("Add stock before setting this listing active");
   }
 
   const listing = await prisma.listing.update({

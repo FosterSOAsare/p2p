@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Lock, Minus, Plus, ShieldCheck, Loader2, AlertTriangle, Wallet } from 'lucide-react'
+import { ArrowLeft, Lock, Minus, Plus, ShieldCheck, Loader2, AlertTriangle, Wallet, PackageX } from 'lucide-react'
 import { useListing } from '../features/marketplace/data/marketplaceApi'
 import { useCheckout } from '../features/escrow/data/ordersApi'
 import { useMe } from '../features/auth/data/authApi'
 import { useWallet } from '../features/escrow/data/walletApi'
-import { useInitDeposit, pendingOrder, type PayMethod } from '../features/escrow/data/paymentsApi'
+import { useInitDeposit, pendingAction, type PayMethod } from '../features/escrow/data/paymentsApi'
 import { PaymentModal } from '../features/escrow/ui/PaymentModal'
 import { formatMoney } from '../features/shared/libs/currency'
 import { apiErrorMessage } from '../features/shared/libs/api'
@@ -85,11 +85,13 @@ export function Checkout() {
 
   const isOwnListing = me?.username === listing.seller.username
   const maxQty = listing.quantity
+  // Reachable by direct URL even though ProductDetail hides the buy button.
+  const outOfStock = listing.status === 'out_of_stock' || maxQty < 1
 
   // Wallet covers the whole order — fund straight from the balance.
   const payFromWallet = () => {
     checkout.mutate(
-      { listingId, quantity, paymentMethod: 'momo' },
+      { listingId, quantity, paymentMethod: 'wallet' },
       { onSuccess: ({ deal }) => navigate(`/escrow/${deal.id}`, { replace: true }) },
     )
   }
@@ -103,7 +105,8 @@ export function Checkout() {
       { amount: shortfall, method },
       {
         onSuccess: ({ authorizationUrl, reference }) => {
-          pendingOrder.save({
+          pendingAction.save({
+            kind: 'order',
             listingId,
             quantity,
             paymentMethod: method,
@@ -233,10 +236,12 @@ export function Checkout() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/40 p-3 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
-              <ShieldCheck size={14} className="shrink-0 mt-0.5" />
-              Held in escrow until you confirm delivery. Seller receives {formatMoney(totals.sellerPayout)} on release.
-            </div>
+            {!outOfStock && (
+              <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/40 p-3 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+                <ShieldCheck size={14} className="shrink-0 mt-0.5" />
+                Held in escrow until you confirm delivery. Seller receives {formatMoney(totals.sellerPayout)} on release.
+              </div>
+            )}
 
             {isOwnListing && (
               <div className="rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 p-3 text-[11px] font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
@@ -244,18 +249,34 @@ export function Checkout() {
               </div>
             )}
 
-            <button
-              onClick={() => setPayOpen(true)}
-              disabled={isOwnListing || busy}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer disabled:opacity-50"
-            >
-              {busy ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
-              {busy ? 'Processing…' : `Pay ${formatMoney(totals.fundingTotal)}`}
-            </button>
+            {outOfStock ? (
+              <>
+                <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3 text-[11px] font-semibold text-rose-700 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300 flex items-center gap-1.5">
+                  <PackageX size={13} className="shrink-0" /> This item sold out — there's nothing left to buy.
+                </div>
+                <Link
+                  to="/marketplace"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 py-3.5 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-all"
+                >
+                  <ArrowLeft size={16} /> Back to Marketplace
+                </Link>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setPayOpen(true)}
+                  disabled={isOwnListing || busy}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {busy ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
+                  {busy ? 'Processing…' : `Pay ${formatMoney(totals.fundingTotal)}`}
+                </button>
 
-            <p className="text-center text-[10px] text-slate-400 dark:text-slate-500">
-              Mobile money or card · Protected by escrow
-            </p>
+                <p className="text-center text-[10px] text-slate-400 dark:text-slate-500">
+                  Mobile money or card · Protected by escrow
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>

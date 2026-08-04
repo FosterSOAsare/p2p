@@ -57,7 +57,10 @@ export async function debitGuarded(
     data: { balance: { decrement: amount } },
   });
   if (updated.count === 0) {
-    throw ApiError.badRequest(`Insufficient wallet balance — you need GH₵ ${amount.toFixed(2)}`);
+    // Report the shortfall, not the total: "you need GH₵ 50" reads as though an
+    // existing GH₵ 40 balance doesn't count toward it.
+    const short = Math.max(0, amount - Number(wallet.balance));
+    throw ApiError.badRequest(`Insufficient wallet balance — add GH₵ ${short.toFixed(2)} to cover this`);
   }
   await tx.transaction.create({
     data: { walletId: wallet.id, type, amount: -amount, note, escrowId },

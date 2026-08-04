@@ -9,7 +9,16 @@ import type { Wallet } from './walletApi'
  * balance and a fresh payment are the same rail underneath.
  */
 
+/** Channels the provider can charge. A wallet isn't one — you can't top a
+ *  wallet up *from* the wallet — so this stays two-valued. */
 export type PayMethod = 'momo' | 'card'
+
+/**
+ * How an order was paid for, recorded on the escrow's `funded` event.
+ * Superset of PayMethod: the debit always comes from the wallet, and this says
+ * what filled it — an existing balance, or a fresh momo/card top-up.
+ */
+export type CheckoutMethod = PayMethod | 'wallet'
 
 export interface InitDepositResult {
   authorizationUrl: string
@@ -23,27 +32,38 @@ export interface VerifyDepositResult {
   wallet: Wallet
 }
 
-/** Pending order stashed before the redirect, resumed on the way back. */
-export interface PendingOrder {
-  listingId: string
-  quantity: number
-  paymentMethod: PayMethod
-  reference: string
-  /** Where to send the buyer if anything goes wrong. */
-  returnTo: string
-}
+/**
+ * What the buyer was doing before we sent them to the hosted payment page,
+ * stashed so the callback can finish it.
+ *
+ * One slot, not one per kind: a buyer is only ever on one hosted page at a
+ * time, and a single key means a stale order can't be resumed by a later
+ * deposit that was meant for something else.
+ */
+export type PendingAction =
+  | {
+      kind: 'order'
+      listingId: string
+      quantity: number
+      paymentMethod: PayMethod
+      reference: string
+      /** Where to send the buyer if anything goes wrong. */
+      returnTo: string
+    }
+  | { kind: 'fund'; escrowId: string; reference: string; returnTo: string }
+  | { kind: 'topup'; reference: string; returnTo: string }
 
-const PENDING_KEY = 'p2p_pending_order'
+const PENDING_KEY = 'p2p_pending_action'
 
-export const pendingOrder = {
-  save(order: PendingOrder) {
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify(order))
+export const pendingAction = {
+  save(action: PendingAction) {
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify(action))
   },
-  load(): PendingOrder | null {
+  load(): PendingAction | null {
     const raw = sessionStorage.getItem(PENDING_KEY)
     if (!raw) return null
     try {
-      return JSON.parse(raw) as PendingOrder
+      return JSON.parse(raw) as PendingAction
     } catch {
       return null
     }

@@ -20,8 +20,10 @@ export const checkout: RequestSchema = {
     listingId: Joi.string().guid().required(),
     quantity: Joi.number().integer().min(1).max(100).default(1),
     // Recorded on the `funded` event for the receipt only — checkout always
-    // debits the buyer's wallet, whichever method they topped it up with.
-    paymentMethod: Joi.string().valid("momo", "card").default("momo"),
+    // debits the buyer's wallet, and this says what filled it. `wallet` means
+    // an existing balance covered the order with no fresh top-up, so it's also
+    // the honest default when a client omits the field.
+    paymentMethod: Joi.string().valid("momo", "card", "wallet").default("wallet"),
   }),
 };
 

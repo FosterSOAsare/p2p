@@ -68,7 +68,7 @@ async function assertNoOpenDispute(tx: Tx, a: string, b: string) {
 export interface CheckoutInput {
   listingId: string;
   quantity: number;
-  paymentMethod: string; // momo/card — recorded on the event, not a separate charge
+  paymentMethod: string; // wallet | momo | card — how the wallet was filled, not a separate charge
 }
 
 /**
