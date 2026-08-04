@@ -319,19 +319,3 @@ export function useAcceptByCode() {
   })
 }
 
-export interface ShareQr {
-  code: string
-  joinUrl: string
-  dataUrl: string
-}
-
-/** QR + join link for a deal — party-only. */
-export function useShareQr(id: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ['escrows', 'qr', id],
-    queryFn: () => api<ShareQr>(`/api/escrows/${id}/qr`),
-    enabled: Boolean(id) && enabled,
-    retry: false,
-    staleTime: Infinity, // the code never changes for a deal
-  })
-}

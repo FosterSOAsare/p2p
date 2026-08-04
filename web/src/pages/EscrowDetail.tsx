@@ -38,7 +38,6 @@ import { formatMoney } from '../features/shared/libs/currency'
 import { formatDateTime } from '../features/shared/libs/date'
 import { apiErrorMessage } from '../features/shared/libs/api'
 import { statusBadge, HAPPY_PATH } from '../features/escrow/ui/dealStatus'
-import { ShareDealDialog } from '../features/escrow/ui/ShareDealDialog'
 import { PaymentModal } from '../features/escrow/ui/PaymentModal'
 import { useWallet } from '../features/escrow/data/walletApi'
 import { useInitDeposit, pendingAction, type PayMethod } from '../features/escrow/data/paymentsApi'
@@ -119,7 +118,6 @@ export function EscrowDetail() {
 
   const [copied, setCopied] = useState(false)
   const [inviteCopied, setInviteCopied] = useState(false)
-  const [shareOpen, setShareOpen] = useState(false)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
 
@@ -230,13 +228,12 @@ export function EscrowDetail() {
               {deal.code} {copied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
             </button>
             <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">{deal.rail.toUpperCase()} · {deal.currency}</span>
+            {/* A status tag, not a control — the QR and join link live in the
+                invite panel in the right column now. */}
             {canInvite && (
-              <button
-                onClick={() => setShareOpen(true)}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 border border-primary-200 dark:border-primary-800 px-2 py-0.5 rounded-full hover:bg-primary-100 dark:hover:bg-primary-950 transition-colors cursor-pointer"
-              >
-                <QrCode size={11} /> Invite
-              </button>
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 border border-primary-200 dark:border-primary-800 px-2 py-0.5 rounded-full">
+                <QrCode size={11} /> Awaiting counterparty
+              </span>
             )}
           </div>
           <h1 className="font-display text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white leading-tight truncate">{deal.title}</h1>
@@ -848,8 +845,6 @@ export function EscrowDetail() {
         onConfirm={() => release.mutate(id, { onSettled: () => setConfirmRelease(false) })}
         onCancel={() => setConfirmRelease(false)}
       />
-
-      {shareOpen && <ShareDealDialog dealId={id} onClose={() => setShareOpen(false)} />}
 
       <PaymentModal
         open={payOpen}
