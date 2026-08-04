@@ -6,8 +6,9 @@
 
 ## Admin (`/api/admin` 👑)
 
-- [ ] Deals **force-override** (manual hold / release / refund) + oversight detail endpoint
-- [ ] Audit log · support tickets
+- [ ] Deal oversight detail endpoint — `GET /escrows/:id` (list exists; there's no way to open one).
+      Should return what the dispute console already gets: money breakdown, event timeline, transcript.
+- [ ] Support tickets
 
 ## Crypto
 
