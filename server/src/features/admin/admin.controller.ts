@@ -86,3 +86,13 @@ export const resolveListingDispute = asyncHandler(async (req, res) => {
   const dispute = await adminService.resolveListingDispute(req.user!.id, req.params.id as string, req.body);
   res.json({ dispute });
 });
+
+export const getListing = asyncHandler(async (req, res) => {
+  const listing = await adminService.getListing(req.params.id as string);
+  res.json({ listing });
+});
+
+export const reinstateListing = asyncHandler(async (req, res) => {
+  const listing = await adminService.reinstateListing(req.user!.id, req.params.id as string);
+  res.json({ listing });
+});

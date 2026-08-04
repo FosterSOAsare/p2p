@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../shared/libs/api'
 
 export interface AdminKyc {
@@ -34,6 +34,7 @@ export function useAdminKycList(status: 'pending' | 'verified' | 'rejected') {
   return useQuery({
     queryKey: adminKeys.kycList(status),
     queryFn: () => api<{ submissions: AdminKyc[] }>(`/api/admin/kyc?status=${status}`),
+    placeholderData: keepPreviousData,
     retry: false,
   })
 }

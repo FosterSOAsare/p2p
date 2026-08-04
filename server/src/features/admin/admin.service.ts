@@ -838,3 +838,146 @@ export async function resolveListingDispute(
 
   return toAdminDispute(updated);
 }
+
+// ---------- Single listing: the admin review page ----------
+
+/**
+ * Everything an admin needs to judge a listing without leaving the page — the
+ * full description and image set (the list view truncates both), the seller's
+ * standing, and the takedown trail if there is one.
+ */
+export async function getListing(id: string) {
+  const l = await prisma.listing.findUnique({
+    where: { id },
+    include: {
+      seller: {
+        select: {
+          id: true,
+          username: true,
+          avatarUrl: true,
+          email: true,
+          createdAt: true,
+          status: true,
+          kyc: { select: { status: true, storeName: true } },
+          _count: { select: { listings: true } },
+        },
+      },
+      removedBy: { select: { username: true } },
+      disputes: { orderBy: { createdAt: "desc" }, take: 1 },
+      reviews: { select: { rating: true } },
+      _count: { select: { escrows: true } },
+    },
+  });
+  if (!l) throw ApiError.notFound("Listing not found");
+
+  const ratings = l.reviews.map((r) => r.rating);
+  const dispute = l.disputes[0];
+
+  return {
+    id: l.id,
+    title: l.title,
+    description: l.description,
+    price: Number(l.price),
+    currency: l.currency,
+    category: l.category,
+    condition: l.condition,
+    quantity: l.quantity,
+    images: l.images,
+    location: l.location,
+    status: l.status,
+    views: l.views,
+    createdAt: l.createdAt.toISOString(),
+    updatedAt: l.updatedAt.toISOString(),
+    rating: ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null,
+    reviewCount: ratings.length,
+    /** Deals referencing this listing — why a takedown is a soft delete. */
+    dealCount: l._count.escrows,
+    seller: {
+      id: l.seller.id,
+      username: l.seller.username,
+      avatarUrl: l.seller.avatarUrl,
+      email: l.seller.email,
+      storeName: l.seller.kyc?.storeName ?? null,
+      kycStatus: l.seller.kyc?.status ?? "unverified",
+      accountStatus: l.seller.status,
+      listingsCount: l.seller._count.listings,
+      joinedAt: l.seller.createdAt.toISOString(),
+    },
+    removal: l.removedAt && l.removalReason
+      ? {
+          reason: l.removalReason,
+          reasonText: removalReasonText(l.removalReason, l.removalNote),
+          note: l.removalNote,
+          removedAt: l.removedAt.toISOString(),
+          removedBy: l.removedBy?.username ?? null,
+          disputeAllowed: l.disputeAllowed,
+        }
+      : null,
+    dispute: dispute
+      ? {
+          id: dispute.id,
+          status: dispute.status,
+          explanation: dispute.explanation,
+          reviewNote: dispute.reviewNote,
+          createdAt: dispute.createdAt.toISOString(),
+        }
+      : null,
+  };
+}
+
+/**
+ * Put a removed listing back on the marketplace, clearing the takedown trail.
+ *
+ * Separate from approving an appeal: this is an admin changing their own mind,
+ * so there's no dispute to rule on. Any open appeal is closed as approved —
+ * the seller got what they asked for.
+ */
+export async function reinstateListing(adminId: string, listingId: string) {
+  const listing = await prisma.listing.findUnique({
+    where: { id: listingId },
+    select: { id: true, title: true, status: true, sellerId: true, quantity: true },
+  });
+  if (!listing) throw ApiError.notFound("Listing not found");
+  if (listing.status !== "removed") throw ApiError.conflict("This listing isn't removed");
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.listingDispute.updateMany({
+      where: { listingId, status: "open" },
+      data: {
+        status: "approved",
+        reviewNote: "Listing reinstated by an administrator.",
+        reviewedById: adminId,
+        reviewedAt: new Date(),
+      },
+    });
+    return tx.listing.update({
+      where: { id: listingId },
+      data: {
+        // Out of stock stays out of stock — reinstating shouldn't resurrect
+        // a listing with nothing left to sell.
+        status: listing.quantity > 0 ? "active" : "out_of_stock",
+        removalReason: null,
+        removalNote: null,
+        removedAt: null,
+        removedById: null,
+        disputeAllowed: false,
+      },
+      select: listingRowSelect,
+    });
+  });
+
+  await notify({
+    userId: listing.sellerId,
+    category: "listing",
+    title: "Your listing is back online",
+    body: `"${listing.title}" has been reinstated by an administrator and is visible to buyers again.`,
+    link: `/listings/${listingId}`,
+  });
+
+  prisma.user
+    .findUnique({ where: { id: listing.sellerId }, select: { email: true, fullName: true } })
+    .then((seller) => seller && mailer.listingDisputeApproved(seller.email, seller.fullName, listing.title, null))
+    .catch(() => undefined);
+
+  return toAdminListing(updated);
+}

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../shared/libs/api'
 import { dashboardKeys } from '../../user/data/usersApi'
 
@@ -108,6 +108,7 @@ export function useAdminDisputes(status: 'open' | 'resolved' | 'all' = 'open') {
     queryKey: adminDisputeKeys.list(status),
     queryFn: () =>
       api<{ disputes: AdminDispute[] }>(`/api/admin/disputes?status=${status}`).then((r) => r.disputes),
+    placeholderData: keepPreviousData,
     retry: false,
   })
 }
