@@ -1,12 +1,5 @@
-import { PlaceholderScreen } from '@/features/shared/ui/PlaceholderScreen';
+import { AdminUsersScreen } from '@/features/admin/ui/AdminUsersScreen';
 
 export default function AdminUsersRoute() {
-  return (
-    <PlaceholderScreen
-      title="Users"
-      description="Search users, inspect accounts and suspend where needed."
-      webRoute="/admin/users"
-      backLabel="Back to admin"
-    />
-  );
+  return <AdminUsersScreen />;
 }

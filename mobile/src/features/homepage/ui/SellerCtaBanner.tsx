@@ -14,7 +14,7 @@ export function SellerCtaBanner() {
       <ThemedText type="default" style={styles.body}>
         Apply for verified merchant status to list products, receive payout protection, and access senior dispute support.
       </ThemedText>
-      <Link href="/explore" style={styles.button}>
+      <Link href="/marketplace" style={styles.button}>
         <ThemedText type="linkPrimary">Apply for merchant verification</ThemedText>
       </Link>
     </ThemedView>

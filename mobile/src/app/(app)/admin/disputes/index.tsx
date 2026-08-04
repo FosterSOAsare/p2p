@@ -1,12 +1,5 @@
-import { PlaceholderScreen } from '@/features/shared/ui/PlaceholderScreen';
+import { AdminDisputesListScreen } from '@/features/admin/ui/AdminDisputesListScreen';
 
 export default function AdminDisputesRoute() {
-  return (
-    <PlaceholderScreen
-      title="Disputes"
-      description="Open disputes awaiting an admin ruling."
-      webRoute="/admin/disputes"
-      backLabel="Back to admin"
-    />
-  );
+  return <AdminDisputesListScreen />;
 }

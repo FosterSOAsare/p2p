@@ -1,160 +1,221 @@
-import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import {
+  ChevronRight,
   ClipboardCheck,
   Handshake,
   Package,
+  PackageSearch,
   Scale,
   ShieldCheck,
+  TriangleAlert,
   Users,
   Wallet,
 } from 'lucide-react-native';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import {
-  mockDeals,
-  mockKycSubmissions,
-  mockProducts,
-  mockSellerListings,
-  type EscrowDeal,
-} from '@/constants/mockData';
+import { useAuth } from '@/context/AuthContext';
+import { useAdminStats } from '@/features/admin/data/adminStatsApi';
+import { useAdminDisputes } from '@/features/admin/data/adminDisputesApi';
+import { useAdminListingDisputes } from '@/features/admin/data/adminListingsApi';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { AdminError, AdminLoading, money } from '@/features/admin/ui/AdminScaffold';
 import { StatCard } from './StatCard';
 
 /**
  * Admin home — the phone version of `web/src/pages/AdminDashboard.tsx`.
  *
- * The web routes /dashboard → /admin for admins; on a phone the home tab is
- * the console itself. Same six metric tiles and the deals-by-status breakdown.
+ * The web routes /dashboard → /admin for admins; on a phone the home tab is the
+ * console itself, so this doubles as the navigation hub for every admin area.
  *
- * The web reads `useAdminStats()`; mobile has no API, so the figures are
- * derived from the mock collections below. Swap in the endpoint later — the
- * layout doesn't change.
+ * Unlike the rest of the app this reads the live API (`/api/admin/stats`), so
+ * the figures here and inside each queue always agree. That needs a real
+ * signed-in admin — a mock session gets the prompt below rather than silently
+ * showing zeroes.
  */
 
-const money = (amount: number) =>
-  `GH₵${amount.toLocaleString('en-GH', { maximumFractionDigits: 0 })}`;
-
-/** The status columns the web's breakdown card shows. */
-const STATUS_ROWS: { id: EscrowDeal['status']; label: string; color: string }[] = [
+/** Deal statuses the breakdown card shows, in lifecycle order. */
+const STATUS_ROWS = [
+  { id: 'created', label: 'Created', color: '#6b7280' },
   { id: 'funded', label: 'Funded', color: '#3730a3' },
-  { id: 'shipped', label: 'Shipped', color: '#92400e' },
   { id: 'delivered', label: 'Delivered', color: '#1e40af' },
-  { id: 'released', label: 'Released', color: '#166534' },
+  { id: 'disbursed', label: 'Released', color: '#166534' },
   { id: 'disputed', label: 'Disputed', color: '#991b1b' },
-];
+  { id: 'cancelled', label: 'Cancelled', color: '#9d174d' },
+] as const;
 
 export function AdminDashboard() {
   const theme = useTheme();
   const router = useRouter();
+  const { isRealSession } = useAuth();
 
-  const stats = useMemo(() => {
-    const byStatus = STATUS_ROWS.reduce<Record<string, number>>((acc, row) => {
-      acc[row.id] = mockDeals.filter((d) => d.status === row.id).length;
-      return acc;
-    }, {});
+  const statsQuery = useAdminStats();
+  // Queue sizes for the section badges — they make the hub useful at a glance
+  // instead of forcing a tap to find out whether there's work waiting.
+  const disputesQuery = useAdminDisputes('open');
+  const appealsQuery = useAdminListingDisputes('open');
 
-    return {
-      // Distinct usernames across the mock deals, plus the KYC applicants.
-      users: new Set([
-        ...mockDeals.flatMap((d) => [d.creator.username, d.counterparty.username]),
-        ...mockKycSubmissions.map((k) => k.username),
-      ]).size,
-      activeListings:
-        mockProducts.filter((p) => p.status === 'active').length +
-        mockSellerListings.filter((l) => l.status === 'active').length,
-      // "Settled volume" on the web is completed (released) deals only.
-      settledVolume: mockDeals
-        .filter((d) => d.status === 'released')
-        .reduce((sum, d) => sum + d.amount, 0),
-      kycPending: mockKycSubmissions.filter((k) => k.status === 'pending').length,
-      openDisputes: mockDeals.filter((d) => d.status === 'disputed').length,
-      totalDeals: mockDeals.length,
-      byStatus,
-    };
-  }, []);
+  if (!isRealSession) {
+    return (
+      <View style={styles.wrap}>
+        <ConsoleHeader />
+        <View style={[styles.notice, { backgroundColor: '#fef9c3', borderColor: '#fde68a' }]}>
+          <TriangleAlert size={17} color="#a16207" />
+          <View style={styles.noticeBody}>
+            <Text style={[styles.noticeTitle, { color: '#854d0e' }]}>Demo session</Text>
+            <Text style={[styles.noticeText, { color: '#854d0e' }]}>
+              You're signed in with a demo account. Sign in with a real admin account to load live
+              platform data and take moderation actions.
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (statsQuery.isLoading) {
+    return (
+      <View style={styles.wrap}>
+        <ConsoleHeader />
+        <AdminLoading />
+      </View>
+    );
+  }
+
+  if (statsQuery.isError || !statsQuery.data) {
+    return (
+      <View style={styles.wrap}>
+        <ConsoleHeader />
+        <AdminError message={apiErrorMessage(statsQuery.error)} />
+      </View>
+    );
+  }
+
+  const s = statsQuery.data;
+  const openDisputes = disputesQuery.data?.length ?? s.openDisputes;
+  const openAppeals = appealsQuery.data?.disputes.filter((d) => d.status === 'open').length ?? 0;
+
+  const sections = [
+    {
+      label: 'KYC Reviews',
+      hint: 'Verify sellers before they can list',
+      icon: ClipboardCheck,
+      color: '#d97706',
+      count: s.kycPending,
+      href: '/admin/kyc' as Href,
+    },
+    {
+      label: 'Disputes',
+      hint: 'Rule on escrow disputes and move funds',
+      icon: Scale,
+      color: '#e11d48',
+      count: openDisputes,
+      href: '/admin/disputes' as Href,
+    },
+    {
+      label: 'Listings',
+      hint: 'Remove listings and review takedown appeals',
+      icon: PackageSearch,
+      color: '#0284c7',
+      count: openAppeals,
+      href: '/admin/listings' as Href,
+    },
+    {
+      label: 'Users',
+      hint: 'Search accounts, suspend or reinstate',
+      icon: Users,
+      color: theme.primary,
+      count: s.suspendedUsers,
+      href: '/admin/users' as Href,
+    },
+    {
+      label: 'Deals',
+      hint: 'Oversight of every escrow on the platform',
+      icon: Handshake,
+      color: '#7c3aed',
+      count: 0,
+      href: '/admin/deals' as Href,
+    },
+  ];
 
   return (
     <View style={styles.wrap}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <View style={[styles.badge, { backgroundColor: theme.primaryLight }]}>
-          <ShieldCheck size={13} color={theme.primary} />
-          <Text style={[styles.badgeText, { color: theme.primary }]}>Admin Console</Text>
-        </View>
-        <Text style={[styles.title, { color: theme.text }]}>Platform Dashboard</Text>
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-          Live snapshot of accounts, listings, escrow deals, and the review queues.
-        </Text>
-      </View>
+      <ConsoleHeader />
 
-      {/* Primary metrics */}
       <View style={styles.grid}>
-        <StatCard
-          label="Total Users"
-          value={String(stats.users)}
-          sub="Across deals & KYC"
-          icon={Users}
-          onPress={() => router.push('/admin/users')}
-        />
-        <StatCard
-          label="Active Listings"
-          value={String(stats.activeListings)}
-          icon={Package}
-          accent="#0284c7"
-        />
+        <StatCard label="Total Users" value={String(s.users)} sub={`${s.suspendedUsers} suspended`} icon={Users} />
+        <StatCard label="Active Listings" value={String(s.activeListings)} icon={Package} accent="#0284c7" />
         <StatCard
           label="Settled Volume"
-          value={money(stats.settledVolume)}
+          value={money(s.ghsVolume)}
           sub="Completed deals"
           icon={Wallet}
           accent={theme.primary}
         />
-        <StatCard
-          label="KYC Pending"
-          value={String(stats.kycPending)}
-          sub="Awaiting review"
-          icon={ClipboardCheck}
-          accent="#d97706"
-          onPress={() => router.push('/admin/kyc')}
-        />
-        <StatCard
-          label="Open Disputes"
-          value={String(stats.openDisputes)}
-          sub="Need a ruling"
-          icon={Scale}
-          accent="#e11d48"
-          onPress={() => router.push('/admin/disputes')}
-        />
-        <StatCard
-          label="Total Deals"
-          value={String(stats.totalDeals)}
-          icon={Handshake}
-          onPress={() => router.push('/deals')}
-        />
+        <StatCard label="Total Deals" value={String(s.totalDeals)} icon={Handshake} accent="#7c3aed" />
       </View>
 
-      {/* Deals by status */}
-      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-        <View style={styles.cardHead}>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Escrow deals by status</Text>
-          <Pressable onPress={() => router.push('/deals')} hitSlop={8}>
-            <Text style={[styles.cardLink, { color: theme.primary }]}>View All →</Text>
+      {/* Where the work is — the console's real job on a phone */}
+      <View style={styles.sectionList}>
+        <Text style={[styles.sectionHeading, { color: theme.textSecondary }]}>Moderation</Text>
+        {sections.map((section) => (
+          <Pressable
+            key={section.label}
+            onPress={() => router.push(section.href)}
+            style={({ pressed }) => [
+              styles.row,
+              { backgroundColor: theme.card, borderColor: theme.cardBorder, opacity: pressed ? 0.75 : 1 },
+            ]}
+          >
+            <View style={[styles.rowIcon, { backgroundColor: theme.backgroundElement }]}>
+              <section.icon size={18} color={section.color} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={[styles.rowLabel, { color: theme.text }]}>{section.label}</Text>
+              <Text style={[styles.rowHint, { color: theme.textSecondary }]} numberOfLines={1}>
+                {section.hint}
+              </Text>
+            </View>
+            {section.count > 0 && (
+              <View style={[styles.rowCount, { backgroundColor: section.color }]}>
+                <Text style={styles.rowCountText}>{section.count}</Text>
+              </View>
+            )}
+            <ChevronRight size={17} color={theme.textTertiary} />
           </Pressable>
-        </View>
+        ))}
+      </View>
 
+      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+        <Text style={[styles.cardTitle, { color: theme.text }]}>Escrow deals by status</Text>
         <View style={styles.statusGrid}>
           {STATUS_ROWS.map((row) => (
             <View key={row.id} style={styles.statusCell}>
               <Text style={[styles.statusValue, { color: row.color }]}>
-                {stats.byStatus[row.id] ?? 0}
+                {s.dealsByStatus[row.id] ?? 0}
               </Text>
               <Text style={[styles.statusLabel, { color: theme.textSecondary }]}>{row.label}</Text>
             </View>
           ))}
         </View>
       </View>
+    </View>
+  );
+}
+
+function ConsoleHeader() {
+  const theme = useTheme();
+  return (
+    <View style={[styles.header, { borderBottomColor: theme.border }]}>
+      <View style={[styles.badge, { backgroundColor: theme.primaryLight }]}>
+        <ShieldCheck size={13} color={theme.primary} />
+        <Text style={[styles.badgeText, { color: theme.primary }]}>Admin Console</Text>
+      </View>
+      <Text style={[styles.title, { color: theme.text }]}>Platform Dashboard</Text>
+      <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+        Live snapshot of accounts, listings, escrow deals, and the review queues.
+      </Text>
     </View>
   );
 }
@@ -178,16 +239,53 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  // Heading uses the web's `font-display`.
   title: { fontSize: 20, fontFamily: Fonts.display[700], letterSpacing: -0.4 },
   subtitle: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[400] },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
 
+  sectionList: { gap: Spacing.two },
+  sectionHeading: {
+    fontSize: 10.5,
+    fontFamily: Fonts.sans[700],
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: Spacing.one,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
+  },
+  rowIcon: { width: 38, height: 38, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
+  rowBody: { flex: 1, gap: 1 },
+  rowLabel: { fontSize: 14, fontFamily: Fonts.sans[700] },
+  rowHint: { fontSize: 11.5, fontFamily: Fonts.sans[400] },
+  rowCount: {
+    minWidth: 22,
+    alignItems: 'center',
+    borderRadius: Radius.full,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  rowCountText: { fontSize: 11, fontFamily: Fonts.sans[700], color: '#ffffff' },
+
+  notice: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.four,
+  },
+  noticeBody: { flex: 1, gap: 3 },
+  noticeTitle: { fontSize: 13.5, fontFamily: Fonts.sans[700] },
+  noticeText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[400] },
+
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four, gap: Spacing.three },
-  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardTitle: { fontSize: 13, fontFamily: Fonts.display[700] },
-  cardLink: { fontSize: 12, fontFamily: Fonts.sans[700] },
 
   statusGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three },
   statusCell: { flexGrow: 1, flexBasis: '28%', gap: 2 },

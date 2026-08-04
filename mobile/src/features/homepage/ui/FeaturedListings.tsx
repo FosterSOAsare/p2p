@@ -42,7 +42,7 @@ export function FeaturedListings() {
           </ThemedText>
         </View>
 
-        <Link href="/explore" style={styles.linkButton}>
+        <Link href="/marketplace" style={styles.linkButton}>
           <ThemedText type="linkPrimary">View all</ThemedText>
         </Link>
       </View>

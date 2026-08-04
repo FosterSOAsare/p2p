@@ -42,7 +42,7 @@ export function LoginScreen() {
     try {
       setApiError(null);
       await login(data.identifier, data.password);
-      router.replace('/(app)/tabs'); // Redirect to main app
+      router.replace('/home'); // Redirect to main app
     } catch (err: any) {
       setApiError(err.message || 'Failed to login');
     }
