@@ -88,8 +88,7 @@ export function Layout() {
         // Next to Disputes — the two moderation queues belong together, and a
         // listing appeal is reviewed from here.
         { to: '/admin/listings', label: 'Listings', icon: PackageSearch },
-        { to: '/admin/users', label: 'Users', icon: Users },
-        { to: '/deals', label: 'Deals', icon: Handshake },
+        { to: '/admin/users', label: 'Users', icon: Users }
       ]
     : [
         { to: '/marketplace', label: 'Marketplace', icon: Store },
