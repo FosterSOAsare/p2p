@@ -421,7 +421,7 @@ export function ProductDetail() {
                 {product.reported ? (
                   <span
                     title="You've already reported this listing — moderators have it"
-                    className="flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400"
+                    className="flex items-center gap-1 font-semibold text-rose-600 dark:text-rose-400"
                   >
                     <Flag size={13} fill="currentColor" />
                     Listing Reported
@@ -429,7 +429,7 @@ export function ProductDetail() {
                 ) : (
                   <button
                     onClick={() => (me ? setReportOpen(true) : navigate('/login'))}
-                    className="flex items-center gap-1 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    className="flex items-center gap-1 font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer"
                   >
                     <Flag size={13} />
                     Report Listing
