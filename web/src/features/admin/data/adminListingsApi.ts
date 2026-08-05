@@ -1,27 +1,14 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../shared/libs/api'
 
+import type { RemovalReason } from '../../shared/libs/removalReasons'
+
 export type ListingStatus = 'draft' | 'active' | 'out_of_stock' | 'removed'
 
-export type RemovalReason =
-  | 'prohibited_item'
-  | 'duplicate'
-  | 'misleading'
-  | 'spam'
-  | 'guidelines'
-  | 'fraud'
-  | 'other'
-
-/** Mirrors the server's removal-reasons module — keep the wording in step. */
-export const REMOVAL_REASONS: { id: RemovalReason; label: string }[] = [
-  { id: 'prohibited_item', label: 'Prohibited or restricted item' },
-  { id: 'duplicate', label: 'Duplicate listing' },
-  { id: 'misleading', label: 'Misleading or inaccurate information' },
-  { id: 'spam', label: 'Spam or low-quality content' },
-  { id: 'guidelines', label: 'Violates community guidelines' },
-  { id: 'fraud', label: 'Fraudulent or suspicious activity' },
-  { id: 'other', label: 'Other' },
-]
+// Lives in shared/libs now (the report dialog picks from the same list); still
+// re-exported here so the admin call sites read as they always have.
+export { REMOVAL_REASONS } from '../../shared/libs/removalReasons'
+export type { RemovalReason } from '../../shared/libs/removalReasons'
 
 export interface AdminListingRow {
   id: string
@@ -34,6 +21,8 @@ export interface AdminListingRow {
   status: ListingStatus
   createdAt: string
   seller: { username: string; avatarUrl: string | null }
+  /** Buyer reports still awaiting a verdict — 0 for most rows. */
+  openReportCount: number
   removal: {
     reason: RemovalReason | null
     reasonText: string | null
@@ -88,6 +77,9 @@ export function useRemoveListing() {
       // The listing leaves the public marketplace too.
       qc.invalidateQueries({ queryKey: ['listings'] })
       qc.invalidateQueries({ queryKey: ['admin', 'stats'] })
+      // A takedown also actions any open buyer reports on it. Keyed literally
+      // rather than importing adminReportKeys — that module imports this one.
+      qc.invalidateQueries({ queryKey: ['admin', 'reports'] })
     },
   })
 }

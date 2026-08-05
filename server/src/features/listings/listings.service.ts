@@ -1,6 +1,6 @@
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
-import type { Prisma } from "../../generated/prisma/client";
+import type { ListingRemovalReason, Prisma } from "../../generated/prisma/client";
 import { removalReasonText } from "./removal-reasons";
 import { notifyAdmins } from "../notifications/notifications.service";
 import { mailer } from "../../shared/mail/mail.service";
@@ -114,6 +114,15 @@ export async function getById(id: string, viewer?: { id: string; role: "user" | 
   // same pg connection (fire-and-forget triggers pg's concurrent-query warning).
   await prisma.listing.update({ where: { id }, data: { views: { increment: 1 } } }).catch(() => undefined);
 
+  // Whether *this* viewer already flagged it. Server-side so the button's state
+  // survives a reload — it used to be component state, which forgot on refresh.
+  const reported = viewer
+    ? (await prisma.listingReport.findUnique({
+        where: { listingId_reporterId: { listingId: id, reporterId: viewer.id } },
+        select: { id: true },
+      })) !== null
+    : false;
+
   const ratings = listing.reviews.map((r) => r.rating);
   return {
     id: listing.id,
@@ -128,6 +137,7 @@ export async function getById(id: string, viewer?: { id: string; role: "user" | 
     location: listing.location,
     status: listing.status,
     views: listing.views,
+    reported,
     createdAt: listing.createdAt.toISOString(),
     // Takedown context — only meaningful to the owner/admin viewing a removed listing.
     removal:
@@ -396,5 +406,61 @@ export async function submitDispute(
     status: dispute.status,
     explanation: dispute.explanation,
     createdAt: dispute.createdAt.toISOString(),
+  };
+}
+
+// ---------- Buyer reports against a live listing ----------
+
+/**
+ * Flag a listing for moderation. Any signed-in user, once per listing.
+ *
+ * The cap is the unique index rather than a rate limiter: a second report from
+ * the same person adds no information an admin can act on, and "one voice per
+ * user" is what makes the per-listing tally on the admin queue mean something.
+ */
+export async function submitReport(
+  reporterId: string,
+  listingId: string,
+  input: { reason: ListingRemovalReason; note?: string | null },
+) {
+  const listing = await prisma.listing.findUnique({
+    where: { id: listingId },
+    select: { id: true, title: true, status: true, sellerId: true },
+  });
+  if (!listing) throw ApiError.notFound("Listing not found");
+  if (listing.sellerId === reporterId) throw ApiError.badRequest("You can't report your own listing");
+  if (listing.status === "removed") throw ApiError.conflict("This listing has already been removed");
+
+  const note = input.note?.trim() || null;
+
+  // Let the unique index be the check — a pre-read would still race two
+  // concurrent submissions, and P2002 says exactly what happened.
+  const report = await prisma.listingReport
+    .create({ data: { listingId, reporterId, reason: input.reason, note } })
+    .catch((err: unknown) => {
+      if (err && typeof err === "object" && (err as { code?: string }).code === "P2002") {
+        throw ApiError.conflict("You've already reported this listing");
+      }
+      throw err;
+    });
+
+  const reporter = await prisma.user.findUnique({ where: { id: reporterId }, select: { username: true } });
+
+  // Every admin: the queue is worked by whoever is on, and there's no acting
+  // admin here to own it the way a takedown has one. No email either — a report
+  // is a signal, not a decision anyone has to answer within the hour.
+  await notifyAdmins({
+    category: "listing",
+    title: "Listing reported",
+    body: `@${reporter?.username ?? "someone"} reported "${listing.title}" — ${removalReasonText(input.reason, note)}`,
+    link: "/admin/reports",
+  });
+
+  return {
+    id: report.id,
+    reason: report.reason,
+    note: report.note,
+    status: report.status,
+    createdAt: report.createdAt.toISOString(),
   };
 }

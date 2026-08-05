@@ -92,6 +92,9 @@ enum ListingDisputeStatus {
   rejected
 }
 
+/// Doubles as the buyer-report vocabulary (see ListingReport) — a report is an
+/// accusation of exactly the thing a takedown is a finding of, so the reported
+/// reason carries straight into the removal with nothing to translate.
 enum ListingRemovalReason {
   prohibited_item
   duplicate
@@ -100,6 +103,14 @@ enum ListingRemovalReason {
   guidelines
   fraud
   other
+}
+
+enum ListingReportStatus {
+  open
+  /// The listing was taken down off the back of it.
+  actioned
+  /// Reviewed, no violation found.
+  dismissed
 }
 
 enum DisputeStatus {
@@ -179,6 +190,8 @@ model User {
   listingsRemoved  Listing[]        @relation("ListingModerator")
   listingDisputes  ListingDispute[] @relation("ListingDisputeSeller")
   listingDisputesReviewed ListingDispute[] @relation("ListingDisputeReviewer")
+  listingReportsMade      ListingReport[]  @relation("ListingReporter")
+  listingReportsReviewed  ListingReport[]  @relation("ListingReportReviewer")
   savedListings    SavedListing[]
   blocksMade       VendorBlock[]  @relation("BlocksMade")
   blocksReceived   VendorBlock[]  @relation("BlocksReceived")
@@ -319,6 +332,37 @@ model ListingDispute {
   @@map("listing_disputes")
 }
 
+/// A buyer flagging a listing. The mirror of ListingDispute: moderation reaching
+/// admins from the shopfront side rather than from the seller's.
+///
+/// Reasons reuse ListingRemovalReason, so a report the admin agrees with becomes
+/// the takedown reason unchanged. Resolution isn't a separate decision either —
+/// removing the listing marks its open reports `actioned`; `dismissed` is the
+/// only ruling that needs its own call.
+model ListingReport {
+  id           String              @id @default(uuid(7))
+  listingId    String
+  reporterId   String
+  reason       ListingRemovalReason
+  note         String? // reporter's own words; required by validation when reason is `other`
+  status       ListingReportStatus @default(open)
+  reviewNote   String? // admin's note on a dismissal
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime            @default(now())
+
+  listing    Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  reporter   User    @relation("ListingReporter", fields: [reporterId], references: [id])
+  reviewedBy User?   @relation("ListingReportReviewer", fields: [reviewedById], references: [id])
+
+  // One report per person per listing — the whole abuse control. A user who
+  // reported once has said their piece, whatever the outcome was.
+  @@unique([listingId, reporterId])
+  @@index([status, createdAt])
+  @@index([listingId])
+  @@map("listing_reports")
+}
+
 // ---------- Marketplace ----------
 
 model Category {
@@ -361,6 +405,7 @@ model Listing {
   seller    User             @relation(fields: [sellerId], references: [id])
   removedBy User?            @relation("ListingModerator", fields: [removedById], references: [id])
   disputes  ListingDispute[]
+  reports   ListingReport[]
   savedBy   SavedListing[]
   escrows   Escrow[]
   reviews   Review[]

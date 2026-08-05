@@ -77,6 +77,20 @@ export const removeListing = asyncHandler(async (req, res) => {
   res.json({ listing });
 });
 
+export const listReports = asyncHandler(async (req, res) => {
+  const result = await adminService.listReports(req.query as any);
+  res.json(result);
+});
+
+export const dismissListingReports = asyncHandler(async (req, res) => {
+  const result = await adminService.dismissListingReports(
+    req.user!.id,
+    req.params.id as string,
+    req.body.note,
+  );
+  res.json(result);
+});
+
 export const listListingDisputes = asyncHandler(async (req, res) => {
   const result = await adminService.listListingDisputes((req.query as any).status);
   res.json(result);

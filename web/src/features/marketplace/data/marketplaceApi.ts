@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../shared/libs/api'
+import type { RemovalReason } from '../../shared/libs/removalReasons'
 
 
 // Marketplace listings are fiat-only (GH₵) — crypto/TRX exists only on standalone escrow deals.
@@ -62,6 +63,8 @@ export interface ListingDetailData {
     } | null
   } | null
   views: number
+  /** Whether the signed-in viewer has already flagged this listing. */
+  reported: boolean
   createdAt: string
   seller: {
     username: string
@@ -104,6 +107,25 @@ export function useCategories() {
     queryKey: ['categories'],
     queryFn: () => api<{ categories: Category[] }>('/api/categories'),
     staleTime: 5 * 60_000,
+  })
+}
+
+/**
+ * Flag a listing for moderation. The server allows one report per person per
+ * listing, so a repeat attempt comes back 409 — the button renders its reported
+ * state off the listing's own `reported` flag, which is why this invalidates it.
+ */
+export function useReportListing() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, reason, note }: { id: string; reason: RemovalReason; note?: string }) =>
+      api<{ report: { id: string; status: string; createdAt: string } }>(`/api/listings/${id}/report`, {
+        method: 'POST',
+        body: { reason, ...(note ? { note } : {}) },
+      }).then((r) => r.report),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['listings', 'detail', id] })
+    },
   })
 }
 

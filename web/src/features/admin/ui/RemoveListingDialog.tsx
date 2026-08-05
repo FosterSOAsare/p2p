@@ -7,6 +7,10 @@ interface RemoveListingDialogProps {
   listingTitle: string
   isPending?: boolean
   errorMessage?: string | null
+  /** Pre-selects a reason — the reports queue passes what buyers said it was. */
+  defaultReason?: RemovalReason | null
+  /** One line of provenance above the reasons, e.g. the report tally. */
+  context?: string | null
   onConfirm: (reason: RemovalReason, note: string | undefined, disputeAllowed: boolean) => void
   onCancel: () => void
 }
@@ -20,6 +24,8 @@ export function RemoveListingDialog({
   listingTitle,
   isPending = false,
   errorMessage,
+  defaultReason = null,
+  context = null,
   onConfirm,
   onCancel,
 }: RemoveListingDialogProps) {
@@ -27,14 +33,15 @@ export function RemoveListingDialog({
   const [note, setNote] = useState('')
   const [disputeAllowed, setDisputeAllowed] = useState(true)
 
-  // Fresh selection every time the dialog opens.
+  // Fresh selection every time the dialog opens — starting from the suggested
+  // reason where there is one, so the admin confirms rather than re-derives.
   useEffect(() => {
     if (open) {
-      setReason(null)
+      setReason(defaultReason)
       setNote('')
       setDisputeAllowed(true)
     }
-  }, [open])
+  }, [open, defaultReason])
 
   if (!open) return null
 
@@ -64,6 +71,12 @@ export function RemoveListingDialog({
             </p>
           </div>
         </div>
+
+        {context && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-[11px] font-semibold text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            {context}
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">

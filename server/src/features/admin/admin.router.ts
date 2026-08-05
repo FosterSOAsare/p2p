@@ -32,6 +32,16 @@ adminRouter.post(
   adminController.reinstateListing,
 );
 
+// Buyer reports. Dismissal hangs off the listing, not a report id — it's a
+// verdict on the listing, and it clears every open report at once. The other
+// verdict needs no endpoint: /listings/:id/remove actions them.
+adminRouter.get("/reports", validate(adminValidation.reportList), adminController.listReports);
+adminRouter.post(
+  "/listings/:id/reports/dismiss",
+  validate(adminValidation.reportsDismiss),
+  adminController.dismissListingReports,
+);
+
 // Seller appeals against a takedown ("/listing-disputes" kept distinct from escrow "/disputes")
 adminRouter.get("/listing-disputes", validate(adminValidation.listingDisputeList), adminController.listListingDisputes);
 adminRouter.post(

@@ -19,6 +19,9 @@ listingsRouter.delete("/:id", auth, requireSeller, validate(listingsValidation.i
 // Appeal a takedown (owner only; the service checks eligibility)
 listingsRouter.post("/:id/dispute", auth, validate(listingsValidation.dispute), listingsController.submitDispute);
 
+// Flag a listing. `auth`, not `requireSeller`: reporting is a buyer's job.
+listingsRouter.post("/:id/report", auth, validate(listingsValidation.report), listingsController.submitReport);
+
 // ---- Public detail (after /mine) ----
 // optionalAuth so the owner/an admin can still open their own removed listing.
 listingsRouter.get("/:id", optionalAuth, validate(listingsValidation.idParam), listingsController.getById);

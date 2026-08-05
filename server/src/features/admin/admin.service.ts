@@ -12,7 +12,7 @@ import type { ListingRemovalReason } from "../../generated/prisma/client";
 import { transition } from "../escrows/escrows.service";
 import { breakdown } from "../escrows/money";
 import { listDealTranscript, postDealMessage } from "../messages/messages.service";
-import { notify } from "../notifications/notifications.service";
+import { notify, notifyMany } from "../notifications/notifications.service";
 import { mailer } from "../../shared/mail/mail.service";
 import { removalReasonText } from "../listings/removal-reasons";
 
@@ -489,13 +489,14 @@ export async function listEscrows(params: {
 // ---------- Platform stats (admin dashboard) ----------
 
 export async function getStats() {
-  const [users, suspendedUsers, activeListings, kycPending, openDisputes, dealGroups, volume] =
+  const [users, suspendedUsers, activeListings, kycPending, openDisputes, openReports, dealGroups, volume] =
     await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { status: "suspended" } }),
       prisma.listing.count({ where: { status: "active" } }),
       prisma.kycProfile.count({ where: { status: "pending" } }),
       prisma.dispute.count({ where: { status: "open" } }),
+      prisma.listingReport.count({ where: { status: "open" } }),
       prisma.escrow.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.escrow.aggregate({ _sum: { amount: true }, where: { status: "disbursed" } }),
     ]);
@@ -517,6 +518,7 @@ export async function getStats() {
     activeListings,
     kycPending,
     openDisputes,
+    openReports,
     totalDeals,
     dealsByStatus,
     // Completed (disbursed) GHS volume — the only "settled" money in the simulated fiat rail.
@@ -543,6 +545,9 @@ const listingRowSelect = {
   seller: { select: { id: true, username: true, avatarUrl: true } },
   removedBy: { select: { username: true } },
   disputes: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, status: true } },
+  // Buyer reports awaiting a verdict — the flag on the moderation row that says
+  // "someone has already told us about this one".
+  _count: { select: { reports: { where: { status: "open" } } } },
 } satisfies Prisma.ListingSelect;
 
 type ListingRow = Prisma.ListingGetPayload<{ select: typeof listingRowSelect }>;
@@ -559,6 +564,7 @@ function toAdminListing(l: ListingRow) {
     status: l.status,
     createdAt: l.createdAt.toISOString(),
     seller: { username: l.seller.username, avatarUrl: l.seller.avatarUrl },
+    openReportCount: l._count.reports,
     removal: l.removedAt
       ? {
           reason: l.removalReason,
@@ -616,6 +622,10 @@ export async function listListings(params: {
  * Take a listing down. Soft state (status → `removed`) rather than a delete, so
  * listings attached to escrow deals keep their history. The seller is told in
  * their message thread and by email, both carrying the reason.
+ *
+ * This is also how a buyer report is resolved in the affirmative: any open
+ * reports on the listing are marked `actioned` in the same transaction, so a
+ * takedown that fails can't leave the queue claiming it succeeded.
  */
 export async function removeListing(
   adminId: string,
@@ -645,17 +655,31 @@ export async function removeListing(
   }
 
   const note = input.note?.trim() || null;
-  const updated = await prisma.listing.update({
-    where: { id: listingId },
-    data: {
-      status: "removed",
-      removalReason: input.reason,
-      removalNote: note,
-      removedAt: new Date(),
-      removedById: adminId,
-      disputeAllowed: input.disputeAllowed ?? false,
-    },
-    select: listingRowSelect,
+  const now = new Date();
+
+  const { updated, reporterIds } = await prisma.$transaction(async (tx) => {
+    // Read the reporters before the updateMany rewrites their status.
+    const open = await tx.listingReport.findMany({
+      where: { listingId, status: "open" },
+      select: { reporterId: true },
+    });
+    await tx.listingReport.updateMany({
+      where: { listingId, status: "open" },
+      data: { status: "actioned", reviewedById: adminId, reviewedAt: now },
+    });
+    const row = await tx.listing.update({
+      where: { id: listingId },
+      data: {
+        status: "removed",
+        removalReason: input.reason,
+        removalNote: note,
+        removedAt: now,
+        removedById: adminId,
+        disputeAllowed: input.disputeAllowed ?? false,
+      },
+      select: listingRowSelect,
+    });
+    return { updated: row, reporterIds: open.map((o) => o.reporterId) };
   });
 
   const reasonText = removalReasonText(input.reason, note);
@@ -687,7 +711,173 @@ export async function removeListing(
     )
     .catch(() => undefined);
 
+  // Close the loop with whoever flagged it. Links to the marketplace, not the
+  // listing — that page 404s for everyone but the seller now.
+  if (reporterIds.length > 0) {
+    await notifyMany(reporterIds, {
+      category: "listing",
+      title: "Thanks — that listing is gone",
+      body: `"${listing.title}" was removed after review. Thanks for reporting it.`,
+      link: "/marketplace",
+    });
+  }
+
   return toAdminListing(updated);
+}
+
+// ---------- Buyer reports (the moderation queue) ----------
+
+const reportInclude = {
+  reporter: { select: { username: true, avatarUrl: true } },
+  reviewedBy: { select: { username: true } },
+  listing: {
+    select: {
+      id: true,
+      title: true,
+      images: true,
+      price: true,
+      currency: true,
+      category: true,
+      status: true,
+      seller: { select: { username: true, avatarUrl: true } },
+    },
+  },
+} satisfies Prisma.ListingReportInclude;
+
+type ReportRow = Prisma.ListingReportGetPayload<{ include: typeof reportInclude }>;
+
+/**
+ * The queue, one card per reported listing.
+ *
+ * Grouping happens in memory: the rows come off the report table but the unit
+ * of review is the listing, and no single Prisma query returns "listings with
+ * their reports" from this side. Same fetch-then-shape approach the rating sort
+ * in listings.service takes — fine at marketplace scale, and the alternative is
+ * a query per listing.
+ */
+export async function listReports(params: {
+  status: "open" | "actioned" | "dismissed" | "all";
+  page: number;
+  limit: number;
+}) {
+  const { status, page, limit } = params;
+  const where: Prisma.ListingReportWhereInput = status === "all" ? {} : { status };
+
+  const rows = await prisma.listingReport.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    include: reportInclude,
+  });
+
+  const groups = groupByListing(rows);
+  const start = (page - 1) * limit;
+
+  return {
+    groups: groups.slice(start, start + limit),
+    total: groups.length,
+    page,
+    pages: Math.max(1, Math.ceil(groups.length / limit)),
+  };
+}
+
+/**
+ * Rows arrive newest-first, so first-seen wins throughout: Map insertion order
+ * already ranks the groups by their most recent report, and a strict `>` on the
+ * reason tally breaks ties toward the more recently reported reason.
+ */
+function groupByListing(rows: ReportRow[]) {
+  const groups = new Map<
+    string,
+    { listing: ReportRow["listing"]; tally: Map<ListingRemovalReason, number>; reports: ReportRow[] }
+  >();
+
+  for (const r of rows) {
+    let group = groups.get(r.listingId);
+    if (!group) {
+      group = { listing: r.listing, tally: new Map(), reports: [] };
+      groups.set(r.listingId, group);
+    }
+    group.tally.set(r.reason, (group.tally.get(r.reason) ?? 0) + 1);
+    group.reports.push(r);
+  }
+
+  return [...groups.values()].map(({ listing, tally, reports }) => {
+    const reasonCounts = [...tally.entries()]
+      .map(([reason, count]) => ({ reason, reasonText: removalReasonText(reason), count }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      listing: {
+        id: listing.id,
+        title: listing.title,
+        image: listing.images[0] ?? null,
+        price: Number(listing.price),
+        currency: listing.currency,
+        category: listing.category,
+        status: listing.status,
+        seller: listing.seller,
+      },
+      reportCount: reports.length,
+      reasonCounts,
+      // Pre-selects the takedown dialog: what most reporters said it was.
+      topReason: reasonCounts[0]!.reason,
+      openCount: reports.filter((r) => r.status === "open").length,
+      firstReportedAt: reports[reports.length - 1]!.createdAt.toISOString(),
+      lastReportedAt: reports[0]!.createdAt.toISOString(),
+      reports: reports.map((r) => ({
+        id: r.id,
+        reason: r.reason,
+        // `other` says nothing on its own, so the reporter's note stands in for it.
+        reasonText: removalReasonText(r.reason, r.note),
+        note: r.note,
+        status: r.status,
+        reviewNote: r.reviewNote,
+        reviewedBy: r.reviewedBy?.username ?? null,
+        reviewedAt: r.reviewedAt?.toISOString() ?? null,
+        reporter: r.reporter,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    };
+  });
+}
+
+/**
+ * The negative verdict: the listing stays up. Clears every open report on it in
+ * one go — they're all answered by the same finding, and leaving stragglers
+ * would put the listing straight back in the queue.
+ */
+export async function dismissListingReports(adminId: string, listingId: string, note?: string | null) {
+  const listing = await prisma.listing.findUnique({
+    where: { id: listingId },
+    select: { id: true, title: true },
+  });
+  if (!listing) throw ApiError.notFound("Listing not found");
+
+  const open = await prisma.listingReport.findMany({
+    where: { listingId, status: "open" },
+    select: { reporterId: true },
+  });
+  if (open.length === 0) throw ApiError.conflict("There are no open reports on this listing");
+
+  const reviewNote = note?.trim() || null;
+  const { count } = await prisma.listingReport.updateMany({
+    where: { listingId, status: "open" },
+    data: { status: "dismissed", reviewNote, reviewedById: adminId, reviewedAt: new Date() },
+  });
+
+  await notifyMany(
+    open.map((o) => o.reporterId),
+    {
+      category: "listing",
+      title: "We reviewed your report",
+      body:
+        `We looked at "${listing.title}" and found nothing that breaks the rules, so it stays up.` +
+        (reviewNote ? ` Note: ${reviewNote}` : ""),
+      link: `/marketplace/${listingId}`,
+    },
+  );
+
+  return { dismissed: count };
 }
 
 // ---------- Listing disputes (seller appeals against a takedown) ----------

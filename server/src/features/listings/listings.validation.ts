@@ -73,3 +73,25 @@ export const dispute: RequestSchema = {
     }),
   }),
 };
+
+// Same reason vocabulary and the same note rule as the admin takedown
+// (admin.validation.ts:listingRemove) — a report and the removal it argues for
+// should never be expressible in different terms.
+export const report: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+  body: Joi.object({
+    reason: Joi.string()
+      .valid("prohibited_item", "duplicate", "misleading", "spam", "guidelines", "fraud", "other")
+      .required(),
+    note: Joi.string().trim().max(500).allow("", null).when("reason", {
+      is: "other",
+      then: Joi.string().trim().min(3).max(500).required().messages({
+        "any.required": "Tell us what's wrong when choosing Other",
+        "string.empty": "Tell us what's wrong when choosing Other",
+        "string.min": "Give a little more detail (at least 3 characters)",
+      }),
+    }),
+  }),
+};

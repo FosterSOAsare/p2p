@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ShieldCheck, Search, Loader2, PackageSearch, Trash2, Ban, Gavel } from 'lucide-react'
+import { ShieldCheck, Search, Loader2, PackageSearch, Trash2, Ban, Gavel, Flag } from 'lucide-react'
 import {
   useAdminListings,
   useAdminListingDisputes,
@@ -248,7 +248,20 @@ export function AdminListingsList() {
                   {l.image ? <img src={l.image} alt="" className="h-full w-full object-cover" /> : null}
                 </div>
                 <div className="min-w-0">
-                  <span className="block truncate text-sm font-bold text-slate-900 dark:text-white">{l.title}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="block truncate text-sm font-bold text-slate-900 dark:text-white">{l.title}</span>
+                    {l.openReportCount > 0 && (
+                      <Link
+                        to="/admin/reports"
+                        title="Buyers have flagged this listing — review it in Reports"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-200 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                      >
+                        <Flag size={10} />
+                        {l.openReportCount}
+                      </Link>
+                    )}
+                  </div>
                   <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {formatMoney(l.price)} · {l.category} · @{l.seller.username}
                   </p>
