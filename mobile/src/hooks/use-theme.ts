@@ -8,7 +8,11 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export function useTheme() {
   const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
+  // "No preference" is spelled differently across React Native versions —
+  // `null`/`undefined` on RN 0.81 (SDK 54), `'unspecified'` on newer ones.
+  // Selecting dark explicitly and defaulting everything else to light covers
+  // every spelling without depending on the version.
+  const theme = scheme === 'dark' ? 'dark' : 'light';
 
   return Colors[theme];
 }

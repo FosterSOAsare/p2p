@@ -1,4 +1,7 @@
-import { DarkTheme, DefaultTheme, ThemeProvider, Stack } from 'expo-router';
+// SDK 54's expo-router does not re-export the navigation theme primitives —
+// that only lands in SDK 56+. They come from @react-navigation/native here.
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
