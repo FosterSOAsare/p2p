@@ -1,100 +1,92 @@
+import type { ComponentType } from 'react';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Bell, Home, Package, ShieldCheck, Store, User } from 'lucide-react-native';
+import { Home, Package, ShieldCheck, Store, User } from 'lucide-react-native';
 
 import { useTheme } from '@/hooks/use-theme';
-import { usePersona } from '@/hooks/use-persona';
 import { Fonts, Spacing, TabBar } from '@/constants/theme';
 
 /**
  * Bottom tab bar for the signed-in area.
  *
- * Each `name` matches a folder in this directory — `home` → `home/index.tsx`.
+ * Five tabs, the same five for everyone, in this order:
+ * Home · Marketplace · My Deals · My Listings · Profile.
+ *
  * Labels and icons mirror the web app's primary nav (`web/src/features/shared/
  * ui/Layout.tsx`): Marketplace uses Store, deals use ShieldCheck.
  *
  * `headerShown` is off because every screen renders its own heading.
  *
- * The fourth slot is persona-dependent: buyers get Activity, sellers get My
- * Listings in its place, since managing inventory is the thing a seller opens
- * the app for. Only one of the two is ever mounted in the bar — the other is
- * hidden with `href: null`, which drops the button but keeps the route
- * reachable, so `/listings` still resolves when pushed from elsewhere.
+ * **Each tab is a flat file — `home.tsx`, not `home/index.tsx`.** That is load
+ * bearing: a folder route is named `home/index`, so `name="home"` matched
+ * nothing and every option was silently dropped — labels showed the raw route
+ * path, icons never rendered, and `href: null` failed to hide a tab. Flat files
+ * make the route name exactly the tab name. Adding an `index.tsx` back under a
+ * folder here would reintroduce that bug.
+ *
+ * Options are set through `screenOptions` rather than per-screen `options` so
+ * the navigator applies them for whatever route it renders; the children below
+ * carry only `name`, which is what fixes the order.
+ *
+ * Activity is not in this folder at all (it lives at `(app)/activity`) — with
+ * `href: null` unreliable, keeping a screen off the bar means keeping it out of
+ * this directory.
  */
+
+interface TabMeta {
+  title: string;
+  Icon: ComponentType<{ color?: string; size?: number }>;
+}
+
+/** Keyed by route name — the folder name inside this directory. */
+const TAB_META: Record<string, TabMeta> = {
+  home: { title: 'Home', Icon: Home },
+  marketplace: { title: 'Marketplace', Icon: Store },
+  deals: { title: 'My Deals', Icon: ShieldCheck },
+  listings: { title: 'My Listings', Icon: Package },
+  profile: { title: 'Profile', Icon: User },
+};
+
 export default function TabsLayout() {
   const theme = useTheme();
-  // Admins count as sellers here, matching `RoleGuard`'s seller gate.
-  const persona = usePersona();
-  const isSeller = persona === 'seller' || persona === 'admin';
   // The bar has to grow by the device's bottom inset, otherwise the icons sit
   // under the home indicator / gesture pill on phones that have one.
   const insets = useSafeAreaInsets();
 
   return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: theme.tabBarActive,
-        tabBarInactiveTintColor: theme.tabBarInactive,
-        tabBarStyle: {
-          backgroundColor: theme.tabBarBackground,
-          borderTopColor: theme.tabBarBorder,
-          height: TabBar.height + TabBar.lift + insets.bottom,
-          paddingTop: Spacing.two,
-          // Lifts the icons and labels clear of the bottom edge.
-          paddingBottom: TabBar.lift + insets.bottom,
-        },
-        tabBarLabelStyle: { fontSize: 11, fontFamily: Fonts.sans[600] },
-        tabBarIconStyle: { marginBottom: 2 },
+      screenOptions={({ route }) => {
+        const meta = TAB_META[route.name];
+
+        return {
+          headerShown: false,
+          title: meta?.title ?? route.name,
+          // Size is fixed rather than taken from the navigator's `size`
+          // argument, so an icon can never render at 0.
+          tabBarIcon: ({ color }: { color: string }) =>
+            meta ? <meta.Icon color={color} size={22} /> : null,
+          tabBarActiveTintColor: theme.tabBarActive,
+          tabBarInactiveTintColor: theme.tabBarInactive,
+          tabBarStyle: {
+            backgroundColor: theme.tabBarBackground,
+            borderTopColor: theme.tabBarBorder,
+            height: TabBar.height + TabBar.lift + insets.bottom,
+            paddingTop: Spacing.two,
+            // Lifts the icons and labels clear of the bottom edge.
+            paddingBottom: TabBar.lift + insets.bottom,
+          },
+          tabBarLabelStyle: { fontSize: 11, fontFamily: Fonts.sans[600] },
+          tabBarIconStyle: { marginBottom: 2 },
+        };
       }}
     >
-      <Tabs.Screen
-        name="home"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size }) => <Home color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="marketplace"
-        options={{
-          title: 'Marketplace',
-          tabBarIcon: ({ color, size }) => <Store color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="deals"
-        options={{
-          title: 'My Deals',
-          tabBarIcon: ({ color, size }) => <ShieldCheck color={color} size={size} />,
-        }}
-      />
-      {/* Fourth slot — Activity for buyers, My Listings for sellers. */}
-      <Tabs.Screen
-        name="activity"
-        options={{
-          title: 'Activity',
-          tabBarIcon: ({ color, size }) => <Bell color={color} size={size} />,
-          href: isSeller ? null : undefined,
-        }}
-      />
-      <Tabs.Screen
-        name="listings"
-        options={{
-          title: 'My Listings',
-          tabBarIcon: ({ color, size }) => <Package color={color} size={size} />,
-          href: isSeller ? undefined : null,
-        }}
-      />
-      {/* Last entry, so it sits at the far right of the bar — the web keeps its
-          profile pill at the right-hand end of the nav too. */}
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => <User color={color} size={size} />,
-        }}
-      />
+      {/* Order of these children is what orders the bar. Profile stays last —
+          the web keeps its profile pill at the right-hand end of the nav too. */}
+      <Tabs.Screen name="home" />
+      <Tabs.Screen name="marketplace" />
+      <Tabs.Screen name="deals" />
+      <Tabs.Screen name="listings" />
+      <Tabs.Screen name="profile" />
     </Tabs>
   );
 }
