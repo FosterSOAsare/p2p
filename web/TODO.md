@@ -2,10 +2,6 @@
 
 ---
 
-## Buyer
-
-- [x] Report listing
-
 ## Seller
 
 - [ ] Promote/boost listing (spec only)

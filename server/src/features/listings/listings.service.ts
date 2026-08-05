@@ -65,7 +65,13 @@ export async function list(params: ListQuery) {
         ? { price: "desc" }
         : { createdAt: "desc" }; // featured / newest
 
-  const [total, rows] = await prisma.$transaction([
+  // Concurrent, not transactional. Wrapping the pair in a transaction would buy
+  // a consistent count-and-rows snapshot — except Postgres defaults to READ
+  // COMMITTED, where each statement takes its own snapshot anyway, so it never
+  // delivered that. What it did cost is four sequential round trips (BEGIN, the
+  // two queries, COMMIT) against a database ~600ms away: ~1.6s versus ~0.4s
+  // here, and P2028 timeouts the moment two shoppers browsed at once.
+  const [total, rows] = await Promise.all([
     prisma.listing.count({ where }),
     prisma.listing.findMany({
       where,
@@ -275,7 +281,8 @@ export async function mine(
   params: { status?: "draft" | "active" | "out_of_stock" | "removed"; page: number; limit: number },
 ) {
   const where: Prisma.ListingWhereInput = { sellerId, ...(params.status && { status: params.status }) };
-  const [total, rows] = await prisma.$transaction([
+  // Concurrent, not transactional — see the note in list().
+  const [total, rows] = await Promise.all([
     prisma.listing.count({ where }),
     prisma.listing.findMany({
       where,

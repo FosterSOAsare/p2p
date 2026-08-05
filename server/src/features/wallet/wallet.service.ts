@@ -296,7 +296,8 @@ export async function listTransactions(userId: string, page: number, limit: numb
     update: {},
   });
   const where = { walletId: wallet.id };
-  const [total, rows] = await prisma.$transaction([
+  // Concurrent, not transactional — see the note in listings.service list().
+  const [total, rows] = await Promise.all([
     prisma.transaction.count({ where }),
     prisma.transaction.findMany({
       where,

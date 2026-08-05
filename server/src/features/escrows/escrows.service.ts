@@ -835,7 +835,8 @@ export async function list(userId: string, params: { role?: "buyer" | "seller"; 
         : { OR: userOrInvitedFilter }),
     ...(params.status && { status: params.status }),
   };
-  const [total, rows] = await prisma.$transaction([
+  // Concurrent, not transactional — see the note in listings.service list().
+  const [total, rows] = await Promise.all([
     prisma.escrow.count({ where }),
     prisma.escrow.findMany({
       where,

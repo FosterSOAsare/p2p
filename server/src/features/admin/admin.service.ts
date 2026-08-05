@@ -377,7 +377,8 @@ export async function listUsers(params: {
       : {}),
   };
 
-  const [rows, total] = await prisma.$transaction([
+  // Concurrent, not transactional — see the note in listings.service list().
+  const [rows, total] = await Promise.all([
     prisma.user.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -440,7 +441,8 @@ export async function listEscrows(params: {
       : {}),
   };
 
-  const [rows, total] = await prisma.$transaction([
+  // Concurrent, not transactional — see the note in listings.service list().
+  const [rows, total] = await Promise.all([
     prisma.escrow.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -599,7 +601,8 @@ export async function listListings(params: {
       : {}),
   };
 
-  const [rows, total] = await prisma.$transaction([
+  // Concurrent, not transactional — see the note in listings.service list().
+  const [rows, total] = await Promise.all([
     prisma.listing.findMany({
       where,
       orderBy: { createdAt: "desc" },
