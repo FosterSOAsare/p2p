@@ -16,7 +16,7 @@ import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   mockOrders,
-  mockSellerListings,
+  mockProducts,
   mockSellerStats,
   type Order,
   type User,
@@ -31,7 +31,7 @@ import { StatCard } from './StatCard';
  * sales/dispatch manager with a tracking-number form; that needs write calls,
  * so it waits for the API.
  *
- * Reads `mockSellerStats` / `mockSellerListings` — no API yet.
+ * Reads `mockSellerStats` plus this vendor's slice of `mockProducts` — no API yet.
  */
 
 const money = (amount: number, currency = 'GH₵') =>
@@ -61,7 +61,15 @@ export function SellerDashboard({ user }: { user: User }) {
   const router = useRouter();
 
   const stats = mockSellerStats;
-  const listings = mockSellerListings;
+  // Same collection My Listings and the marketplace read, scoped to this
+  // vendor — one source, as the web has one `Listing` table.
+  const listings = mockProducts.filter((p) => p.vendor.username === user.username);
+  // The web's header shows the STORE identity (`stats.storeName`), not the
+  // person's name. mockSellerStats carries no store name, so take it from the
+  // vendor on this account's listings, as the seller profile screen does.
+  const storeName =
+    mockProducts.find((p) => p.vendor.username === user.username)?.vendor.storeName ??
+    user.fullName;
   // Sales are the orders where this account is the vendor.
   const sales = mockOrders.filter((o) => o.vendor.username === user.username);
   const actionRequired = sales.filter((o) => o.status === 'escrow_funded').length;
@@ -76,7 +84,7 @@ export function SellerDashboard({ user }: { user: User }) {
           </View>
           <View style={styles.heroText}>
             <Text style={[styles.heroName, { color: theme.text }]} numberOfLines={1}>
-              {user.fullName}
+              {storeName}
             </Text>
             <Text style={[styles.heroHandle, { color: theme.textSecondary }]} numberOfLines={1}>
               @{user.username} · Verified Merchant Portal
@@ -155,7 +163,9 @@ export function SellerDashboard({ user }: { user: User }) {
       {/* Sales & dispatch */}
       <View style={styles.sectionHead}>
         <View style={styles.sectionHeadText}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Merchant Sales</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>
+            Merchant Sales &amp; Dispatch
+          </Text>
           <Text style={[styles.sectionSub, { color: theme.textTertiary }]}>
             Orders placed by buyers. Enter tracking to mark them shipped.
           </Text>
@@ -251,7 +261,12 @@ export function SellerDashboard({ user }: { user: User }) {
 
       {/* Inventory */}
       <View style={styles.sectionHead}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Manage Store Inventory</Text>
+        <View style={styles.sectionHeadText}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Manage Store Inventory</Text>
+          <Text style={[styles.sectionSub, { color: theme.textTertiary }]}>
+            Showing {listings.length} of {listings.length} items listed on catalog.
+          </Text>
+        </View>
         <Pressable onPress={() => router.push('/listings')} hitSlop={8}>
           <Text style={[styles.sectionLink, { color: theme.primary }]}>View All →</Text>
         </Pressable>
@@ -266,7 +281,7 @@ export function SellerDashboard({ user }: { user: User }) {
             { backgroundColor: theme.card, borderColor: pressed ? theme.primary : theme.cardBorder },
           ]}
         >
-          <Image source={listing.imageUrl} style={styles.listingImage} contentFit="cover" />
+          <Image source={listing.images[0]} style={styles.listingImage} contentFit="cover" />
           <View style={styles.listingInfo}>
             <Text style={[styles.listingTitle, { color: theme.text }]} numberOfLines={1}>
               {listing.title}

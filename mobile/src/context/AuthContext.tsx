@@ -87,10 +87,28 @@ const roleUsers: Record<string, User> = {
  */
 function resolveMockUser(identifier: string): User {
   const id = identifier.trim().toLowerCase();
-  const match = [mockCurrentUser, mockSellerUser, mockAdminUser].find(
+  if (!id) return mockCurrentUser;
+
+  const accounts = [mockCurrentUser, mockSellerUser, mockAdminUser];
+
+  // 1. Exact username or email — what a real login would match on.
+  const exact = accounts.find(
     (u) => u.username.toLowerCase() === id || u.email.toLowerCase() === id,
   );
-  return match ?? mockCurrentUser;
+  if (exact) return exact;
+
+  // 2. Testing conveniences, mock-only: the role word on its own ("seller",
+  //    "admin"), or any fragment of a username/email. Exact matching alone
+  //    meant a near-miss like "kwame" silently signed you in as the buyer,
+  //    which is confusing when you're trying to view a specific persona.
+  if (id === 'seller' || id === 'admin' || id === 'buyer') {
+    return roleUsers[id] ?? mockCurrentUser;
+  }
+
+  const partial = accounts.find(
+    (u) => u.username.toLowerCase().includes(id) || u.email.toLowerCase().startsWith(id),
+  );
+  return partial ?? mockCurrentUser;
 }
 
 /**

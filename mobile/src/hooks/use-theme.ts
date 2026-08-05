@@ -8,7 +8,9 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export function useTheme() {
   const scheme = useColorScheme();
-  // ColorSchemeName is 'light' | 'dark' | null | undefined here — there's no
-  // 'unspecified' member — so anything that isn't explicitly dark gets light.
-  return scheme === 'dark' ? Colors.dark : Colors.light;
+  // ColorSchemeName is 'light' | 'dark' | null | undefined — selecting dark explicitly
+  // and defaulting everything else to light covers every spelling across React Native versions.
+  const theme = scheme === 'dark' ? 'dark' : 'light';
+
+  return Colors[theme];
 }

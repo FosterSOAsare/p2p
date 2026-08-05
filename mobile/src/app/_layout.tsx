@@ -1,7 +1,5 @@
-import { Stack } from 'expo-router';
-// SDK 54's expo-router doesn't re-export these — they come from React Navigation,
-// which expo-router is built on, so this is the same provider either way.
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -22,6 +20,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { SavedProvider } from '@/context/SavedContext';
+import { BlockedProvider } from '@/context/BlockedContext';
 import { queryClient } from '@/features/shared/data/queryClient';
 import { Colors } from '@/constants/theme';
 
@@ -95,9 +94,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <SavedProvider>
-            <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
-              <RootNavigator />
-            </ThemeProvider>
+            <BlockedProvider>
+              <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
+                <RootNavigator />
+              </ThemeProvider>
+            </BlockedProvider>
           </SavedProvider>
         </AuthProvider>
       </QueryClientProvider>

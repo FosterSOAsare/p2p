@@ -17,6 +17,8 @@ import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { useSaved } from '@/context/SavedContext';
+import { useBlocked } from '@/context/BlockedContext';
+import { usePersona } from '@/hooks/use-persona';
 import { mockCategories, mockProducts, type ImageRef, type Product } from '@/constants/mockData';
 
 /**
@@ -36,8 +38,9 @@ import { mockCategories, mockProducts, type ImageRef, type Product } from '@/con
 const SORTS = [
   { key: 'featured', label: 'Featured' },
   { key: 'newest', label: 'Newest' },
-  { key: 'price_asc', label: 'Price ↑' },
-  { key: 'price_desc', label: 'Price ↓' },
+  // The web spells these out; arrows were a mobile shorthand that lost meaning.
+  { key: 'price_asc', label: 'Price Low to High' },
+  { key: 'price_desc', label: 'Price High to Low' },
 ] as const;
 
 type SortKey = (typeof SORTS)[number]['key'];
@@ -77,6 +80,10 @@ export function MarketplaceScreen() {
   const theme = useTheme();
   const router = useRouter();
   const tabBarHeight = useTabBarHeight();
+  // Mirrors the web's `isBuyer = !me || (!isAdmin && !isSeller)`. Saving is a
+  // buyer-only action, so sellers and admins browse without it.
+  const isBuyer = usePersona() === 'buyer';
+  const { isBlocked } = useBlocked();
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
@@ -91,7 +98,13 @@ export function MarketplaceScreen() {
 
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = mockProducts.filter((p) => p.status === 'active');
+    // Active listings, minus vendors you've blocked — the web's
+    // `!blockedSellers.has(p.sellerUsername)` filter. This is the one thing
+    // that makes two shoppers' marketplaces differ; the catalogue itself is
+    // identical for buyers and sellers.
+    let list = mockProducts.filter(
+      (p) => p.status === 'active' && !isBlocked(p.vendor.username),
+    );
 
     if (category !== 'All') list = list.filter((p) => p.category === category);
     if (q) {
@@ -111,7 +124,7 @@ export function MarketplaceScreen() {
       sorted.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
     }
     return sorted;
-  }, [search, category, sort]);
+  }, [search, category, sort, isBlocked]);
 
   const clearFilters = () => {
     setSearch('');
@@ -147,18 +160,21 @@ export function MarketplaceScreen() {
             <Text style={styles.categoryPillText}>{item.category}</Text>
           </View>
 
-          <Pressable
-            onPress={() => toggleSaved(item.id)}
-            hitSlop={8}
-            style={[styles.heart, saved && styles.heartOn]}
-            accessibilityLabel={saved ? 'Remove from saved' : 'Save listing'}
-          >
-            <Heart
-              size={13}
-              color={saved ? '#ffffff' : theme.textSecondary}
-              fill={saved ? '#ffffff' : 'transparent'}
-            />
-          </Pressable>
+          {/* Saving is a buyer action — the web hides this for sellers/admins */}
+          {isBuyer ? (
+            <Pressable
+              onPress={() => toggleSaved(item.id)}
+              hitSlop={8}
+              style={[styles.heart, saved && styles.heartOn]}
+              accessibilityLabel={saved ? 'Remove from saved' : 'Save listing'}
+            >
+              <Heart
+                size={13}
+                color={saved ? '#ffffff' : theme.textSecondary}
+                fill={saved ? '#ffffff' : 'transparent'}
+              />
+            </Pressable>
+          ) : null}
         </View>
 
         {/* Vendor row */}
@@ -234,6 +250,21 @@ export function MarketplaceScreen() {
               Physical items and online-delivered goods — all protected by GH₵ escrow.
             </Text>
 
+            {/* Buyers only, as on the web (`me && isBuyer`) — a seller browsing
+                the marketplace gets no Saved shortcut. */}
+            {isBuyer ? (
+              <Pressable
+                onPress={() => router.push('/bookmarks')}
+                style={({ pressed }) => [
+                  styles.savedBtn,
+                  { backgroundColor: pressed ? '#ffe4e6' : '#fff1f2' },
+                ]}
+              >
+                <Heart size={15} color="#be123c" fill="#be123c" />
+                <Text style={styles.savedBtnText}>Saved</Text>
+              </Pressable>
+            ) : null}
+
             {/* Search */}
             <View
               style={[
@@ -245,7 +276,7 @@ export function MarketplaceScreen() {
               <TextInput
                 value={search}
                 onChangeText={setSearch}
-                placeholder="Search listings, seller (@kwame_tech)…"
+                placeholder="Search listings by title, seller (@kwame_tech), or keyword..."
                 placeholderTextColor={theme.textTertiary}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -333,7 +364,7 @@ export function MarketplaceScreen() {
               </Text>
               {hasFilters ? (
                 <Pressable onPress={clearFilters} hitSlop={6}>
-                  <Text style={styles.clearText}>Clear filters</Text>
+                  <Text style={styles.clearText}>Clear all filters</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -381,6 +412,18 @@ const styles = StyleSheet.create({
   // Screen heading — the web's `font-display` (Space Grotesk).
   title: { fontSize: 21, fontFamily: Fonts.display[700], letterSpacing: -0.4, marginTop: -Spacing.two },
   subtitle: { fontSize: 13, lineHeight: 19, fontFamily: Fonts.sans[400] },
+  savedBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#fecdd3',
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 9,
+  },
+  savedBtnText: { fontSize: 12, fontFamily: Fonts.sans[700], color: '#be123c' },
 
   searchWrap: {
     flexDirection: 'row',
