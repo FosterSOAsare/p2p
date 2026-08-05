@@ -34,6 +34,7 @@ import { AdminDisputesList } from './pages/AdminDisputesList'
 import { AdminDisputeDetail } from './pages/AdminDisputeDetail'
 import { AdminUsersList } from './pages/AdminUsersList'
 import { AdminListingsList } from './pages/AdminListingsList'
+import { AdminListingDetail } from './pages/AdminListingDetail'
 import { AdminReportsList } from './pages/AdminReportsList'
 import { AdminDashboard } from './pages/AdminDashboard'
 import { NotFound } from './pages/NotFound'
@@ -81,6 +82,7 @@ function App() {
           <Route path="admin/disputes" element={<AdminDisputesList />} />
           <Route path="admin/disputes/:id" element={<AdminDisputeDetail />} />
           <Route path="admin/listings" element={<AdminListingsList />} />
+          <Route path="admin/listings/:id" element={<AdminListingDetail />} />
           <Route path="admin/reports" element={<AdminReportsList />} />
           <Route path="admin/users" element={<AdminUsersList />} />
         </Route>

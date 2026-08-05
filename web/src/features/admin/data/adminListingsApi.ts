@@ -142,3 +142,77 @@ export function useResolveListingDispute() {
     },
   })
 }
+
+// ---------- Single listing: the admin review page ----------
+
+export interface AdminListingDetail {
+  id: string
+  title: string
+  description: string | null
+  price: number
+  currency: 'GHS' | 'TRX'
+  category: string
+  condition: string | null
+  quantity: number
+  images: string[]
+  location: string | null
+  status: ListingStatus
+  views: number
+  createdAt: string
+  updatedAt: string
+  rating: number | null
+  reviewCount: number
+  /** Deals referencing this listing — why a takedown is a soft delete. */
+  dealCount: number
+  seller: {
+    id: string
+    username: string
+    avatarUrl: string | null
+    email: string
+    storeName: string | null
+    kycStatus: 'unverified' | 'pending' | 'verified' | 'rejected'
+    accountStatus: 'active' | 'suspended'
+    listingsCount: number
+    joinedAt: string
+  }
+  removal: {
+    reason: RemovalReason
+    reasonText: string
+    note: string | null
+    removedAt: string
+    removedBy: string | null
+    disputeAllowed: boolean
+  } | null
+  dispute: {
+    id: string
+    status: ListingDisputeStatus
+    explanation: string
+    reviewNote: string | null
+    createdAt: string
+  } | null
+}
+
+export function useAdminListing(id: string) {
+  return useQuery({
+    queryKey: [...adminListingKeys.all, 'detail', id] as const,
+    queryFn: () => api<{ listing: AdminListingDetail }>(`/api/admin/listings/${id}`).then((r) => r.listing),
+    enabled: Boolean(id),
+    retry: false,
+  })
+}
+
+/** Put a removed listing back on the marketplace. */
+export function useReinstateListing() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<{ listing: AdminListingRow }>(`/api/admin/listings/${id}/reinstate`, { method: 'POST' }).then(
+        (r) => r.listing,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminListingKeys.all })
+      qc.invalidateQueries({ queryKey: ['listings'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'stats'] })
+    },
+  })
+}

@@ -10,7 +10,11 @@ import {
   CheckCircle2,
   Clock,
   Lock,
+  LogOut,
+  ShieldAlert,
   ShieldCheck,
+  ShoppingBag,
+  Store,
   Trash2,
   User as UserIcon,
   XCircle,
@@ -19,6 +23,7 @@ import {
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
+import { usePersona } from '@/hooks/use-persona';
 import { useAuth } from '@/context/AuthContext';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 
@@ -35,6 +40,13 @@ import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/Keyb
  */
 
 type SectionId = 'profile' | 'security' | 'notifications';
+
+/** How each persona presents on the identity card. */
+const PERSONA_BADGE = {
+  buyer: { label: 'Buyer', icon: ShoppingBag, bg: '#dbeafe', text: '#1e40af' },
+  seller: { label: 'Verified Seller', icon: Store, bg: '#dcfce7', text: '#166534' },
+  admin: { label: 'Administrator', icon: ShieldAlert, bg: '#ffe4e6', text: '#be123c' },
+} as const;
 
 const SECTIONS: { id: SectionId; label: string; icon: typeof UserIcon }[] = [
   { id: 'profile', label: 'Personal', icon: UserIcon },
@@ -92,6 +104,7 @@ export function ProfileTabScreen() {
   const [saved, setSaved] = useState(false);
 
   const kyc = kycPill(user?.kycStatus ?? 'unverified');
+  const persona = PERSONA_BADGE[usePersona()];
 
   /**
    * Opens the gallery and previews the chosen photo.
@@ -196,9 +209,27 @@ export function ProfileTabScreen() {
       <KeyboardAwareScroll
         contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + Spacing.four }]}
       >
-        {/* Heading */}
+        {/* Heading — Log Out sits on the title row so it's the first thing on
+            screen when the tab opens, no scrolling to find it. */}
         <View style={[styles.header, { borderBottomColor: theme.border }]}>
-          <Text style={[styles.title, { color: theme.text }]}>Account Settings</Text>
+          <View style={styles.titleRow}>
+            <Text style={[styles.title, { color: theme.text }]}>Account Settings</Text>
+
+            <Pressable
+              onPress={logout}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Log out"
+              style={({ pressed }) => [
+                styles.logoutBtn,
+                { backgroundColor: pressed ? '#fee2e2' : '#fef2f2' },
+              ]}
+            >
+              <LogOut size={16} color="#e11d48" />
+              <Text style={styles.logoutText}>Log Out</Text>
+            </Pressable>
+          </View>
+
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             Manage your personal details, KYC identity verification, and escrow notification
             preferences.
@@ -223,6 +254,13 @@ export function ProfileTabScreen() {
               <Text style={[styles.identityHandle, { color: theme.textSecondary }]} numberOfLines={1}>
                 @{user?.username ?? 'user'}
               </Text>
+
+              {/* Which face of the app this account gets — the same persona the
+                  Home tab branches on, so it's never a guess who you're in as. */}
+              <View style={[styles.personaPill, { backgroundColor: persona.bg }]}>
+                <persona.icon size={11} color={persona.text} />
+                <Text style={[styles.personaText, { color: persona.text }]}>{persona.label}</Text>
+              </View>
             </View>
           </View>
 
@@ -388,15 +426,6 @@ export function ProfileTabScreen() {
                   Change Account Password
                 </Text>
               </Pressable>
-              <Pressable
-                onPress={logout}
-                style={({ pressed }) => [
-                  styles.logoutBtn,
-                  { borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <Text style={styles.logoutText}>Log Out</Text>
-              </Pressable>
             </>
           ) : (
             <>
@@ -413,6 +442,9 @@ export function ProfileTabScreen() {
           )}
         </View>
 
+        <Text style={[styles.signedInAs, { color: theme.textTertiary }]}>
+          Signed in as @{user?.username ?? 'user'}
+        </Text>
       </KeyboardAwareScroll>
     </SafeAreaView>
   );
@@ -444,6 +476,17 @@ const styles = StyleSheet.create({
   identityText: { flex: 1, gap: 2 },
   identityName: { fontSize: 15, fontFamily: Fonts.display[700] },
   identityHandle: { fontSize: 12, fontFamily: Fonts.sans[500] },
+  personaPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+    marginTop: 5,
+  },
+  personaText: { fontSize: 10, fontFamily: Fonts.sans[700] },
 
   kycBox: { borderTopWidth: 1, paddingTop: Spacing.three, gap: 6 },
   kycTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -540,12 +583,27 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   primaryBtnText: { fontSize: 13, fontFamily: Fonts.sans[700], color: '#ffffff' },
-  logoutBtn: {
-    height: 44,
+  titleRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: Radius.md,
+    justifyContent: 'space-between',
+    gap: Spacing.three,
   },
-  logoutText: { fontSize: 13, fontFamily: Fonts.sans[700], color: '#e11d48' },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 38,
+    paddingHorizontal: Spacing.three,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: Radius.full,
+  },
+  logoutText: { fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#e11d48' },
+  signedInAs: {
+    fontSize: 11,
+    fontFamily: Fonts.sans[500],
+    textAlign: 'center',
+    marginTop: -Spacing.one,
+  },
 });

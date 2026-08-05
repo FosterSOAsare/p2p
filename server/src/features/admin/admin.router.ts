@@ -24,7 +24,13 @@ adminRouter.get("/users/:id", validate(adminValidation.userParam), adminControll
 adminRouter.patch("/users/:id/status", validate(adminValidation.userStatus), adminController.setUserStatus);
 
 adminRouter.get("/listings", validate(adminValidation.listingList), adminController.listListings);
+adminRouter.get("/listings/:id", validate(adminValidation.listingParam), adminController.getListing);
 adminRouter.post("/listings/:id/remove", validate(adminValidation.listingRemove), adminController.removeListing);
+adminRouter.post(
+  "/listings/:id/reinstate",
+  validate(adminValidation.listingParam),
+  adminController.reinstateListing,
+);
 
 // Buyer reports. Dismissal hangs off the listing, not a report id — it's a
 // verdict on the listing, and it clears every open report at once. The other

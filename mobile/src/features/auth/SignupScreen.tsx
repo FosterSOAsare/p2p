@@ -48,7 +48,7 @@ export function SignupScreen() {
       // Ensure backend matches the frontend signature, current mock expects { username, email, password }
       // but backend expects fullName as well. We'll pass them all.
       await signup(data as any); 
-      router.replace('/(app)/tabs');
+      router.replace('/home');
     } catch (err: any) {
       setApiError(err.message || 'Failed to create account');
     }

@@ -141,6 +141,12 @@ export const listingDisputeResolve: RequestSchema = {
   }),
 };
 
+export const listingParam: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+};
+
 // Buyer reports. Paginated over *listings* rather than rows — the queue groups
 // every report for one listing into a single card.
 export const reportList: RequestSchema = {

@@ -1,12 +1,11 @@
-import { PlaceholderScreen } from '@/features/shared/ui/PlaceholderScreen';
+import { RoleGuard } from '@/features/shared/ui/RoleGuard';
+import { ListingNewScreen } from '@/features/listings/ui/ListingNewScreen';
 
+/** Seller-only, mirroring the web's `<Route element={<SellerGuard />}>` wrapper. */
 export default function ListingNewRoute() {
   return (
-    <PlaceholderScreen
-      title="New Listing"
-      description="Create a marketplace listing with photos, price and stock."
-      webRoute="/listings/new"
-      backLabel="Back to listings"
-    />
+    <RoleGuard require="seller">
+      <ListingNewScreen />
+    </RoleGuard>
   );
 }

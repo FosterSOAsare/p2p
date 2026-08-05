@@ -106,6 +106,8 @@ export function AdminDashboard() {
               label="Active Listings"
               value={stats.activeListings.toLocaleString()}
               accent="text-sky-600 dark:text-sky-400"
+              // Every tile doubles as a way in; this one lands pre-filtered.
+              to="/admin/listings?status=active"
             />
             <StatCard
               icon={<Wallet size={14} />}
@@ -113,6 +115,7 @@ export function AdminDashboard() {
               value={formatMoney(stats.ghsVolume, 'GHS')}
               sub="Completed (disbursed) deals"
               accent="text-emerald-600 dark:text-emerald-400"
+              to="/deals?status=disbursed"
             />
             <StatCard
               icon={<ClipboardCheck size={14} />}

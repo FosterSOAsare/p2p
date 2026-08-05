@@ -236,33 +236,25 @@ export function AdminListingsList() {
           {data?.listings.map((l) => (
             <div
               key={l.id}
-              className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-wrap items-center gap-4 justify-between"
+              className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:gap-4"
             >
-              <div className="flex items-center gap-3 min-w-0">
+              {/* The only column that flexes — so everything to its right keeps
+                  the same x-position no matter how long the title runs. */}
+              <Link
+                to={`/admin/listings/${l.id}`}
+                className="flex min-w-0 flex-1 items-center gap-3 transition-opacity hover:opacity-80"
+              >
                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
                   {l.image ? <img src={l.image} alt="" className="h-full w-full object-cover" /> : null}
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    {l.status === 'removed' ? (
-                      <span className="font-bold text-slate-900 dark:text-white text-sm truncate">{l.title}</span>
-                    ) : (
-                      <Link
-                        to={`/marketplace/${l.id}`}
-                        className="font-bold text-slate-900 dark:text-white text-sm truncate hover:text-primary-600 dark:hover:text-primary-400"
-                      >
-                        {l.title}
-                      </Link>
-                    )}
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${STATUS_STYLES[l.status]}`}
-                    >
-                      {STATUS_LABELS[l.status]}
-                    </span>
+                    <span className="block truncate text-sm font-bold text-slate-900 dark:text-white">{l.title}</span>
                     {l.openReportCount > 0 && (
                       <Link
                         to="/admin/reports"
                         title="Buyers have flagged this listing — review it in Reports"
+                        onClick={(e) => e.stopPropagation()}
                         className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-200 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
                       >
                         <Flag size={10} />
@@ -270,11 +262,11 @@ export function AdminListingsList() {
                       </Link>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {formatMoney(l.price)} · {l.category} · @{l.seller.username}
                   </p>
                   {l.removal ? (
-                    <p className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 truncate">
+                    <p className="mt-1 truncate text-[10px] text-rose-600 dark:text-rose-400">
                       {l.removal.reasonText}
                       {l.removal.removedBy ? ` · by @${l.removal.removedBy}` : ''} · {formatDate(l.removal.removedAt)}
                       {l.removal.disputeStatus
@@ -287,17 +279,26 @@ export function AdminListingsList() {
                     <span className="text-[10px] text-slate-400">Listed {formatDate(l.createdAt)}</span>
                   )}
                 </div>
+              </Link>
+
+              {/* Fixed-width columns: identical position on every row. */}
+              <div className="hidden w-24 shrink-0 justify-center sm:flex">
+                <span
+                  className={`inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLES[l.status]}`}
+                >
+                  {STATUS_LABELS[l.status]}
+                </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex w-28 shrink-0 justify-end">
                 {l.status === 'removed' ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-400 dark:text-slate-500">
+                  <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-400 dark:border-slate-800 dark:text-slate-500">
                     <Ban size={13} /> Removed
                   </span>
                 ) : (
                   <button
                     onClick={() => setRemoveTarget(l)}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700 cursor-pointer"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-rose-700"
                   >
                     <Trash2 size={13} /> Remove
                   </button>

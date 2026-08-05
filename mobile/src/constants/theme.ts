@@ -77,6 +77,7 @@ export const Colors = {
     headerBorder: '#e5e7eb',
     overlay: 'rgba(0,0,0,0.4)',
     skeleton: '#e5e7eb',
+    error: Accent.error,
   },
   dark: {
     text: '#f9fafb',
@@ -102,6 +103,7 @@ export const Colors = {
     headerBorder: '#1f1f1f',
     overlay: 'rgba(0,0,0,0.7)',
     skeleton: '#262626',
+    error: Accent.error,
   },
 } as const;
 

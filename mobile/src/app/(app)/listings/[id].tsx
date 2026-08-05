@@ -1,16 +1,11 @@
-import { useLocalSearchParams } from 'expo-router';
+import { RoleGuard } from '@/features/shared/ui/RoleGuard';
+import { ListingEditScreen } from '@/features/listings/ui/ListingEditScreen';
 
-import { PlaceholderScreen } from '@/features/shared/ui/PlaceholderScreen';
-
+/** Seller-only, mirroring the web's `<Route element={<SellerGuard />}>` wrapper. */
 export default function ListingDetailRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-
   return (
-    <PlaceholderScreen
-      title="Listing"
-      description={`Edit listing ${id} — price, stock, photos and status.`}
-      webRoute="/listings/:id"
-      backLabel="Back to listings"
-    />
+    <RoleGuard require="seller">
+      <ListingEditScreen />
+    </RoleGuard>
   );
 }
