@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ShieldCheck, Search, Loader2, PackageSearch, Trash2, Ban, Gavel } from 'lucide-react'
+import { ShieldCheck, Search, Loader2, PackageSearch, Trash2, Ban, Gavel, Flag } from 'lucide-react'
 import {
   useAdminListings,
   useAdminListingDisputes,
@@ -259,6 +259,16 @@ export function AdminListingsList() {
                     >
                       {STATUS_LABELS[l.status]}
                     </span>
+                    {l.openReportCount > 0 && (
+                      <Link
+                        to="/admin/reports"
+                        title="Buyers have flagged this listing — review it in Reports"
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-200 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                      >
+                        <Flag size={10} />
+                        {l.openReportCount}
+                      </Link>
+                    )}
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                     {formatMoney(l.price)} · {l.category} · @{l.seller.username}

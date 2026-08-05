@@ -18,8 +18,10 @@ import {
   PackageX,
 } from 'lucide-react'
 import { Reviews } from './Reviews'
+import { ReportListingDialog } from './ReportListingDialog'
 import { Badge } from '../../shared/ui/Badge'
-import { useListing } from '../data/marketplaceApi'
+import { useListing, useReportListing } from '../data/marketplaceApi'
+import type { RemovalReason } from '../../shared/libs/removalReasons'
 import { useMe } from '../../auth/data/authApi'
 import { useSavedListings, useSaveListing, useUnsaveListing, useBlockedVendors } from '../../user/data/usersApi'
 import { formatMoney } from '../../shared/libs/currency'
@@ -44,7 +46,11 @@ export function ProductDetail() {
 
   const [activeSlide, setActiveSlide] = useState(0)
   const [isFullScreen, setIsFullScreen] = useState(false)
-  const [reported, setReported] = useState(false)
+
+  // Whether this viewer already reported it comes from the server (one report
+  // per person per listing), so the button's state survives a reload.
+  const [reportOpen, setReportOpen] = useState(false)
+  const reportListing = useReportListing()
 
   if (listingQuery.isLoading) {
     return (
@@ -90,6 +96,12 @@ export function ProductDetail() {
     if (!me) return navigate('/login')
     if (isSaved) unsaveListing.mutate(id)
     else saveListing.mutate(id)
+  }
+
+  const isOwnListing = Boolean(me && me.username === product.seller.username)
+
+  const submitReport = (reason: RemovalReason, note: string | undefined) => {
+    reportListing.mutate({ id, reason, note }, { onSuccess: () => setReportOpen(false) })
   }
 
   const blockEntry = (blockedQuery.data?.blocked ?? []).find((b) => b.username === product.seller.username)
@@ -288,7 +300,7 @@ export function ProductDetail() {
             </Link>
 
             {/* Primary Action Buttons */}
-            {me && me.username === product.seller.username ? (
+            {isOwnListing ? (
               <button
                 onClick={() => navigate('/listings')}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-slate-100 px-5 py-3.5 text-sm sm:text-base font-bold text-white dark:text-slate-900 shadow-md hover:bg-slate-800 dark:hover:bg-slate-100 transition-all cursor-pointer"
@@ -402,24 +414,37 @@ export function ProductDetail() {
               </div>
             </div>
 
-            {/* Secondary Actions: Report & Block */}
-            <div className="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-100 dark:border-slate-800">
-              <button
-                onClick={() => setReported(true)}
-                className="flex items-center gap-1 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-              >
-                <Flag size={13} />
-                {reported ? 'Listing Reported' : 'Report Listing'}
-              </button>
-              <button
-                onClick={() => navigate(me ? `/seller/${product.seller.username}` : '/login')}
-                title="Blocking (with a reason) is done from the vendor's profile"
-                className="flex items-center gap-1 hover:text-rose-600 cursor-pointer"
-              >
-                <UserX size={13} />
-                Block Vendor
-              </button>
-            </div>
+            {/* Secondary Actions: Report & Block — neither means anything on
+                your own listing, so the whole row goes for the owner. */}
+            {!isOwnListing && (
+              <div className="flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-100 dark:border-slate-800">
+                {product.reported ? (
+                  <span
+                    title="You've already reported this listing — moderators have it"
+                    className="flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400"
+                  >
+                    <Flag size={13} fill="currentColor" />
+                    Listing Reported
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => (me ? setReportOpen(true) : navigate('/login'))}
+                    className="flex items-center gap-1 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    <Flag size={13} />
+                    Report Listing
+                  </button>
+                )}
+                <button
+                  onClick={() => navigate(me ? `/seller/${product.seller.username}` : '/login')}
+                  title="Blocking (with a reason) is done from the vendor's profile"
+                  className="flex items-center gap-1 hover:text-rose-600 cursor-pointer"
+                >
+                  <UserX size={13} />
+                  Block Vendor
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -429,6 +454,15 @@ export function ProductDetail() {
         <h2 className="font-display text-lg sm:text-xl font-bold text-slate-900 dark:text-white">Buyer Reviews & Ratings</h2>
         <Reviews reviews={mappedReviews} />
       </div>
+
+      <ReportListingDialog
+        open={reportOpen}
+        listingTitle={product.title}
+        isPending={reportListing.isPending}
+        errorMessage={reportListing.isError ? apiErrorMessage(reportListing.error) : null}
+        onConfirm={submitReport}
+        onCancel={() => setReportOpen(false)}
+      />
 
       {/* FullScreen Modal View */}
       {isFullScreen && (

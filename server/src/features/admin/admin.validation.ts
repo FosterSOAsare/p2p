@@ -140,3 +140,22 @@ export const listingDisputeResolve: RequestSchema = {
     note: Joi.string().trim().max(1000).allow("", null),
   }),
 };
+
+// Buyer reports. Paginated over *listings* rather than rows — the queue groups
+// every report for one listing into a single card.
+export const reportList: RequestSchema = {
+  query: Joi.object({
+    status: Joi.string().valid("open", "actioned", "dismissed", "all").default("open"),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20),
+  }),
+};
+
+export const reportsDismiss: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+  body: Joi.object({
+    note: Joi.string().trim().max(500).allow("", null),
+  }),
+};

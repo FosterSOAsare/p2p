@@ -44,3 +44,8 @@ export const submitDispute = asyncHandler(async (req, res) => {
   const dispute = await listingsService.submitDispute(req.user!.id, req.params.id as string, req.body);
   res.status(201).json({ dispute });
 });
+
+export const submitReport = asyncHandler(async (req, res) => {
+  const report = await listingsService.submitReport(req.user!.id, req.params.id as string, req.body);
+  res.status(201).json({ report });
+});

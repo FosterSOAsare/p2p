@@ -4,7 +4,7 @@
 
 ## Buyer
 
-- [ ] Report listing (stretch)
+- [x] Report listing
 
 ## Seller
 

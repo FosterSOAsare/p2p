@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   Wallet,
   Ban,
+  Flag,
   Loader2,
 } from 'lucide-react'
 import { useAdminStats, type DealStatus } from '../features/admin/data/adminStatsApi'
@@ -128,6 +129,14 @@ export function AdminDashboard() {
               sub="Need a ruling"
               to="/admin/disputes"
               accent="text-rose-600 dark:text-rose-400"
+            />
+            <StatCard
+              icon={<Flag size={14} />}
+              label="Open Reports"
+              value={stats.openReports.toLocaleString()}
+              sub="Flagged by buyers"
+              to="/admin/reports"
+              accent="text-amber-600 dark:text-amber-400"
             />
             <StatCard
               icon={<Handshake size={14} />}
