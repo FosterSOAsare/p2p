@@ -1,8 +1,9 @@
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Bell, Home, ShieldCheck, Store, User } from 'lucide-react-native';
+import { Bell, Home, Package, ShieldCheck, Store, User } from 'lucide-react-native';
 
 import { useTheme } from '@/hooks/use-theme';
+import { usePersona } from '@/hooks/use-persona';
 import { Fonts, Spacing, TabBar } from '@/constants/theme';
 
 /**
@@ -13,9 +14,18 @@ import { Fonts, Spacing, TabBar } from '@/constants/theme';
  * ui/Layout.tsx`): Marketplace uses Store, deals use ShieldCheck.
  *
  * `headerShown` is off because every screen renders its own heading.
+ *
+ * The fourth slot is persona-dependent: buyers get Activity, sellers get My
+ * Listings in its place, since managing inventory is the thing a seller opens
+ * the app for. Only one of the two is ever mounted in the bar — the other is
+ * hidden with `href: null`, which drops the button but keeps the route
+ * reachable, so `/listings` still resolves when pushed from elsewhere.
  */
 export default function TabsLayout() {
   const theme = useTheme();
+  // Admins count as sellers here, matching `RoleGuard`'s seller gate.
+  const persona = usePersona();
+  const isSeller = persona === 'seller' || persona === 'admin';
   // The bar has to grow by the device's bottom inset, otherwise the icons sit
   // under the home indicator / gesture pill on phones that have one.
   const insets = useSafeAreaInsets();
@@ -59,11 +69,21 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => <ShieldCheck color={color} size={size} />,
         }}
       />
+      {/* Fourth slot — Activity for buyers, My Listings for sellers. */}
       <Tabs.Screen
         name="activity"
         options={{
           title: 'Activity',
           tabBarIcon: ({ color, size }) => <Bell color={color} size={size} />,
+          href: isSeller ? null : undefined,
+        }}
+      />
+      <Tabs.Screen
+        name="listings"
+        options={{
+          title: 'My Listings',
+          tabBarIcon: ({ color, size }) => <Package color={color} size={size} />,
+          href: isSeller ? undefined : null,
         }}
       />
       {/* Last entry, so it sits at the far right of the bar — the web keeps its
