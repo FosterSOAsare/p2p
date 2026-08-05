@@ -242,14 +242,14 @@ export function AdminListingsList() {
                   the same x-position no matter how long the title runs. */}
               <Link
                 to={`/admin/listings/${l.id}`}
-                className="flex min-w-0 flex-1 items-center gap-3 transition-opacity hover:opacity-80"
+                className="flex min-w-0 flex-1 items-center gap-3 group transition-opacity hover:opacity-80"
               >
                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
                   {l.image ? <img src={l.image} alt="" className="h-full w-full object-cover" /> : null}
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="block truncate text-sm font-bold text-slate-900 dark:text-white">{l.title}</span>
+                    <span className="block truncate group-hover:underline text-sm font-bold text-slate-900 dark:text-white">{l.title}</span>
                     {l.openReportCount > 0 && (
                       <Link
                         to="/admin/reports"
