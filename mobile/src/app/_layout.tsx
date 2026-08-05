@@ -17,6 +17,7 @@ import {
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { SavedProvider } from '@/context/SavedContext';
+import { BlockedProvider } from '@/context/BlockedContext';
 import { Colors } from '@/constants/theme';
 
 /**
@@ -83,9 +84,11 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <SavedProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
-            <RootNavigator />
-          </ThemeProvider>
+          <BlockedProvider>
+            <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
+              <RootNavigator />
+            </ThemeProvider>
+          </BlockedProvider>
         </SavedProvider>
       </AuthProvider>
     </SafeAreaProvider>

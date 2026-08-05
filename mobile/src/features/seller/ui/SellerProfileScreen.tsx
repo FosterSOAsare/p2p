@@ -17,6 +17,7 @@ import {
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
+import { useBlocked } from '@/context/BlockedContext';
 import { mockProducts } from '@/constants/mockData';
 
 /**
@@ -29,8 +30,9 @@ import { mockProducts } from '@/constants/mockData';
  * exactly as the web does.
  *
  * The mobile mock has no user directory, so the profile is derived from the
- * vendor attached to their listings. Blocking is local state — the web calls
- * `useBlockVendor`.
+ * vendor attached to their listings. Blocking writes to `BlockedContext`, so a
+ * blocked vendor's listings drop out of the marketplace — the web's
+ * `useBlockVendor` + marketplace filter, in one place.
  */
 
 function formatMoney(amount: number, currency = 'GH₵') {
@@ -50,7 +52,10 @@ export function SellerProfileScreen() {
   const { user } = useAuth();
   const { username = '' } = useLocalSearchParams<{ username: string }>();
 
-  const [blocked, setBlocked] = useState(false);
+  // Shared, so blocking here actually removes the vendor's listings from the
+  // marketplace — as it does on the web.
+  const { isBlocked, block, unblock } = useBlocked();
+  const blocked = isBlocked(username);
   const [blockFormOpen, setBlockFormOpen] = useState(false);
   const [blockReason, setBlockReason] = useState('');
   const [blockError, setBlockError] = useState<string | null>(null);
@@ -131,7 +136,7 @@ export function SellerProfileScreen() {
     // TODO(api): POST the block with its reason (web: useBlockVendor).
     setBlockError(null);
     setBlockFormOpen(false);
-    setBlocked(true);
+    block(username, blockReason.trim());
   };
 
   return (
@@ -285,7 +290,7 @@ export function SellerProfileScreen() {
                 Their listings are hidden from your feed and contact is disabled.
               </Text>
             </View>
-            <Pressable onPress={() => setBlocked(false)} hitSlop={6}>
+            <Pressable onPress={() => unblock(username)} hitSlop={6}>
               <Text style={styles.unblockText}>Unblock</Text>
             </Pressable>
           </View>

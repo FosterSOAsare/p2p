@@ -17,7 +17,6 @@ import {
   mockDeals,
   mockKycSubmissions,
   mockProducts,
-  mockSellerListings,
   type EscrowDeal,
 } from '@/constants/mockData';
 import { StatCard } from './StatCard';
@@ -61,9 +60,9 @@ export function AdminDashboard() {
         ...mockDeals.flatMap((d) => [d.creator.username, d.counterparty.username]),
         ...mockKycSubmissions.map((k) => k.username),
       ]).size,
-      activeListings:
-        mockProducts.filter((p) => p.status === 'active').length +
-        mockSellerListings.filter((l) => l.status === 'active').length,
+      // One collection now, so no second array to add — summing both used to
+      // double-count the listings that appeared in each.
+      activeListings: mockProducts.filter((p) => p.status === 'active').length,
       // "Settled volume" on the web is completed (released) deals only.
       settledVolume: mockDeals
         .filter((d) => d.status === 'released')

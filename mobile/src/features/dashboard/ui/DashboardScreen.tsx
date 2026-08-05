@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
+import { usePersona } from '@/hooks/use-persona';
 import { useAuth } from '@/context/AuthContext';
 import { BuyerDashboard } from './BuyerDashboard';
 import { SellerDashboard } from './SellerDashboard';
@@ -22,11 +23,8 @@ export function DashboardScreen() {
   const theme = useTheme();
   const { user } = useAuth();
   const tabBarHeight = useTabBarHeight();
-
-  // The guard in app/_layout only lets this render when signed in, so a null
-  // user means the mock session was cleared mid-render — fall back to buyer.
-  const role = user?.role ?? 'buyer';
-  const isSeller = role === 'seller' || user?.kycStatus === 'verified';
+  // Single source of truth for which face of the app this account sees.
+  const persona = usePersona();
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
@@ -34,9 +32,9 @@ export function DashboardScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + Spacing.four }]}
         showsVerticalScrollIndicator={false}
       >
-        {role === 'admin' ? (
+        {persona === 'admin' ? (
           <AdminDashboard />
-        ) : isSeller && user ? (
+        ) : persona === 'seller' && user ? (
           <SellerDashboard user={user} />
         ) : user ? (
           <BuyerDashboard user={user} />

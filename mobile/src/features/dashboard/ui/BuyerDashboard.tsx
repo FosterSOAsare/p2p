@@ -274,7 +274,7 @@ export function BuyerDashboard({ user }: { user: User }) {
                   // to mutate, so this reads as a label until the API lands.
                 >
                   <CheckCircle2 size={16} color="#ffffff" />
-                  <Text style={styles.releaseText}>Confirm Receipt &amp; Release</Text>
+                  <Text style={styles.releaseText}>Confirm Receipt &amp; Release Escrow</Text>
                 </View>
               ) : (
                 <View style={styles.statusNote}>

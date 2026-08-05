@@ -7,8 +7,9 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  FileText,
   MessageCircle,
-  Package,
+  Pencil,
   ShieldCheck,
   Truck,
 } from 'lucide-react-native';
@@ -38,6 +39,23 @@ const DISPUTE_REASONS = [
   { value: 'service_not_done', label: 'Service not completed' },
   { value: 'other', label: 'Other' },
 ];
+
+/**
+ * The web reads `fundingTotal` / `sellerPayout` off the deal, computed server
+ * side. The mock only carries `amount`, so recompute with the same rule the
+ * server and the checkout screen use: fiat 1.5%, min GH₵2, capped at GH₵150,
+ * split 50/50 between the parties.
+ */
+function dealMoney(amount: number) {
+  let fee = Math.floor(amount * 100 * 0.015) / 100;
+  if (fee < 2) fee = 2;
+  if (fee > 150) fee = 150;
+  const buyerFee = Math.floor((fee / 2) * 100) / 100;
+  return {
+    fundingTotal: amount + buyerFee,
+    sellerPayout: amount - (fee - buyerFee),
+  };
+}
 
 function formatMoney(amount: number, currency: string) {
   return `${currency} ${amount.toLocaleString('en-GH', {
@@ -127,6 +145,7 @@ export function EscrowDetailScreen() {
   const other = isBuyer ? deal.counterparty : deal.creator;
 
   // Which actions the state machine allows, mirroring the web's `has(...)`.
+  const money = dealMoney(deal.amount);
   const inFlight = ['funded', 'shipped', 'delivered'].includes(deal.status);
   const canRelease = isBuyer && inFlight;
   const canDispute = inFlight;
@@ -230,6 +249,26 @@ export function EscrowDetailScreen() {
                   : 'Payout released to your wallet.'}
               </Text>
             </View>
+          ) : null}
+
+          {/* Only while the deal is still `created` — once funded the terms are
+              locked, same condition as the web's `deal.status === 'created'`. */}
+          {deal.status === 'created' ? (
+            <Pressable
+              // TODO(api): PATCH /api/escrows/:id — opens the web's edit modal.
+              onPress={() => setNotice('Editing deal terms needs the API — nothing was changed.')}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                {
+                  backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Pencil size={16} color={theme.text} />
+              <Text style={[styles.primaryBtnText, { color: theme.text }]}>Edit Deal Terms</Text>
+            </Pressable>
           ) : null}
 
           {canDeliver ? (
@@ -369,31 +408,54 @@ export function EscrowDetailScreen() {
           ) : null}
         </View>
 
-        {/* Terms */}
+        {/* Deal Details — the web's own heading, with its money grid. I'd
+            titled this "Deal Terms" and left the amounts out entirely. */}
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
           <View style={styles.sectionHead}>
-            <Package size={16} color={theme.primary} />
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Deal Terms</Text>
+            <FileText size={17} color={theme.primary} />
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Deal Details</Text>
           </View>
 
-          <Text style={[styles.body, { color: theme.textSecondary }]}>{deal.description}</Text>
+          {deal.description ? (
+            <View style={[styles.descBox, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}>
+              <Text style={[styles.body, { color: theme.text }]}>{deal.description}</Text>
+            </View>
+          ) : null}
 
+          {deal.tracking ? (
+            <View style={[styles.trackingBox, { backgroundColor: theme.inputBackground }]}>
+              <Truck size={15} color={theme.textTertiary} />
+              <Text style={[styles.termValue, { color: theme.text }]} numberOfLines={2}>
+                <Text style={{ fontFamily: Fonts.sans[700] }}>{deal.tracking.carrier}:</Text>{' '}
+                {deal.tracking.code}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Item Amount + what this side actually pays or receives */}
+          <View style={styles.moneyGrid}>
+            <View style={[styles.moneyCell, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}>
+              <Text style={[styles.moneyLabel, { color: theme.textTertiary }]}>Item Amount</Text>
+              <Text style={[styles.moneyValue, { color: theme.text }]}>
+                {formatMoney(deal.amount, deal.currency)}
+              </Text>
+            </View>
+            <View style={[styles.moneyCell, { backgroundColor: theme.inputBackground, borderColor: theme.border }]}>
+              <Text style={[styles.moneyLabel, { color: theme.textTertiary }]}>
+                {isBuyer ? 'You Paid' : 'Your Payout'}
+              </Text>
+              <Text style={[styles.moneyValue, { color: theme.text }]}>
+                {formatMoney(isBuyer ? money.fundingTotal : money.sellerPayout, deal.currency)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Extra to the web: the mock carries a release condition and it's
+              worth surfacing on a screen about releasing money. */}
           <View style={[styles.termRow, { borderTopColor: theme.border }]}>
             <Text style={[styles.termLabel, { color: theme.textTertiary }]}>Release Condition</Text>
             <Text style={[styles.termValue, { color: theme.text }]}>{deal.releaseCondition}</Text>
           </View>
-
-          {deal.tracking ? (
-            <View style={[styles.trackingBox, { backgroundColor: theme.inputBackground }]}>
-              <Truck size={15} color={theme.primary} />
-              <View style={styles.trackingText}>
-                <Text style={[styles.termLabel, { color: theme.textTertiary }]}>Dispatch</Text>
-                <Text style={[styles.termValue, { color: theme.text }]}>
-                  {deal.tracking.carrier} · {deal.tracking.code}
-                </Text>
-              </View>
-            </View>
-          ) : null}
         </View>
 
         {/* Audit timeline */}
@@ -501,6 +563,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   termValue: { fontSize: 12.5, lineHeight: 17, fontFamily: Fonts.sans[500] },
+  descBox: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },
+  moneyGrid: { flexDirection: 'row', gap: Spacing.two },
+  moneyCell: { flex: 1, borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three, gap: 2 },
+  moneyLabel: { fontSize: 10, fontFamily: Fonts.sans[500] },
+  moneyValue: { fontSize: 13.5, fontFamily: Fonts.sans[700] },
   trackingBox: {
     flexDirection: 'row',
     alignItems: 'center',
