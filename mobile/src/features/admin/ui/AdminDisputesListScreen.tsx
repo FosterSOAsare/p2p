@@ -46,6 +46,8 @@ export function AdminDisputesListScreen() {
 
   return (
     <AdminScreen
+      // A tab in the console's bottom bar, not a pushed screen.
+      tabRoot
       title="Disputes"
       subtitle="Read the evidence, then rule on where the escrowed money goes."
       onRefresh={() => query.refetch()}

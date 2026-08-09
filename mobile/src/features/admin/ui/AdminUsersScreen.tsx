@@ -63,6 +63,8 @@ export function AdminUsersScreen() {
 
   return (
     <AdminScreen
+      // A tab in the console's bottom bar, not a pushed screen.
+      tabRoot
       title="Users"
       subtitle="Search accounts, then suspend or reinstate. Suspended users can't sign in."
       onRefresh={() => usersQuery.refetch()}
