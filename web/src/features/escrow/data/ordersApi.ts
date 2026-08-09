@@ -34,7 +34,7 @@ export interface Deal {
   buyer: DealParty | null
   seller: DealParty | null
   invitedUsername: string | null
-  myRole: 'buyer' | 'seller' | 'creator'
+  myRole: 'buyer' | 'seller' | 'creator' | 'admin'
   availableActions: EscrowAction[]
   carrier: string | null
   trackingNumber: string | null

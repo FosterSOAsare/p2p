@@ -24,6 +24,11 @@ import { useUploadSingleFile } from '../features/upload/data/uploadApi'
 import { profileSchema, type ProfileForm } from '../features/user/data/schemas'
 import { apiErrorMessage } from '../features/shared/libs/api'
 
+function applyTheme(dark: boolean) {
+  document.documentElement.classList.toggle('dark', dark)
+  localStorage.setItem('p2p_theme', dark ? 'dark' : 'light')
+}
+
 const inputClass =
   'w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none'
 
@@ -32,6 +37,9 @@ const lockedInputClass =
 
 export function UserSettings() {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile')
+  const [isDarkTheme, setIsDarkTheme] = useState(() =>
+    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false,
+  )
 
   const { data: me } = useMe()
   const updateProfile = useUpdateProfile()
@@ -76,6 +84,16 @@ export function UserSettings() {
 
   const removeAvatar = () => updateProfile.mutate({ avatarUrl: null })
   const avatarBusy = uploadAvatar.isPending || updateProfile.isPending
+
+  const onToggleTheme = () => {
+    const next = !document.documentElement.classList.contains('dark')
+    applyTheme(next)
+    setIsDarkTheme(next)
+  }
+
+  useEffect(() => {
+    setIsDarkTheme(document.documentElement.classList.contains('dark'))
+  }, [])
 
   const kycStatus = me?.kycStatus ?? 'unverified'
 
@@ -386,6 +404,43 @@ export function UserSettings() {
             </div>
           )}
         </div>
+
+              {/* Appearance */}
+              <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-4 mt-4">
+                <div className="space-y-1">
+                  <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">Appearance</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Switch between light and dark mode.</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onToggleTheme}
+                  className="flex w-full items-center justify-between rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-900"
+                >
+                  <div className="space-y-0.5">
+                    <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Theme</span>
+                    <span className="block text-sm font-bold text-slate-900 dark:text-white">
+                      {isDarkTheme ? 'Dark mode' : 'Light mode'}
+                    </span>
+                  </div>
+                  <span
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                      isDarkTheme ? 'bg-primary-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                        isDarkTheme ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </span>
+                </button>
+
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  The theme switch is stored in your browser and applies across the app.
+                </p>
+              </div>
       </div>
     </div>
   )

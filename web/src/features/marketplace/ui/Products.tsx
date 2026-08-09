@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
+  Flame,
   Heart,
   ShieldCheck,
   Store,
@@ -283,7 +284,13 @@ export function Products() {
                       </div>
                     )}
 
-                    <div className="absolute left-2 top-2">
+                    <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+                      {/* Paid placement, disclosed as one. */}
+                      {p.promoted && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-md">
+                          <Flame size={9} /> Promoted
+                        </span>
+                      )}
                       <span className="rounded-full bg-slate-900/80 backdrop-blur-md px-2 py-0.5 text-[9px] font-semibold text-white">
                         {p.category}
                       </span>

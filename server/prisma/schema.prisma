@@ -75,6 +75,7 @@ enum TransactionType {
   escrow_release
   escrow_refund
   fee
+  promotion
 }
 
 enum ListingStatus {
@@ -111,6 +112,22 @@ enum ListingReportStatus {
   actioned
   /// Reviewed, no violation found.
   dismissed
+}
+
+enum PromotionStatus {
+  active
+  paused
+  expired
+  cancelled
+}
+
+/// Spotlight durations a seller can buy. Mapped so the DB stores the same
+/// "7d"/"14d"/"30d" the client speaks — Prisma enum members can't lead with a
+/// digit, hence the `d7` names.
+enum PromotionPlan {
+  d7  @map("7d")
+  d14 @map("14d")
+  d30 @map("30d")
 }
 
 enum DisputeStatus {
@@ -158,6 +175,9 @@ enum NotificationCategory {
   dispute
   kyc
   wallet
+  /// Paid listing spotlights. Separate from `listing` so a campaign going live
+  /// doesn't wear the same icon as a takedown.
+  promotion
   system
 }
 
@@ -187,6 +207,7 @@ model User {
   wallets          Wallet[]
   paymentIntents   PaymentIntent[]
   listings         Listing[]
+  promotions       Promotion[]
   listingsRemoved  Listing[]        @relation("ListingModerator")
   listingDisputes  ListingDispute[] @relation("ListingDisputeSeller")
   listingDisputesReviewed ListingDispute[] @relation("ListingDisputeReviewer")
@@ -404,6 +425,7 @@ model Listing {
 
   seller    User             @relation(fields: [sellerId], references: [id])
   removedBy User?            @relation("ListingModerator", fields: [removedById], references: [id])
+  promotions Promotion[]
   disputes  ListingDispute[]
   reports   ListingReport[]
   savedBy   SavedListing[]
@@ -413,6 +435,33 @@ model Listing {
   @@index([status, category])
   @@index([sellerId])
   @@map("listings")
+}
+
+model Promotion {
+  id         String          @id @default(uuid(7))
+  listingId  String
+  sellerId   String
+  status     PromotionStatus @default(active)
+  plan       PromotionPlan
+  priority   Int             @default(0)
+  /// What the seller was actually charged for this run, in GHS. Recorded so the
+  /// spend history survives a later change to the price list.
+  amount     Decimal         @db.Decimal(14, 2)
+  startsAt   DateTime        @default(now())
+  endsAt     DateTime?
+  /// Seconds left on the clock when the seller paused. Resuming sets
+  /// `endsAt = now + this` so a pause banks the remaining time instead of
+  remainingSeconds Int?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  seller  User    @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, status])
+  @@index([sellerId, status])
+  @@index([status, endsAt])
+  @@map("promotions")
 }
 
 /// A user blocking a vendor (with a stated reason) — hides the vendor's

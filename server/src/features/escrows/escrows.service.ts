@@ -869,7 +869,7 @@ async function buildShareInvite(code: string) {
   return { code, joinUrl, dataUrl: await QRCode.toDataURL(joinUrl, { width: 240, margin: 1 }) };
 }
 
-export async function getDetail(actor: { id: string }, id: string) {
+export async function getDetail(actor: { id: string; role?: string }, id: string) {
   const escrow = await prisma.escrow.findUnique({
     where: { id },
     include: {
@@ -884,7 +884,8 @@ export async function getDetail(actor: { id: string }, id: string) {
   });
   if (!escrow) throw ApiError.notFound("Deal not found");
   const isParty = [escrow.buyerId, escrow.sellerId, escrow.creatorId].includes(actor.id);
-  if (!isParty) throw ApiError.forbidden("You are not a party to this deal");
+  const isAdmin = actor.role === "admin";
+  if (!isParty && !isAdmin) throw ApiError.forbidden("You are not a party to this deal");
 
   const myReview = escrow.reviews.find((r) => r.reviewerId === actor.id);
 
@@ -897,7 +898,7 @@ export async function getDetail(actor: { id: string }, id: string) {
       : null;
 
   return {
-    ...serialize(escrow, actor.id),
+    ...serialize(escrow, actor.id, actor.role),
     creatorUsername: escrow.creator.username,
     share,
     myReview: myReview ? { rating: myReview.rating, comment: myReview.comment } : null,
@@ -926,9 +927,16 @@ type EscrowWithParties = Escrow & {
   listing?: { id: string; images: string[] } | null;
 };
 
-function serialize(e: EscrowWithParties, userId: string) {
+function serialize(e: EscrowWithParties, userId: string, actorRole?: string) {
   const money = breakdown(Number(e.amount), Number(e.feeAmount), e.feeSplit);
-  const myRole = e.buyerId === userId ? "buyer" : e.sellerId === userId ? "seller" : "creator";
+  const myRole =
+    e.buyerId === userId
+      ? "buyer"
+      : e.sellerId === userId
+      ? "seller"
+      : actorRole === "admin"
+      ? "admin"
+      : "creator";
   return {
     id: e.id,
     code: e.code,

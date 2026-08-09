@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ShieldCheck, Search, Loader2, Handshake, AlertTriangle, Scale } from 'lucide-react'
+import { ShieldCheck, Search, Loader2, Handshake, AlertTriangle, Scale, Eye } from 'lucide-react'
 import { useAdminDeals, type AdminDealStatus } from '../features/admin/data/adminDealsApi'
 import { AdminSectionNav } from '../features/admin/ui/AdminSectionNav'
 import { apiErrorMessage } from '../features/shared/libs/api'
@@ -81,7 +81,7 @@ export function AdminDealsList() {
               Escrow Deals Oversight
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-              Read-only view of every escrow deal on the platform. Disputed deals link to the arbitration console.
+              Read-only view of every escrow deal on the platform. Click any deal to inspect terms, timeline, and parties.
             </p>
           </div>
           <AdminSectionNav />
@@ -137,13 +137,16 @@ export function AdminDealsList() {
           {data?.deals.map((d) => (
             <div
               key={d.id}
-              className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-wrap items-center gap-4 justify-between"
+              className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-wrap items-center gap-4 justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all"
             >
               <div className="min-w-0 space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-xs font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 px-2.5 py-1 rounded-lg border border-primary-200 dark:border-primary-800">
+                  <Link
+                    to={`/escrow/${d.id}`}
+                    className="font-mono text-xs font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 px-2.5 py-1 rounded-lg border border-primary-200 dark:border-primary-800 hover:underline"
+                  >
                     {d.code}
-                  </span>
+                  </Link>
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold border capitalize ${STATUS_STYLES[d.status]}`}
                   >
@@ -155,7 +158,11 @@ export function AdminDealsList() {
                     </span>
                   )}
                 </div>
-                <h3 className="font-bold text-slate-900 dark:text-white text-sm truncate">{d.title}</h3>
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm truncate">
+                  <Link to={`/escrow/${d.id}`} className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                    {d.title}
+                  </Link>
+                </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Buyer <span className="font-semibold text-slate-700 dark:text-slate-300">@{d.buyer?.username ?? '—'}</span>
                   {' · '}
@@ -165,7 +172,7 @@ export function AdminDealsList() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 <div className="text-right">
                   <p className="font-display font-bold text-base text-slate-900 dark:text-white">
                     {formatMoney(d.amount, d.currency)}
@@ -174,14 +181,23 @@ export function AdminDealsList() {
                     fee {formatMoney(d.feeAmount, d.currency)} · {d.rail}
                   </p>
                 </div>
-                {d.hasOpenDispute && (
+
+                <div className="flex items-center gap-2">
                   <Link
-                    to="/admin/disputes"
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 dark:bg-slate-100 px-3.5 py-2 text-xs font-bold text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200 transition-all"
+                    to={`/escrow/${d.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
                   >
-                    <Scale size={13} /> Review
+                    <Eye size={13} /> View Details
                   </Link>
-                )}
+                  {d.hasOpenDispute && (
+                    <Link
+                      to={`/admin/disputes/${d.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 dark:bg-slate-100 px-3 py-2 text-xs font-bold text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200 transition-all"
+                    >
+                      <Scale size={13} /> Review
+                    </Link>
+                  )}
+                </div>
               </div>
             </div>
           ))}

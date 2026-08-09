@@ -20,8 +20,6 @@ import {
   LogOut,
   LayoutDashboard,
   Package,
-  Sun,
-  Moon,
   PlusCircle,
   FileText,
   Heart,
@@ -31,6 +29,7 @@ import {
   MessageSquare,
   PackageSearch,
   Bell,
+  Sparkles,
 } from 'lucide-react'
 import { Footer } from './Footer'
 
@@ -45,16 +44,6 @@ function UnreadDot({ count }: { count: number }) {
 
 const dropdownLinkClass =
   'flex items-center gap-2 rounded-lg px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 hover:text-primary-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
-
-// Dark/Light Mode Theme (class strategy on <html>, with system fallback)
-function applyTheme(dark: boolean) {
-  document.documentElement.classList.toggle('dark', dark)
-  localStorage.setItem('p2p_theme', dark ? 'dark' : 'light')
-}
-
-function toggleTheme() {
-  applyTheme(!document.documentElement.classList.contains('dark'))
-}
 
 export function Layout() {
   const navigate = useNavigate()
@@ -94,12 +83,12 @@ export function Layout() {
         { to: '/marketplace', label: 'Marketplace', icon: Store },
         // One unified deals list — a buyer/seller sees their own deals (scoped server-side)
         ...(isLoggedIn ? [{ to: '/deals', label: 'My Deals', icon: ShieldCheck }] : []),
-        ...(isLoggedIn
-          ? [{ to: '/messages', label: 'Messages', icon: MessageSquare, badge: unreadTotal }]
-          : []),
         // Sellers manage listings, buyers can become sellers
         ...(isSeller
-          ? [{ to: '/listings', label: 'My Listings', icon: Package }]
+          ? [
+              { to: '/listings', label: 'My Listings', icon: Package },
+              { to: '/promotions', label: 'Promotions', icon: Sparkles },
+            ]
           : [{ to: '/sell', label: 'Sell Goods', icon: Store }]),
       ]
 
@@ -164,16 +153,6 @@ export function Layout() {
           {/* Action Links, Theme Toggle & Profile Dropdown */}
           <div className="flex items-center gap-2">
             <div className="hidden sm:flex items-center gap-2">
-              {/* + New Escrow Deal CTA Button — buyer/seller only */}
-              {!isAdmin && (
-                <Link
-                  to="/escrow/new"
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-primary-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:bg-primary-700 transition-all cursor-pointer"
-                >
-                  <PlusCircle size={15} /> New Deal
-                </Link>
-              )}
-
               {isLoggedIn && !isAdmin && (
                 <Link
                   to="/wallet"
@@ -256,9 +235,14 @@ export function Layout() {
                       )}
 
                       {isSeller && (
-                        <Link to="/listings" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
-                          <Package size={15} /> My Listings
-                        </Link>
+                        <>
+                          <Link to="/listings" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <Package size={15} /> My Listings
+                          </Link>
+                          <Link to="/promotions" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
+                            <Sparkles size={15} /> Promotions
+                          </Link>
+                        </>
                       )}
 
                       {!isAdmin && (
@@ -336,6 +320,22 @@ export function Layout() {
             {/* Notifications bell — outside the `hidden sm:flex` group above so
                 it stays reachable on mobile, where the panel goes full-width. */}
             {isLoggedIn && (
+              <Link
+                to="/messages"
+                aria-label={unreadTotal > 0 ? `Messages (${unreadTotal} unread)` : 'Messages'}
+                title="Messages"
+                className="relative flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <MessageSquare size={17} />
+                {unreadTotal > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-slate-950">
+                    {unreadTotal > 9 ? '9+' : unreadTotal}
+                  </span>
+                )}
+              </Link>
+            )}
+
+            {isLoggedIn && (
               <button
                 onClick={() => setNotificationsOpen(true)}
                 aria-label={unreadNotifications > 0 ? `Notifications (${unreadNotifications} unread)` : 'Notifications'}
@@ -350,17 +350,6 @@ export function Layout() {
                 )}
               </button>
             )}
-
-            {/* Dark / Light Mode Toggle Button */}
-            <button
-              onClick={toggleTheme}
-              aria-label="Toggle Theme"
-              title="Toggle Theme"
-              className="flex h-9 w-9 items-center justify-center rounded-xl border transition-all cursor-pointer border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:text-amber-400 dark:hover:bg-slate-800"
-            >
-              <Sun size={17} className="hidden dark:block" />
-              <Moon size={17} className="dark:hidden" />
-            </button>
 
             {/* Mobile menu trigger */}
             <button

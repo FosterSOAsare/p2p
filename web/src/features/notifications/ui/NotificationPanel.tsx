@@ -8,6 +8,7 @@ import {
   Package,
   Scale,
   ShieldCheck,
+  Sparkles,
   Wallet,
 } from 'lucide-react'
 import { SidePanel } from '../../shared/ui/SidePanel'
@@ -29,6 +30,9 @@ const CATEGORY_STYLE: Record<NotificationCategory, { icon: LucideIcon; className
   dispute: { icon: Scale, className: 'bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-400' },
   kyc: { icon: ShieldCheck, className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' },
   wallet: { icon: Wallet, className: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400' },
+  // Sparkles matches the Promotions nav item and the studio header, so the
+  // notification reads as coming from that section.
+  promotion: { icon: Sparkles, className: 'bg-purple-100 text-purple-600 dark:bg-purple-950 dark:text-purple-400' },
   system: { icon: Bell, className: 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
 }
 

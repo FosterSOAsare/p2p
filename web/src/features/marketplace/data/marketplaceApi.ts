@@ -5,6 +5,8 @@ import type { RemovalReason } from '../../shared/libs/removalReasons'
 
 // Marketplace listings are fiat-only (GH₵) — crypto/TRX exists only on standalone escrow deals.
 export interface ListingCard {
+  /** A paid spotlight, pinned above the organic feed. Only ever true on the `featured` sort. */
+  promoted: boolean
   id: string
   title: string
   short: string

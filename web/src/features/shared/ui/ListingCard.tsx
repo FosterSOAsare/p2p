@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Image as ImageIcon, ShieldCheck } from 'lucide-react'
+import { Flame, Image as ImageIcon, ShieldCheck } from 'lucide-react'
 import { RatingStars } from './RatingStars'
 
 export interface ListingCardProps {
@@ -12,6 +12,8 @@ export interface ListingCardProps {
   rating: number
   reviewCount: number
   imageUrl?: string
+  /** Paid spotlight — disclosed to shoppers, as ad placements have to be. */
+  promoted?: boolean
 }
 
 export function ListingCard({
@@ -24,6 +26,7 @@ export function ListingCard({
   rating,
   reviewCount,
   imageUrl,
+  promoted = false,
 }: ListingCardProps) {
   return (
     <Link
@@ -32,6 +35,11 @@ export function ListingCard({
     >
       {/* Sleek Compact Image Container */}
       <div className="relative h-28 sm:h-32 w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+        {promoted && (
+          <span className="absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-md">
+            <Flame size={9} /> Promoted
+          </span>
+        )}
         {imageUrl ? (
           <img
             src={imageUrl}

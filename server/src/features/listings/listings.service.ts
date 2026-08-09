@@ -47,7 +47,7 @@ export async function list(params: ListQuery) {
   if (params.sort === "rating") {
     const rows = await prisma.listing.findMany({ where, include: cardInclude });
     const cards = rows
-      .map(toCard)
+      .map((l) => toCard(l))
       .sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1) || b.reviewCount - a.reviewCount);
     const start = (params.page - 1) * params.limit;
     return {
@@ -58,12 +58,20 @@ export async function list(params: ListQuery) {
     };
   }
 
+  // Featured = what sellers pay for. Live spotlights are pinned above the
+  // organic feed, ranked by the priority they bought; everything else falls
+  // through to newest-first. Only `featured` is for sale — an explicit
+  // price/newest/rating sort is the shopper's instruction and isn't overridden.
+  if (params.sort === "featured") {
+    return listFeatured(where, params);
+  }
+
   const orderBy: Prisma.ListingOrderByWithRelationInput =
     params.sort === "price_asc"
       ? { price: "asc" }
       : params.sort === "price_desc"
         ? { price: "desc" }
-        : { createdAt: "desc" }; // featured / newest
+        : { createdAt: "desc" }; // newest
 
   // Concurrent, not transactional. Wrapping the pair in a transaction would buy
   // a consistent count-and-rows snapshot — except Postgres defaults to READ
@@ -83,7 +91,62 @@ export async function list(params: ListQuery) {
   ]);
 
   return {
-    listings: rows.map(toCard),
+    listings: rows.map((l) => toCard(l)),
+    total,
+    page: params.page,
+    pages: Math.max(1, Math.ceil(total / params.limit)),
+  };
+}
+
+/**
+ * The featured feed: paid spotlights first (highest priority wins, oldest run
+ * breaking a tie), then the organic newest-first feed with those same listings
+ * removed so nothing appears twice.
+ *
+ * Paginating across two ordered blocks means slicing the promoted ids by hand
+ * and offsetting the organic query by whatever is left over.
+ */
+async function listFeatured(where: Prisma.ListingWhereInput, params: ListQuery) {
+  const live = await prisma.promotion.findMany({
+    where: { status: "active", endsAt: { gt: new Date() }, listing: where },
+    orderBy: [{ priority: "desc" }, { startsAt: "asc" }],
+    select: { listingId: true },
+  });
+  // One listing can only hold one live run, but dedupe anyway so a stray
+  // duplicate can't shorten a page.
+  const promotedIds = [...new Set(live.map((p) => p.listingId))];
+  const promotedSet = new Set(promotedIds);
+
+  const skip = (params.page - 1) * params.limit;
+  const promotedPage = promotedIds.slice(skip, skip + params.limit);
+  const organicTake = params.limit - promotedPage.length;
+  const organicSkip = Math.max(0, skip - promotedIds.length);
+
+  const [total, promotedRows, organicRows] = await Promise.all([
+    prisma.listing.count({ where }),
+    promotedPage.length
+      ? prisma.listing.findMany({ where: { ...where, id: { in: promotedPage } }, include: cardInclude })
+      : Promise.resolve([]),
+    organicTake > 0
+      ? prisma.listing.findMany({
+          where: { ...where, id: { notIn: promotedIds } },
+          orderBy: { createdAt: "desc" },
+          skip: organicSkip,
+          take: organicTake,
+          include: cardInclude,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  // `in` doesn't preserve order — restore the priority ranking.
+  const byId = new Map(promotedRows.map((l) => [l.id, l]));
+  const ordered = promotedPage.flatMap((id) => {
+    const row = byId.get(id);
+    return row ? [row] : [];
+  });
+
+  return {
+    listings: [...ordered, ...organicRows].map((l) => toCard(l, promotedSet.has(l.id))),
     total,
     page: params.page,
     pages: Math.max(1, Math.ceil(total / params.limit)),
@@ -315,8 +378,9 @@ export async function listCategories() {
   });
 }
 
-function toCard(l: ListingWithSeller) {
+function toCard(l: ListingWithSeller, promoted = false) {
   return {
+    promoted,
     id: l.id,
     title: l.title,
     short: l.description?.split("\n")[0] ?? "",

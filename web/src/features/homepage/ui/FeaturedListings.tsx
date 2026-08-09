@@ -49,6 +49,7 @@ export function FeaturedListings() {
               location={item.location ?? ''}
               vendorName={item.sellerUsername}
               vendorVerified={item.sellerVerified}
+              promoted={item.promoted}
               rating={item.rating ?? 0}
               reviewCount={item.reviewCount}
             />

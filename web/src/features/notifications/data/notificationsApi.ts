@@ -10,7 +10,7 @@ import { useMe } from '../../auth/data/authApi'
  * carry the full history itself instead of deferring to a separate page.
  */
 
-export type NotificationCategory = 'deal' | 'listing' | 'dispute' | 'kyc' | 'wallet' | 'system'
+export type NotificationCategory = 'deal' | 'listing' | 'dispute' | 'kyc' | 'wallet' | 'promotion' | 'system'
 
 export interface AppNotification {
   id: string

@@ -51,6 +51,15 @@ export type PendingAction =
       returnTo: string
     }
   | { kind: 'fund'; escrowId: string; reference: string; returnTo: string }
+  /** A seller topping up mid-purchase of a listing spotlight. */
+  | {
+      kind: 'promotion'
+      listingId: string
+      planId: '7d' | '14d' | '30d'
+      priority: number
+      reference: string
+      returnTo: string
+    }
   | { kind: 'topup'; reference: string; returnTo: string }
 
 const PENDING_KEY = 'p2p_pending_action'
@@ -73,11 +82,18 @@ export const pendingAction = {
   },
 }
 
-/** Start a hosted payment for `amount`; returns the URL to send the buyer to. */
+/**
+ * Start a hosted payment for `amount`; returns the URL to send the buyer to.
+ * `method` only preselects a channel on the hosted page — omit it where we
+ * didn't ask (the promotion flow), and Paystack offers the full set itself.
+ */
 export function useInitDeposit() {
   return useMutation({
-    mutationFn: ({ amount, method }: { amount: number; method: PayMethod }) =>
-      api<InitDepositResult>('/api/wallet/deposit/init', { method: 'POST', body: { amount, method } }),
+    mutationFn: ({ amount, method }: { amount: number; method?: PayMethod }) =>
+      api<InitDepositResult>('/api/wallet/deposit/init', {
+        method: 'POST',
+        body: method ? { amount, method } : { amount },
+      }),
   })
 }
 

@@ -21,6 +21,7 @@ export function PaymentCallback() {
   const queryClient = useQueryClient()
 
   const [phase, setPhase] = useState<Phase>('confirming')
+  const [placingLabel, setPlacingLabel] = useState('Funding your escrow…')
   const [error, setError] = useState<string | null>(null)
   // Placing an order is NOT idempotent — make sure this only ever runs once
   // (React strict mode intentionally double-invokes effects in development).
@@ -72,6 +73,7 @@ export function PaymentCallback() {
         return
       }
 
+      setPlacingLabel(action.kind === 'promotion' ? 'Activating your spotlight…' : 'Funding your escrow…')
       setPhase('placing')
       try {
         if (action.kind === 'fund') {
@@ -82,6 +84,20 @@ export function PaymentCallback() {
           queryClient.invalidateQueries({ queryKey: ['wallet'] })
           setPhase('done')
           navigate(`/escrow/${action.escrowId}`, { replace: true })
+          return
+        }
+
+        if (action.kind === 'promotion') {
+          // The top-up landed in the wallet — now buy the spotlight with it.
+          await api('/api/promotions', {
+            method: 'POST',
+            body: { listingId: action.listingId, planId: action.planId, priority: action.priority },
+          })
+          pendingAction.clear()
+          queryClient.invalidateQueries({ queryKey: ['promotions'] })
+          queryClient.invalidateQueries({ queryKey: ['wallet'] })
+          setPhase('done')
+          navigate(`/promotions/${action.listingId}`, { replace: true })
           return
         }
 
@@ -100,7 +116,9 @@ export function PaymentCallback() {
         const retryHint =
           action.kind === 'fund'
             ? 'Your payment is safe in your wallet — open the deal and fund it again.'
-            : 'Your payment is safe in your wallet — you can complete the order from the listing.'
+            : action.kind === 'promotion'
+              ? 'Your payment is safe in your wallet — open the promotion studio and launch it again.'
+              : 'Your payment is safe in your wallet — you can complete the order from the listing.'
         pendingAction.clear()
         setError(`${apiErrorMessage(err)} ${retryHint}`)
         setPhase('failed')
@@ -147,7 +165,7 @@ export function PaymentCallback() {
       )}
       <h1 className="font-display text-xl font-bold text-slate-900 dark:text-white">
         {phase === 'confirming' && 'Confirming your payment…'}
-        {phase === 'placing' && 'Funding your escrow…'}
+        {phase === 'placing' && placingLabel}
         {phase === 'done' && 'All set'}
       </h1>
       <p className="text-xs text-slate-500 dark:text-slate-400">Just a moment — please don't close this page.</p>

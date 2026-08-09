@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Sparkles,
 } from 'lucide-react'
 import { useState } from 'react'
 import { ConfirmDialog } from '../features/shared/ui/ConfirmDialog'
@@ -80,6 +81,13 @@ export function MyListings() {
         >
           <PlusCircle size={16} />
           Add New Listing
+        </Link>
+        <Link
+          to="/promotions"
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shrink-0"
+        >
+          <Sparkles size={16} />
+          Promotions
         </Link>
       </div>
 
@@ -191,6 +199,22 @@ export function MyListings() {
                   >
                     <Pencil size={14} />
                   </Link>
+                )}
+                {l.status === 'active' ? (
+                  <Link
+                    to={`/promotions/${l.id}`}
+                    title="Promote listing"
+                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-amber-600 dark:hover:text-amber-400 transition-all"
+                  >
+                    <Sparkles size={14} />
+                  </Link>
+                ) : (
+                  <span
+                    title="Only active listings can be promoted"
+                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 text-slate-300 dark:text-slate-700 cursor-not-allowed"
+                  >
+                    <Sparkles size={14} />
+                  </span>
                 )}
                 <button
                   onClick={() => setDeleteTarget(l)}

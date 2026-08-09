@@ -24,6 +24,8 @@ import { SellerWallet } from './pages/SellerWallet'
 import { MyListings } from './pages/MyListings'
 import { ListingNew } from './pages/ListingNew'
 import { ListingDetail } from './pages/ListingDetail'
+import { Promotions } from './pages/Promotions'
+import { PromotionDetail } from './pages/PromotionDetail'
 import { SellerGuard } from './features/seller/ui/SellerGuard'
 import { AdminGuard } from './features/admin/ui/AdminGuard'
 import { VendorKyc } from './pages/VendorKyc'
@@ -68,6 +70,8 @@ function App() {
         {/* Listing management — SellerGuard layout (KYC-verified sellers & admins) */}
         <Route element={<SellerGuard />}>
           <Route path="listings" element={<MyListings />} />
+          <Route path="promotions" element={<Promotions />} />
+          <Route path="promotions/:listingId" element={<PromotionDetail />} />
           <Route path="listings/new" element={<ListingNew />} />
           <Route path="listings/:id" element={<ListingDetail />} />
         </Route>

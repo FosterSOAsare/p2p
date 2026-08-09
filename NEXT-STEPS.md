@@ -48,8 +48,7 @@ real API and typecheck clean. Two "finished-looking" features are **not function
 ## Phase 4 — Admin completeness  ⏱ nice-to-have depth
 
 - [ ] **Listings moderation (M)** — browse all listings incl. drafts, takedown with reason.
-- [ ] **Deals force-override (M)** — admin manual hold / release / refund + an oversight detail drawer
-  (oversight is list-only, read-only today).
+- [x] **Deals oversight detail page** — admin oversight list connects directly to `/escrow/:id` with read-only admin view.
 - [ ] **Audit log (M)** — append-only record of every admin mutation (KYC/disputes already stamp actor+time).
 
 Dispute appeals are **out of scope** — an admin ruling is final. (`docs/` describes an appeal window; that's

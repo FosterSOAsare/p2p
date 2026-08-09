@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   RotateCcw,
   Wallet,
+  Sparkles,
 } from 'lucide-react'
 import { useDashboard, type DashboardResponse } from '../features/user/data/usersApi'
 import { useDeliverDeal } from '../features/escrow/data/ordersApi'
@@ -117,6 +118,12 @@ export function SellerDashboard({ dashboardData }: { dashboardData?: DashboardRe
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-500 px-5 py-3 text-xs sm:text-sm font-bold text-white dark:text-slate-950 shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 dark:hover:bg-emerald-400 transition-all cursor-pointer"
             >
               <Store size={18} /> View All Listings
+            </Link>
+            <Link
+              to="/promotions"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-3 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              <Sparkles size={18} /> Promotions
             </Link>
           </div>
         </div>

@@ -19,6 +19,8 @@ import {
   X,
   Ban,
   RotateCcw,
+  Scale,
+  ShieldCheck,
 } from 'lucide-react'
 import {
   useDeal,
@@ -153,6 +155,7 @@ export function EscrowDetail() {
   const cancelRefunds = Boolean(deal.fundedAt)
   const currentStepIndex = HAPPY_PATH.findIndex((s) => s.status === deal.status)
   const isDisputed = deal.status === 'disputed'
+  const isAdmin = deal.myRole === 'admin'
 
   // Balance covers the whole funding total — the server debits it directly.
   const payFromWallet = () => {
@@ -204,7 +207,6 @@ export function EscrowDetail() {
     )
   }
 
-
   const submitDispute = () => {
     if (disputeDesc.trim().length < 10) return
     dispute.mutate(
@@ -215,9 +217,32 @@ export function EscrowDetail() {
 
   return (
     <div className="py-4 sm:py-6 space-y-6">
-      <Link to="/deals" className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
-        <ArrowLeft size={16} /> Back to Deals
+      <Link
+        to="/deals"
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+      >
+        <ArrowLeft size={16} /> {isAdmin ? 'Back to Deals Oversight' : 'Back to Deals'}
       </Link>
+
+      {/* Admin Oversight Banner */}
+      {isAdmin && (
+        <div className="rounded-2xl border border-purple-200 dark:border-purple-900 bg-purple-50/80 dark:bg-purple-950/50 p-4 flex flex-wrap items-center justify-between gap-3 text-xs font-semibold text-purple-950 dark:text-purple-200 shadow-sm">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={18} className="text-purple-600 dark:text-purple-400 shrink-0" />
+            <span>
+              <strong>Admin Oversight View:</strong> You are inspecting this deal in read-only administrative mode.
+            </span>
+          </div>
+          {deal.status === 'disputed' && (
+            <Link
+              to={`/admin/disputes/${deal.id}`}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white px-3.5 py-1.5 text-xs font-bold transition-all shadow-sm shrink-0"
+            >
+              <Scale size={14} /> Open Dispute Console
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
@@ -238,8 +263,16 @@ export function EscrowDetail() {
           </div>
           <h1 className="font-display text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white leading-tight truncate">{deal.title}</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            You are the <strong className="text-slate-700 dark:text-slate-200">{deal.myRole}</strong>
-            {counterparty && <> · with <Link to={`/seller/${counterparty.username}`} className="font-semibold text-primary-600 dark:text-primary-400 hover:underline">@{counterparty.username}</Link></>}
+            {isAdmin ? (
+              <>
+                Platform Admin Oversight · Buyer: <strong className="text-slate-700 dark:text-slate-200">@{deal.buyer?.username ?? 'Unassigned'}</strong> · Seller: <strong className="text-slate-700 dark:text-slate-200">@{deal.seller?.username ?? 'Unassigned'}</strong>
+              </>
+            ) : (
+              <>
+                You are the <strong className="text-slate-700 dark:text-slate-200">{deal.myRole}</strong>
+                {counterparty && <> · with <Link to={`/seller/${counterparty.username}`} className="font-semibold text-primary-600 dark:text-primary-400 hover:underline">@{counterparty.username}</Link></>}
+              </>
+            )}
           </p>
         </div>
         <div className="text-left md:text-right bg-slate-50 dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-md shrink-0">
@@ -394,18 +427,40 @@ export function EscrowDetail() {
                 Open the join page →
               </Link>
 
-              <button
-                onClick={copyInvite}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
-              >
-                {inviteCopied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-                {inviteCopied ? 'Link copied' : 'Copy invite link'}
-              </button>
+              {!isAdmin && (
+                <button
+                  onClick={copyInvite}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                >
+                  {inviteCopied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                  {inviteCopied ? 'Link copied' : 'Copy invite link'}
+                </button>
+              )}
             </div>
           )}
 
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
             <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">Actions</h3>
+
+            {isAdmin && (
+              <div className="rounded-xl border border-purple-200 dark:border-purple-900 bg-purple-50/60 dark:bg-purple-950/30 p-4 text-xs text-purple-900 dark:text-purple-200 space-y-2">
+                <p className="font-bold flex items-center gap-1.5 text-purple-950 dark:text-purple-200">
+                  <ShieldCheck size={16} className="text-purple-600 dark:text-purple-400" />
+                  Read-Only Admin Oversight
+                </p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Transaction lifecycle actions (Funding, Delivery, Release) are restricted to the buyer and seller counterparties.
+                </p>
+                {deal.status === 'disputed' && (
+                  <Link
+                    to={`/admin/disputes/${deal.id}`}
+                    className="inline-flex items-center justify-center gap-1.5 w-full rounded-xl bg-purple-700 hover:bg-purple-800 text-white py-2.5 px-3 text-xs font-bold transition-all shadow-sm"
+                  >
+                    <Scale size={14} /> Resolve Dispute in Admin Console
+                  </Link>
+                )}
+              </div>
+            )}
 
             {actionError != null && (
               <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-[11px] font-semibold text-rose-700 dark:bg-rose-950/60 dark:border-rose-800 dark:text-rose-300">
@@ -413,7 +468,7 @@ export function EscrowDetail() {
               </div>
             )}
 
-            {deal.status === 'created' && (
+            {deal.status === 'created' && !isAdmin && (
               <button
                 onClick={openEditModal}
                 disabled={busy}
@@ -676,7 +731,7 @@ export function EscrowDetail() {
               )
             )}
 
-            {counterparty && (
+            {counterparty && !isAdmin && (
               <Link
                 to={`/messages?u=${counterparty.username}`}
                 className={`w-full inline-flex items-center justify-center gap-1.5 rounded-xl py-3 text-xs font-bold transition-all cursor-pointer ${

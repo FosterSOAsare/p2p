@@ -15,6 +15,7 @@ import { walletRouter } from "./features/wallet/wallet.router";
 import { paystackWebhook } from "./features/wallet/wallet.controller";
 import { escrowsRouter } from "./features/escrows/escrows.router";
 import { uploadRouter } from "./features/upload/upload.router";
+import { promotionsRouter } from "./features/promotions/promotions.router";
 
 export function createApp() {
   const app = express();
@@ -50,6 +51,7 @@ export function createApp() {
   app.use("/api/wallet", walletRouter);
   app.use("/api/escrows", escrowsRouter);
   app.use("/api/upload", uploadRouter);
+  app.use("/api/promotions", promotionsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
