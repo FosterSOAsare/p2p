@@ -14,13 +14,15 @@ import {
   ShieldCheck,
   User,
   UserCheck,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
 import { Fonts, Primary, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
+import { apiErrorMessage } from '@/features/shared/data/api';
 import { signupSchema, type SignupForm } from '../data/schemas';
+import { useSignup, useUsernameAvailable, USERNAME_RE } from '../data/authApi';
 import { AuthField } from './AuthField';
 
 type FieldName = 'fullName' | 'username' | 'email' | 'password' | 'confirmPassword';
@@ -32,12 +34,9 @@ type FieldName = 'fullName' | 'username' | 'email' | 'password' | 'confirmPasswo
  * same terms checkbox, same "Create Account & Verify" CTA, then on to
  * /verify-email exactly as the web does.
  *
- * Validation is shared with web via ../data/schemas. Auth is still the mock in
- * AuthContext — no server calls yet.
- *
- * TODO(backend): the web shows live "@name is available / taken" under the
- * username field via GET /api/auth/username-available. Wire that in when the
- * API is connected; until then zod catches format and reserved names only.
+ * Validation is shared with the web via ../data/schemas, and the username field
+ * shows live "@name is available / taken" from
+ * `GET /api/auth/username-available`, as the web's does.
  */
 export function SignupScreen() {
   const theme = useTheme();
@@ -45,6 +44,8 @@ export function SignupScreen() {
   // full-bleed rather than inset in a card.
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // Signup no longer goes through AuthContext (it creates an account rather
+  // than a session), so the button follows the mutation's own pending flag.
   const { isLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -67,6 +68,7 @@ export function SignupScreen() {
   const {
     control,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<SignupForm>({
     resolver: zodResolver(signupSchema),
@@ -81,12 +83,49 @@ export function SignupScreen() {
     },
   });
 
+  const signupMutation = useSignup();
+  const busy = isLoading || signupMutation.isPending;
+
+  /**
+   * Live username availability.
+   *
+   * `watch` rather than the field's own value so the query key follows what is
+   * typed; the hook itself is gated on the username regex, so nothing is sent
+   * for a half-typed handle. Collapsed to one of four states here so the JSX
+   * below doesn't have to juggle `isFetching` against `data` against `enabled`.
+   */
+  const watchedUsername = watch('username');
+  const usernameQuery = useUsernameAvailable(watchedUsername);
+  const usernameStatus: 'checking' | 'available' | 'taken' | null = !USERNAME_RE.test(
+    watchedUsername,
+  )
+    ? null
+    : usernameQuery.isFetching
+      ? 'checking'
+      : usernameQuery.data === true
+        ? 'available'
+        : usernameQuery.data === false
+          ? 'taken'
+          : null;
+
   const onSubmit = handleSubmit(async (values) => {
-    // Web sends a new account to /verify-email rather than straight into the app,
-    // so we stay in the (public) group and do the same. Deliberately NOT calling
-    // the mock `signup()` yet: it marks the session authenticated, which would
-    // trip the root guard and skip verification.
-    // TODO(backend): POST /api/auth/signup, then land on /verify-email.
+    // Creates the account for real. It does NOT sign anyone in: the server
+    // returns the user without tokens, because the address has to be verified
+    // first. So we stay in the (public) group and hand off to /verify-email,
+    // exactly as the web does.
+    try {
+      await signupMutation.mutateAsync({
+        fullName: values.fullName,
+        username: values.username,
+        email: values.email,
+        password: values.password,
+      });
+    } catch {
+      // Rendered from `signupMutation.error` below — rethrowing here would
+      // only surface as an unhandled rejection.
+      return;
+    }
+
     // The email rides along so the verify screen can name the inbox to check,
     // the same way the web passes it through navigation state.
     router.replace(`/verify-email?email=${encodeURIComponent(values.email)}`);
@@ -159,19 +198,50 @@ export function SignupScreen() {
             control={control}
             name="username"
             render={({ field: { onChange, onBlur, value } }) => (
-              <AuthField
-                ref={usernameRef}
-                label="Username"
-                icon={User}
-                placeholder="kwame_tech"
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={value}
-                onChangeText={onChange}
-                error={errors.username?.message}
-                {...nextKey(emailRef)}
-                {...focusProps('username', onBlur)}
-              />
+              <View>
+                <AuthField
+                  ref={usernameRef}
+                  label="Username"
+                  icon={User}
+                  placeholder="kwame_tech"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={value}
+                  onChangeText={onChange}
+                  error={errors.username?.message}
+                  {...nextKey(emailRef)}
+                  {...focusProps('username', onBlur)}
+                />
+
+                {/**
+                 * Live availability, as the web shows it.
+                 *
+                 * Only once the field has no format error of its own — two
+                 * messages under one input contradicting each other ("at least 3
+                 * characters" and "@ab is available") is worse than one.
+                 */}
+                {!errors.username && usernameStatus ? (
+                  <Text
+                    style={[
+                      styles.availability,
+                      {
+                        color:
+                          usernameStatus === 'taken'
+                            ? '#b91c1c'
+                            : usernameStatus === 'available'
+                              ? '#047857'
+                              : theme.textTertiary,
+                      },
+                    ]}
+                  >
+                    {usernameStatus === 'checking'
+                      ? 'Checking availability…'
+                      : usernameStatus === 'available'
+                        ? `@${watchedUsername} is available`
+                        : `@${watchedUsername} is already taken`}
+                  </Text>
+                ) : null}
+              </View>
             )}
           />
 
@@ -273,16 +343,24 @@ export function SignupScreen() {
             )}
           />
 
+          {/* Whatever the server rejected the account for — a taken username,
+              an address already registered — in its own words. */}
+          {signupMutation.isError ? (
+            <View style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+              <Text style={styles.apiErrorText}>{apiErrorMessage(signupMutation.error)}</Text>
+            </View>
+          ) : null}
+
           {/* Submit */}
           <Pressable
             onPress={onSubmit}
-            disabled={isLoading}
+            disabled={busy}
             style={({ pressed }) => [
               styles.button,
-              { backgroundColor: theme.primary, opacity: isLoading ? 0.5 : pressed ? 0.85 : 1 },
+              { backgroundColor: theme.primary, opacity: busy ? 0.5 : pressed ? 0.85 : 1 },
             ]}
           >
-            {isLoading ? (
+            {busy ? (
               <ActivityIndicator color="#ffffff" size="small" />
             ) : (
               <>
@@ -358,6 +436,13 @@ const styles = StyleSheet.create({
     color: '#e11d48',
     marginTop: 4,
   },
+  /** Server-side rejection, distinct from the per-field validation messages. */
+  apiError: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+  },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -383,4 +468,6 @@ const styles = StyleSheet.create({
   },
   footerText: { fontSize: 12, fontFamily: Fonts.sans[400] },
   footerLink: { fontSize: 12, fontFamily: Fonts.sans[700] },
+  // Sits directly under the username field, where its error would appear.
+  availability: { marginTop: 4, fontSize: 11.5, fontFamily: Fonts.sans[600] },
 });

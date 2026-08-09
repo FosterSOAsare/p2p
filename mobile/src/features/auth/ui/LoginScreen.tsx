@@ -4,12 +4,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Link } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowRight, Check, Eye, EyeOff, Lock, Mail, ShieldCheck } from 'lucide-react-native';
+import { ArrowRight, Check, Eye, EyeOff, Lock, Mail, ShieldCheck } from '@/components/icons';
 
 import { Fonts, Primary, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
+import { apiErrorMessage } from '@/features/shared/data/api';
 import { loginSchema, type LoginForm } from '../data/schemas';
 import { AuthField } from './AuthField';
 
@@ -30,6 +31,7 @@ export function LoginScreen() {
   const { login, isLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [focused, setFocused] = useState<'identifier' | 'password' | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
   // Lets the keyboard's "next" key jump from the identifier to the password.
   const passwordRef = useRef<TextInput>(null);
 
@@ -45,7 +47,14 @@ export function LoginScreen() {
   const onSubmit = handleSubmit(async (values) => {
     // No navigation here on purpose: signing in flips `isAuthenticated`, and the
     // root layout's Stack.Protected guard swaps to the (app) group by itself.
-    await login(values.identifier, values.password);
+    setLoginError(null);
+    try {
+      await login(values.identifier, values.password);
+    } catch (err) {
+      // Wrong credentials, unverified email, suspended account — the server's
+      // own wording, rather than a generic failure.
+      setLoginError(apiErrorMessage(err));
+    }
   });
 
   /** Wires a field's focus tracking into AuthField without repeating handlers. */
@@ -166,6 +175,13 @@ export function LoginScreen() {
             )}
           />
 
+          {/* Why the server refused, in its own words. */}
+          {loginError ? (
+            <View style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+              <Text style={styles.apiErrorText}>{loginError}</Text>
+            </View>
+          ) : null}
+
           {/* Submit */}
           <Pressable
             onPress={onSubmit}
@@ -256,6 +272,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: Fonts.sans[400],
   },
+  /** Server-side rejection, distinct from the per-field validation messages. */
+  apiError: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+  },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
   button: {
     flexDirection: 'row',
     alignItems: 'center',

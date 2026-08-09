@@ -11,14 +11,15 @@ import {
   ShieldCheck,
   Wallet as WalletIcon,
   X,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { usePersona } from '@/hooks/use-persona';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
-import { mockDeals, mockSellerStats } from '@/constants/mockData';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { useWallet, useWalletTransactions, useWithdraw } from '../data/walletApi';
 
 /**
  * Wallet & Payouts — the phone version of `web/src/pages/SellerWallet.tsx`.
@@ -68,7 +69,11 @@ export function WalletScreen() {
   const amountRow = useRef<View>(null);
   const destRow = useRef<View>(null);
 
-  const currency = mockSellerStats.currency;
+  const walletQuery = useWallet();
+  const txQuery = useWalletTransactions();
+  const withdraw = useWithdraw();
+
+  const currency = walletQuery.data?.currency ?? 'GHS';
   // The web titles this "Seller Payout Wallet" for sellers, "My P2P Wallet"
   // otherwise — the page itself is open to every signed-in account.
   const isSeller = usePersona() === 'seller';
@@ -79,31 +84,31 @@ export function WalletScreen() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Withdrawals made this session come off the available balance locally.
-  const [withdrawn, setWithdrawn] = useState(0);
-  const [extraEntries, setExtraEntries] = useState<LedgerEntry[]>([]);
+  /**
+   * All three figures come from the server. No local bookkeeping after a
+   * withdrawal: the mutation invalidates this query, so the balance that
+   * appears is the one the ledger actually holds.
+   */
+  const available = walletQuery.data?.balance ?? 0;
+  const escrowLocked = walletQuery.data?.escrowLocked ?? 0;
+  const pendingClearance = walletQuery.data?.pendingClearance ?? 0;
 
-  const available = Math.max(0, mockSellerStats.availablePayout - withdrawn);
-  const escrowLocked = mockSellerStats.lockedInEscrow;
-  // The mock has no pending-clearance figure, so nothing is in the 24h window.
-  // Once the API lands this comes from `wallet.pendingClearance`.
-  const pendingClearance = 0;
-
-  /** Released deals read as `escrow_release` credits, as on the web's ledger. */
-  const ledger = useMemo<LedgerEntry[]>(() => {
-    const released = mockDeals
-      .filter((d) => d.status === 'released' && d.counterparty.username === user?.username)
-      .map<LedgerEntry>((d) => ({
-        id: d.id,
-        type: 'escrow_release',
-        reference: d.code,
-        amount: d.amount,
-        at: d.updatedAt,
-      }));
-    return [...extraEntries, ...released].sort(
-      (a, b) => Date.parse(b.at) - Date.parse(a.at),
-    );
-  }, [extraEntries, user?.username]);
+  /**
+   * The real ledger, rather than reconstructing credits from released deals.
+   * Amounts arrive signed — credits positive, debits negative — so the sign
+   * decides how a row reads instead of its type.
+   */
+  const ledger = useMemo<LedgerEntry[]>(
+    () =>
+      (txQuery.data?.transactions ?? []).map((t) => ({
+        id: t.id,
+        type: t.amount < 0 ? 'withdrawal' : 'escrow_release',
+        reference: t.escrow?.code ?? t.note ?? t.type.replace(/_/g, ' '),
+        amount: Math.abs(t.amount),
+        at: t.createdAt,
+      })),
+    [txQuery.data],
+  );
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -111,7 +116,7 @@ export function WalletScreen() {
   };
 
   /** Mirrors the web's validation order and messages exactly. */
-  const submitWithdraw = () => {
+  const submitWithdraw = async () => {
     setError(null);
     setSuccess(null);
 
@@ -129,19 +134,18 @@ export function WalletScreen() {
       return;
     }
 
-    // TODO(api): POST /api/wallet/withdraw. Local-only for now, so the balance
-    // and ledger below reset when the app reloads.
-    setWithdrawn((w) => w + value);
-    setExtraEntries((prev) => [
-      {
-        id: `wd-${prev.length + 1}`,
-        type: 'withdrawal',
-        reference: destination.trim(),
-        amount: -value,
-        at: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
+    try {
+      // The server re-checks the balance and guards against going negative —
+      // the checks above are only there to save a round trip on obvious input
+      // mistakes, not to be the authority.
+      await withdraw.mutateAsync(value);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+      return;
+    }
+
+    // Nothing is adjusted locally: the mutation invalidates the balance and
+    // ledger queries, so both refetch and show what the server actually holds.
     setSuccess(`Successfully paid out ${formatMoney(value, currency)} to ${destination.trim()}!`);
     setAmount('');
     setWithdrawOpen(false);
@@ -282,7 +286,16 @@ export function WalletScreen() {
             Transaction History
           </Text>
 
-          {ledger.length === 0 ? (
+          {txQuery.isLoading ? (
+            <Text style={[styles.empty, { color: theme.textSecondary }]}>Loading transactions…</Text>
+          ) : txQuery.isError ? (
+            /* Shown rather than swallowed: "no transactions" is a claim about
+               the account, and this ledger currently fails for a server-side
+               reason. Saying so beats implying the history is empty. */
+            <Text style={[styles.empty, { color: '#b91c1c' }]}>
+              {apiErrorMessage(txQuery.error)}
+            </Text>
+          ) : ledger.length === 0 ? (
             <Text style={[styles.empty, { color: theme.textSecondary }]}>
               No transactions recorded yet
             </Text>

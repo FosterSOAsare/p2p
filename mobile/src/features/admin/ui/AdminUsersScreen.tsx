@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ban, CheckCircle2, Search, Users } from 'lucide-react-native';
+import { Ban, CheckCircle2, Search, Users } from '@/components/icons';
 
 import { useLocalSearchParams } from 'expo-router';
 

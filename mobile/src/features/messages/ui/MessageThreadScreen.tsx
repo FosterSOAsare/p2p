@@ -1,16 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import {
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Lock, Paperclip, SendHorizonal, ShieldCheck } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Check,
+  CheckCheck,
+  FileText,
+  Lock,
+  Paperclip,
+  SendHorizonal,
+  ShieldCheck,
+} from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { useKeyboard } from '@/hooks/use-keyboard';
-import { mockMessages, mockProducts } from '@/constants/mockData';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { useMarkRead, useSendAttachment, useSendMessage, useThread } from '../data/messagesApi';
+import { useChatSocket } from '../data/useChatSocket';
+import { useUploadFile } from '@/features/upload/data/uploadApi';
 
 /**
  * Deal / vendor chat — the phone version of `web/src/pages/MessageThread.tsx`.
@@ -20,18 +41,37 @@ import { mockMessages, mockProducts } from '@/constants/mockData';
  * here with `?redirect=/escrow/:id`, and Back honours it, exactly as the web's
  * back link does.
  *
- * Like the web's version this is **local state** — the server has
- * /api/messages, but neither client is wired to it yet, so a sent message
- * lives only until you leave the screen.
+ * Two transports, deliberately. Text goes over REST (`POST /api/messages/…`);
+ * attachments go over the socket, because the REST endpoint has no attachment
+ * field and the socket does. Photos and PDFs both, matching the web's
+ * `accept="image/*,application/pdf"`. The socket also keeps the thread live, so
+ * the other side's messages arrive without a refresh.
  */
+
+/** The server's cap, mirrored so an oversized pick fails before uploading. */
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 interface LocalMessage {
   id: string;
   body: string;
   mine: boolean;
   at: string;
-  /** Set when the message is a photo attachment rather than plain text. */
+  /**
+   * Delivery state, shown only on your own messages.
+   *
+   * Anything the thread returns has been persisted by the server, so its mere
+   * presence means delivered — one tick. `readAt` is stamped when the other
+   * party opens the thread, which is the second tick.
+   */
+  readAt: string | null;
+  /** Set when the message is a photo — rendered inline. */
   imageUri?: string;
+  /**
+   * Set when the message is a non-image file, e.g. a PDF receipt. Kept separate
+   * from `imageUri` because feeding a PDF URL to `<Image>` renders nothing at
+   * all — the evidence would be sent, stored, and invisible.
+   */
+  file?: { url: string; name: string };
 }
 
 const clockTime = (iso?: string) =>
@@ -57,28 +97,55 @@ export function MessageThreadScreen() {
   // measured height lifts the composer on both platforms instead.
   const { keyboardHeight } = useKeyboard();
 
-  // Seed from the mock thread between these two, newest last.
-  const [messages, setMessages] = useState<LocalMessage[]>(() =>
-    mockMessages
-      .filter(
-        (m) =>
-          (m.from === username && m.to === user?.username) ||
-          (m.to === username && m.from === user?.username),
-      )
-      .map((m) => ({
+  /**
+   * The real thread. `mine` is decided server-side, so the bubble alignment
+   * doesn't depend on comparing usernames here.
+   */
+  const threadQuery = useThread(username);
+  const sendMessage = useSendMessage(username);
+  const sendAttachment = useSendAttachment(username);
+  const markRead = useMarkRead(username);
+  const uploadFile = useUploadFile();
+
+  /**
+   * Joins this thread's socket room, so the other party's messages — including
+   * their photos — land here without a pull-to-refresh.
+   */
+  useChatSocket(username);
+
+  /** Covers both legs — the Cloudinary upload and the socket send. */
+  const attaching = uploadFile.isPending || sendAttachment.isPending;
+
+  const messages = useMemo<LocalMessage[]>(
+    () =>
+      (threadQuery.data?.messages ?? []).map((m) => ({
         id: m.id,
-        body: m.content,
-        mine: m.from === user?.username,
+        body: m.body,
+        mine: m.mine,
         at: clockTime(m.createdAt),
+        readAt: m.readAt,
+        // The URL lives on the attachment object, not on the message itself.
+        // Images render inline; anything else becomes a tappable file chip.
+        imageUri:
+          m.type === 'file' && m.attachment?.mime.startsWith('image/')
+            ? m.attachment.url
+            : undefined,
+        file:
+          m.type === 'file' && m.attachment && !m.attachment.mime.startsWith('image/')
+            ? { url: m.attachment.url, name: m.attachment.name }
+            : undefined,
       })),
+    [threadQuery.data],
   );
 
-  // Counterparty details come from whichever listing they vend — the mobile
-  // mock has no standalone user directory.
-  const counterparty = useMemo(
-    () => mockProducts.find((p) => p.vendor.username === username)?.vendor,
-    [username],
-  );
+  /** Comes with the thread — no user directory lookup needed. */
+  const counterparty = threadQuery.data?.counterparty;
+
+  // Opening the thread clears its unread badge, as on the web.
+  useEffect(() => {
+    if (threadQuery.data && username) markRead.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadQuery.data?.counterparty.username]);
 
   // Keep the newest message in view — on send, and when the keyboard opens and
   // steals the bottom of the thread.
@@ -94,52 +161,81 @@ export function MessageThreadScreen() {
     else router.replace('/marketplace');
   };
 
-  const send = () => {
+  const send = async () => {
     const body = draft.trim();
     if (!body) return;
-    setMessages((prev) => [
-      ...prev,
-      { id: `local-${prev.length + 1}`, body, mine: true, at: clockTime() },
-    ]);
+    // Cleared up front so the composer feels immediate; restored on failure so
+    // nothing typed is lost.
     setDraft('');
+    try {
+      await sendMessage.mutateAsync(body);
+    } catch (err) {
+      setDraft(body);
+      setAttachError(apiErrorMessage(err));
+    }
   };
 
   /**
-   * Attach a photo — the web's paperclip uploads to Cloudinary and posts the
-   * URL as the message body. Here the picked file is shown inline from the
-   * device.
+   * Attach a photo or a PDF — two steps, the same pair the web's paperclip takes.
    *
-   * TODO(api): upload the asset and send its URL instead of the local uri.
+   * 1. Upload to Cloudinary over REST, turning the picker's on-device
+   *    `file:///…` path into a URL the other party can actually fetch.
+   * 2. Send it over the **socket**, because that is the only transport that
+   *    accepts an attachment. `POST /api/messages/:username` validates `body`
+   *    and nothing else, so the same file sent that way would be stored as a
+   *    text message containing a link — no name, no mime, no size, and `type`
+   *    left as `text`. For evidence in a dispute, being a real `file` message is
+   *    the whole point.
    */
   const attach = async () => {
     setAttachError(null);
     try {
-      // Launch first: Android 13+ uses the system photo picker, which needs no
-      // permission at all. Only ask if the picker actually reports it's needed.
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        setAttachError('Photo access is off. Enable it for Expo Go in system settings.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality: 0.7,
+      /**
+       * A document picker rather than the image picker, and this is the reason:
+       * the web's file input is `accept="image/*,application/pdf"`, and the
+       * upload endpoint's multer filter allows exactly that set. Photos alone
+       * would leave a seller unable to send the receipt or invoice that settles
+       * a dispute.
+       *
+       * It also needs no permission prompt — the system picker hands back only
+       * what the user chose — and it returns `name`, `mimeType` and `size`
+       * directly, which are three of the four fields the server requires.
+       */
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*', 'application/pdf'],
+        copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets[0]) return;
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `local-${prev.length + 1}`,
-          body: '📎 Attachment',
-          mine: true,
-          at: clockTime(),
-          imageUri: result.assets[0].uri,
-        },
-      ]);
+      const picked = result.assets[0];
+
+      // The server rejects anything over 10MB, and it's kinder to say so before
+      // a long upload than after it.
+      if (picked.size && picked.size > MAX_ATTACHMENT_BYTES) {
+        setAttachError('That file is over 10MB. Please send a smaller one.');
+        return;
+      }
+
+      const mime = picked.mimeType || 'application/octet-stream';
+      const name = picked.name || 'attachment';
+
+      try {
+        const uploaded = await uploadFile.mutateAsync({ uri: picked.uri, name, type: mime });
+        await sendAttachment.mutateAsync({
+          url: uploaded.url,
+          // All four are required by the server's schema. Size comes from the
+          // upload response — the bytes actually stored — falling back to the
+          // picker's figure, and finally to 1, since the schema's minimum is 1
+          // and a rejected send would be worse than a slightly wrong number.
+          name: uploaded.originalName || name,
+          mime,
+          size: uploaded.size || picked.size || 1,
+        });
+      } catch (err) {
+        setAttachError(apiErrorMessage(err));
+      }
     } catch {
-      setAttachError("Couldn't open the gallery on this device.");
+      setAttachError("Couldn't open the file picker on this device.");
     }
   };
 
@@ -235,19 +331,66 @@ export function MessageThreadScreen() {
                   {m.imageUri ? (
                     <Image source={m.imageUri} style={styles.bubbleImage} contentFit="cover" />
                   ) : null}
-                  <Text
-                    style={[styles.bubbleText, { color: m.mine ? '#ffffff' : theme.text }]}
-                  >
-                    {m.body}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.bubbleTime,
-                      { color: m.mine ? 'rgba(255,255,255,0.75)' : theme.textTertiary },
-                    ]}
-                  >
-                    {m.at}
-                  </Text>
+
+                  {/* A PDF can't render inline, so it gets a chip that opens it
+                      in the device's viewer — which is what makes it usable as
+                      evidence rather than just a row in the database. */}
+                  {m.file ? (
+                    <Pressable
+                      onPress={() => Linking.openURL(m.file!.url)}
+                      accessibilityRole="link"
+                      accessibilityLabel={`Open ${m.file.name}`}
+                      style={({ pressed }) => [
+                        styles.fileChip,
+                        {
+                          backgroundColor: m.mine
+                            ? 'rgba(255,255,255,0.18)'
+                            : theme.backgroundElement,
+                          opacity: pressed ? 0.75 : 1,
+                        },
+                      ]}
+                    >
+                      <FileText size={16} color={m.mine ? '#ffffff' : theme.text} />
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.fileName, { color: m.mine ? '#ffffff' : theme.text }]}
+                      >
+                        {m.file.name}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+
+                  {/* An attachment-only message has an empty body — rendering an
+                      empty Text would still add a line of height under it. */}
+                  {m.body ? (
+                    <Text style={[styles.bubbleText, { color: m.mine ? '#ffffff' : theme.text }]}>
+                      {m.body}
+                    </Text>
+                  ) : null}
+                  {/* Time, and on your own messages a delivery tick beside it.
+                      Only on yours — a tick on the other person's message would
+                      be telling them something they already know. */}
+                  <View style={styles.bubbleFooter}>
+                    <Text
+                      style={[
+                        styles.bubbleTime,
+                        { color: m.mine ? 'rgba(255,255,255,0.75)' : theme.textTertiary },
+                      ]}
+                    >
+                      {m.at}
+                    </Text>
+                    {m.mine ? (
+                      m.readAt ? (
+                        <CheckCheck size={13} color="#ffffff" accessibilityLabel="Read" />
+                      ) : (
+                        <Check
+                          size={13}
+                          color="rgba(255,255,255,0.75)"
+                          accessibilityLabel="Delivered"
+                        />
+                      )
+                    ) : null}
+                  </View>
                 </View>
               </View>
             ))}
@@ -263,17 +406,26 @@ export function MessageThreadScreen() {
           <View style={[styles.composer, { borderTopColor: theme.border, backgroundColor: theme.background }]}>
             <Pressable
               onPress={attach}
+              // Uploading a photo over a slow link takes seconds, and without
+              // this the paperclip looks idle and invites a second tap — which
+              // would send the same evidence twice.
+              disabled={attaching}
               accessibilityRole="button"
-              accessibilityLabel="Attach a photo"
+              accessibilityLabel={attaching ? 'Sending attachment' : 'Attach a photo or PDF'}
               style={({ pressed }) => [
                 styles.attach,
                 {
                   backgroundColor: pressed ? theme.backgroundSelected : theme.inputBackground,
                   borderColor: theme.inputBorder,
+                  opacity: attaching ? 0.5 : 1,
                 },
               ]}
             >
-              <Paperclip size={16} color={theme.text} />
+              {attaching ? (
+                <ActivityIndicator size="small" color={theme.text} />
+              ) : (
+                <Paperclip size={16} color={theme.text} />
+              )}
             </Pressable>
 
             <TextInput
@@ -382,8 +534,29 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     marginBottom: Spacing.two,
   },
+  fileChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    minHeight: 44,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Radius.md,
+    marginBottom: Spacing.two,
+    maxWidth: 220,
+  },
+  fileName: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[600] },
   bubbleText: { fontSize: 13, lineHeight: 18, fontFamily: Fonts.sans[400] },
-  bubbleTime: { fontSize: 9.5, fontFamily: Fonts.sans[500], marginTop: 2 },
+  // Right-aligned so the tick sits at the bubble's trailing edge, where the eye
+  // already goes for the timestamp.
+  bubbleFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+    marginTop: 2,
+  },
+  bubbleTime: { fontSize: 9.5, fontFamily: Fonts.sans[500] },
 
   attachError: {
     marginHorizontal: Spacing.four,

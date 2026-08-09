@@ -1,14 +1,17 @@
 import { useRef, useState } from 'react';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { ImagePlus, Loader2, Trash2 } from 'lucide-react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ImagePlus, Loader2, Trash2 } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { SelectField } from '@/features/shared/ui/SelectField';
-import { mockCategories, type ImageRef } from '@/constants/mockData';
+import { type ImageRef } from '@/constants/mockData';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { toPickedAsset, useUploadFiles } from '@/features/upload/data/uploadApi';
+import { useCategories } from '../data/listingsApi';
 
 /**
  * Listing form — the phone version of
@@ -76,6 +79,8 @@ export function ListingForm({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const uploadFiles = useUploadFiles();
+  const categoriesQuery = useCategories();
 
   /** The web's `listingSchema`, message for message. */
   const validate = (): boolean => {
@@ -124,9 +129,22 @@ export function ListingForm({
         quality: 0.8,
       });
       if (result.canceled) return;
-      // TODO(api): upload to Cloudinary and keep the returned URLs, as the web
-      // does; these are on-device paths for now.
-      setImages((prev) => [...prev, ...result.assets.map((a) => a.uri)].slice(0, 6));
+
+      /**
+       * Upload immediately, and keep the returned URLs — not the device paths.
+       *
+       * The server stores a URL and rejects `file:///…`, so holding on to the
+       * local path would mean the photo silently disappeared on save. Doing it
+       * here rather than at submit also means the thumbnail you see is the
+       * uploaded image, so a failed upload is obvious at once.
+       */
+      const assets = result.assets.slice(0, 6).map((a, i) => toPickedAsset(a.uri, i));
+      try {
+        const uploaded = await uploadFiles.mutateAsync(assets);
+        setImages((prev) => [...prev, ...uploaded.map((u) => u.url)].slice(0, 6));
+      } catch (err) {
+        setPhotoError(apiErrorMessage(err));
+      }
     } catch {
       setPhotoError("Couldn't open the gallery on this device.");
     }
@@ -217,7 +235,9 @@ export function ListingForm({
         <SelectField
           label="Category"
           value={category}
-          options={mockCategories.map((c) => ({ value: c.name, label: c.name }))}
+          /* The server's own list, so a seller can only pick a category the
+             server will accept on publish. */
+          options={(categoriesQuery.data ?? []).map((c) => ({ value: c.name, label: c.name }))}
           onSelect={(v) => {
             setCategory(v);
             setErrors((e) => ({ ...e, category: '' }));
@@ -253,6 +273,7 @@ export function ListingForm({
           {images.length < 6 ? (
             <Pressable
               onPress={addPhoto}
+              disabled={uploadFiles.isPending}
               style={({ pressed }) => [
                 styles.addPhoto,
                 {
@@ -261,8 +282,14 @@ export function ListingForm({
                 },
               ]}
             >
-              <ImagePlus size={20} color={theme.textTertiary} />
-              <Text style={[styles.addPhotoText, { color: theme.textTertiary }]}>Add</Text>
+              {uploadFiles.isPending ? (
+                <ActivityIndicator size="small" color={theme.primary} />
+              ) : (
+                <ImagePlus size={20} color={theme.textTertiary} />
+              )}
+              <Text style={[styles.addPhotoText, { color: theme.textTertiary }]}>
+                {uploadFiles.isPending ? 'Uploading' : 'Add'}
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -359,9 +386,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.two,
-    height: 50,
+    minHeight: 50,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
     borderRadius: Radius.md,
     marginTop: Spacing.two,
   },
-  submitText: { fontSize: 13.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  submitText: { flexShrink: 1, fontSize: 13.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
 });

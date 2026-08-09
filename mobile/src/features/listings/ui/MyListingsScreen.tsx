@@ -1,15 +1,21 @@
 import { useMemo, useState } from 'react';
 import { Image } from 'expo-image';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ExternalLink, Package, Pencil, PlusCircle, Trash2 } from 'lucide-react-native';
+import { ExternalLink, Package, Pencil, PlusCircle, Trash2 } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
-import { useAuth } from '@/context/AuthContext';
-import { mockProducts, type Product } from '@/constants/mockData';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { SkeletonList } from '@/features/shared/ui/Skeleton';
+import {
+  useDeleteListing,
+  useMyListings,
+  type ListingStatus,
+  type MyListing,
+} from '../data/listingsApi';
 
 /**
  * My Listings — the phone version of `web/src/pages/MyListings.tsx`.
@@ -19,32 +25,38 @@ import { mockProducts, type Product } from '@/constants/mockData';
  * row actions (view public page, edit, delete). Copy is the web's, verbatim.
  *
  * The web keeps its filter and page in the URL; a phone has no address bar, so
- * the tab is component state. Pagination is dropped for now — the mock has
- * four listings, and a phone list scrolls rather than paginating.
+ * the tab is component state. The server pages at 48 max and this asks for the
+ * cap — a catalogue past that needs real pagination, which this doesn't do yet.
  *
  * This is the seller's fourth *tab* (where buyers get Activity), so it renders
  * no Back affordance and pads its list past the tab bar.
  *
- * Reads the same `mockProducts` collection the marketplace does, scoped to the
- * signed-in vendor; delete removes the row locally only.
+ * Reads `GET /api/listings/mine`, which is already scoped to the signed-in
+ * seller — no client-side filtering by username needed.
  */
 
-const STATUS_TABS = [
+const STATUS_TABS: { id: ListingStatus | 'all'; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'active', label: 'Active' },
   { id: 'draft', label: 'Drafts' },
   { id: 'out_of_stock', label: 'Out of Stock' },
-] as const;
+  // An admin takedown. Without this tab a removed listing would be invisible in
+  // every filter yet still counted, which reads as data quietly going missing.
+  { id: 'removed', label: 'Removed' },
+];
 
-/** Same three states and labels as the web's `StatusBadge`. */
-function statusBadge(status: Product['status']) {
+/** Mirrors the web's `StatusBadge`, plus the removed state the mock never had. */
+function statusBadge(status: ListingStatus) {
   if (status === 'active') return { label: 'Active', bg: '#dcfce7', text: '#166534' };
   if (status === 'out_of_stock') return { label: 'Out of Stock', bg: '#fef3c7', text: '#92400e' };
+  if (status === 'removed') return { label: 'Removed', bg: '#fee2e2', text: '#991b1b' };
   return { label: 'Draft', bg: '#e5e7eb', text: '#374151' };
 }
 
-function formatMoney(amount: number, currency = 'GH₵') {
-  return `${currency} ${amount.toLocaleString('en-GH', {
+/** The API returns an ISO currency code; the UI shows the symbol. */
+function formatMoney(amount: number, currency: string) {
+  const symbol = currency === 'GHS' ? 'GH₵' : currency;
+  return `${symbol} ${amount.toLocaleString('en-GH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -62,47 +74,65 @@ export function MyListingsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const tabBarHeight = useTabBarHeight();
-  const { user } = useAuth();
 
-  const [tab, setTab] = useState<(typeof STATUS_TABS)[number]['id']>('all');
-  const [deleted, setDeleted] = useState<Set<string>>(new Set());
-  const [confirmTarget, setConfirmTarget] = useState<Product | null>(null);
+  const [tab, setTab] = useState<ListingStatus | 'all'>('all');
+  const [confirmTarget, setConfirmTarget] = useState<MyListing | null>(null);
 
   /**
-   * Scoped from the SAME collection the marketplace reads, mirroring the web
-   * where both views hit one `Listing` table and My Listings is just the
-   * `sellerId`-scoped query.
-   *
-   * `mockSellerListings` was a separate array with its own ids, so a seller's
-   * inventory didn't exist in the marketplace and "View public page" landed on
-   * "Listing Not Found".
+   * One fetch, filtered in memory — so switching tabs is instant rather than a
+   * fresh round trip each time.
    */
-  const listings = useMemo(
-    () =>
-      mockProducts
-        .filter((p) => p.vendor.username === user?.username)
-        .filter((p) => !deleted.has(p.id))
-        .filter((p) => (tab === 'all' ? true : p.status === tab)),
-    [tab, deleted, user?.username],
-  );
+  const listingsQuery = useMyListings();
+  const deleteListing = useDeleteListing();
 
+  const listings = useMemo(() => {
+    const rows = listingsQuery.data?.listings ?? [];
+    return tab === 'all' ? rows : rows.filter((l) => l.status === tab);
+  }, [tab, listingsQuery.data]);
+
+  const notReady = listingsQuery.isLoading || listingsQuery.isError;
   const total = listings.length;
 
-  const confirmDelete = () => {
+  /**
+   * Mirrors the web's `onSettled: () => setDeleteTarget(null)` — the dialog
+   * closes either way and a failure is reported above the list.
+   *
+   * This used to swallow the error and leave the dialog open, on the theory
+   * that it would explain itself; it had nowhere to render the message, so a
+   * failed delete just left the dialog sitting there looking stuck.
+   *
+   * No local bookkeeping on success: the mutation invalidates the cache, so the
+   * list refetches without this component tracking what was deleted.
+   */
+  const confirmDelete = async () => {
     if (!confirmTarget) return;
-    // TODO(api): DELETE /api/listings/:id — local removal only for now.
-    setDeleted((prev) => new Set(prev).add(confirmTarget.id));
-    setConfirmTarget(null);
+    try {
+      await deleteListing.mutateAsync(confirmTarget.id);
+    } catch {
+      // Surfaced by the banner above the list.
+    } finally {
+      setConfirmTarget(null);
+    }
   };
 
-  const renderListing = ({ item }: { item: Product }) => {
+  const renderListing = ({ item }: { item: MyListing }) => {
     const badge = statusBadge(item.status);
 
     return (
       <View style={[styles.row, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
         {/* Listing itself */}
         <View style={styles.rowTop}>
-          <Image source={item.images[0]} style={styles.thumb} contentFit="cover" />
+          {/* One cover URL from the API, and it can be null — a listing created
+              without photos would otherwise render a broken image box. */}
+          {item.image ? (
+            <Image source={item.image} style={styles.thumb} contentFit="cover" />
+          ) : (
+            <View
+              style={[styles.thumb, styles.thumbEmpty, { backgroundColor: theme.backgroundElement }]}
+            >
+              <Package size={18} color={theme.textTertiary} />
+            </View>
+          )}
 
           <View style={styles.rowInfo}>
             <View style={styles.titleRow}>
@@ -190,6 +220,16 @@ export function MyListingsScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
+            {/* A refused delete, reported where the web reports it — above the
+                list, after the dialog has closed. */}
+            {deleteListing.isError ? (
+              <View
+                style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}
+              >
+                <Text style={styles.apiErrorText}>{apiErrorMessage(deleteListing.error)}</Text>
+              </View>
+            ) : null}
+
             <View style={styles.eyebrowRow}>
               <Package size={13} color={theme.primary} />
               <Text style={[styles.eyebrow, { color: theme.primary }]}>Seller Console</Text>
@@ -248,6 +288,22 @@ export function MyListingsScreen() {
           </View>
         }
         ListEmptyComponent={
+          /* "No listings" is a claim about the store, so it must not show while
+             the answer is still in flight. Rows in outline beat a spinner: the
+             screen looks like itself immediately. */
+          listingsQuery.isLoading ? (
+            <SkeletonList count={4} />
+          ) : notReady ? (
+            <View style={[styles.empty, { borderColor: theme.border }]}>
+              <Package size={28} color="#e11d48" />
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                Couldn&apos;t load your listings
+              </Text>
+              <Text style={[styles.countText, { color: theme.textSecondary }]}>
+                {apiErrorMessage(listingsQuery.error)}
+              </Text>
+            </View>
+          ) : (
           <View style={[styles.empty, { borderColor: theme.border }]}>
             <Package size={28} color={theme.textTertiary} />
             <Text style={[styles.emptyTitle, { color: theme.text }]}>
@@ -266,31 +322,42 @@ export function MyListingsScreen() {
               <Text style={styles.addBtnText}>Create your first listing</Text>
             </Pressable>
           </View>
+          )
         }
       />
 
-      {/* Delete confirmation — the web uses a ConfirmDialog */}
-      {confirmTarget ? (
-        <View style={styles.backdrop}>
-          <View style={[styles.dialog, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.dialogTitle, { color: theme.text }]}>Delete listing?</Text>
-            <Text style={[styles.dialogBody, { color: theme.textSecondary }]}>
-              “{confirmTarget.title}” will be removed from your catalog. This can&apos;t be undone.
-            </Text>
-            <View style={styles.dialogActions}>
-              <Pressable
-                onPress={() => setConfirmTarget(null)}
-                style={[styles.cancelBtn, { borderColor: theme.border }]}
-              >
-                <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={confirmDelete} style={styles.deleteBtn}>
-                <Text style={styles.deleteText}>Delete</Text>
-              </Pressable>
+      {/* Delete confirmation — the web uses a ConfirmDialog. A Modal here so it
+          sits over the list and freezes it, rather than riding along with the
+          scroll behind it. */}
+      <Modal
+        visible={confirmTarget !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setConfirmTarget(null)}
+      >
+        {confirmTarget ? (
+          <View style={styles.backdrop}>
+            <View style={[styles.dialog, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+              <Text style={[styles.dialogTitle, { color: theme.text }]}>Delete listing?</Text>
+              <Text style={[styles.dialogBody, { color: theme.textSecondary }]}>
+                “{confirmTarget.title}” will be removed from your catalog. This can&apos;t be undone.
+              </Text>
+              <View style={styles.dialogActions}>
+                <Pressable
+                  onPress={() => setConfirmTarget(null)}
+                  style={[styles.cancelBtn, { borderColor: theme.border }]}
+                >
+                  <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancel</Text>
+                </Pressable>
+                <Pressable onPress={confirmDelete} style={styles.deleteBtn}>
+                  <Text style={styles.deleteText}>Delete</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
-        </View>
-      ) : null}
+        ) : null}
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -306,6 +373,8 @@ const styles = StyleSheet.create({
   },
 
   header: { gap: Spacing.three, marginBottom: Spacing.four },
+  apiError: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
   backRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -334,11 +403,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.two,
-    height: 46,
+    minHeight: 46,
     paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.two,
     borderRadius: Radius.md,
   },
-  addBtnText: { fontSize: 13, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  // "Create your first listing" is the long one — it wraps inside the button
+  // now instead of running past its edge on a narrow screen.
+  addBtnText: { flexShrink: 1, fontSize: 13, fontFamily: Fonts.sans[700], color: '#ffffff' },
 
   tabStrip: { gap: Spacing.two, paddingRight: Spacing.four },
   tab: {
@@ -361,6 +433,7 @@ const styles = StyleSheet.create({
   },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   thumb: { height: 60, width: 60, borderRadius: Radius.md },
+  thumbEmpty: { alignItems: 'center', justifyContent: 'center' },
   rowInfo: { flex: 1, gap: 3 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   titlePress: { flexShrink: 1 },
@@ -375,17 +448,24 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     paddingTop: Spacing.three,
   },
+  /**
+   * 44 minimum, not 38. Three buttons sharing a row on a phone were each under
+   * the 44pt/48dp minimum touch target both platforms specify, which is what
+   * made View / Edit / Delete feel like they needed a precise tap.
+   */
   actionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
-    height: 38,
+    minHeight: 44,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
     borderWidth: 1,
     borderRadius: Radius.md,
   },
-  actionText: { fontSize: 11.5, fontFamily: Fonts.sans[700] },
+  actionText: { flexShrink: 1, fontSize: 11.5, fontFamily: Fonts.sans[700] },
 
   empty: {
     borderWidth: 1,
@@ -397,12 +477,9 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 14, fontFamily: Fonts.display[700], textAlign: 'center' },
 
+  // flex:1 inside a Modal — it already owns the screen.
   backdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -421,20 +498,24 @@ const styles = StyleSheet.create({
   dialogActions: { flexDirection: 'row', gap: Spacing.two },
   cancelBtn: {
     flex: 1,
-    height: 44,
+    minHeight: 44,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderRadius: Radius.md,
   },
-  cancelText: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
+  cancelText: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[700] },
   deleteBtn: {
     flex: 1,
-    height: 44,
+    minHeight: 44,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.md,
     backgroundColor: '#e11d48',
   },
-  deleteText: { fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  deleteText: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
 });

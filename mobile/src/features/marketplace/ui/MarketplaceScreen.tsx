@@ -11,15 +11,23 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Heart, Search, ShieldCheck, Store, X } from 'lucide-react-native';
+import { Heart, Search, ShieldCheck, Store, X } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { SkeletonCard } from '@/features/shared/ui/Skeleton';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
+import { useAuth } from '@/context/AuthContext';
 import { useSaved } from '@/context/SavedContext';
 import { useBlocked } from '@/context/BlockedContext';
 import { usePersona } from '@/hooks/use-persona';
-import { mockCategories, mockProducts, type ImageRef, type Product } from '@/constants/mockData';
+import { type ImageRef } from '@/constants/mockData';
+import {
+  useCategories,
+  useMarketplaceListings,
+  type MarketplaceListing,
+} from '@/features/listings/data/listingsApi';
 
 /**
  * Marketplace tab — the phone version of `web/src/features/marketplace/ui/
@@ -29,10 +37,9 @@ import { mockCategories, mockProducts, type ImageRef, type Product } from '@/con
  * category strip, active-filter chips, results count, listing cards, empty
  * state. The web lays cards out in a 4-column grid; a phone gets 2 columns.
  *
- * Filtering runs over the mock data in `constants/mockData.ts` — no API yet.
- * The web keeps filters in the URL query; here they're component state, since
- * a phone has no address bar. Swap to the real endpoint later without touching
- * this layout.
+ * Reads `GET /api/listings` for the catalogue and `GET /api/categories` for the
+ * filter strip. The web keeps filters in the URL query; here they're component
+ * state, since a phone has no address bar.
  */
 
 const SORTS = [
@@ -83,6 +90,8 @@ export function MarketplaceScreen() {
   // Mirrors the web's `isBuyer = !me || (!isAdmin && !isSeller)`. Saving is a
   // buyer-only action, so sellers and admins browse without it.
   const isBuyer = usePersona() === 'buyer';
+  // Needed to tell your own listings apart from everyone else's.
+  const { user } = useAuth();
   const { isBlocked } = useBlocked();
 
   const [search, setSearch] = useState('');
@@ -91,10 +100,27 @@ export function MarketplaceScreen() {
   // Shared with the listing page, bookmarks and the dashboard tile.
   const { isSaved, toggleSaved } = useSaved();
 
+  /**
+   * The server's categories, not a hardcoded copy. Filtering by a name the
+   * server has never heard of returns nothing, which reads as an empty
+   * marketplace rather than as a stale filter list.
+   */
+  const categoriesQuery = useCategories();
   const categoryNames = useMemo(
-    () => ['All', ...mockCategories.map((c) => c.name)],
-    [],
+    () => ['All', ...(categoriesQuery.data ?? []).map((c) => c.name)],
+    [categoriesQuery.data],
   );
+
+  /**
+   * The real catalogue. Its ids are the server's, so tapping a card and opening
+   * `/marketplace/:id` resolves the very listing that was tapped — with mock
+   * data those ids existed nowhere and the detail screen found nothing.
+   *
+   * Fetched once and filtered in memory: search and category could go to the
+   * server, but every keystroke would then cost a round trip of several
+   * seconds. The catalogue is small and capped, so this stays responsive.
+   */
+  const listingsQuery = useMarketplaceListings();
 
   const results = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -102,18 +128,23 @@ export function MarketplaceScreen() {
     // `!blockedSellers.has(p.sellerUsername)` filter. This is the one thing
     // that makes two shoppers' marketplaces differ; the catalogue itself is
     // identical for buyers and sellers.
-    let list = mockProducts.filter(
-      (p) => p.status === 'active' && !isBlocked(p.vendor.username),
+    // No status check: `GET /api/listings` already returns only live listings
+    // and sends no `status` field, so filtering on one matched nothing and
+    // emptied the marketplace. Blocked sellers are still filtered — the web's
+    // `!blockedSellers.has(p.sellerUsername)`.
+    let list = (listingsQuery.data?.listings ?? []).filter(
+      (p) => !isBlocked(p.sellerUsername),
     );
 
     if (category !== 'All') list = list.filter((p) => p.category === category);
     if (q) {
-      // Web searches title, seller and keyword — same three here.
+      // Web searches title, seller and keyword — same three here. `short` is
+      // the server's summary line, standing in for the mock's description.
       list = list.filter(
         (p) =>
           p.title.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q) ||
-          p.vendor.username.toLowerCase().includes(q.replace(/^@/, '')),
+          (p.short ?? '').toLowerCase().includes(q) ||
+          p.sellerUsername.toLowerCase().includes(q.replace(/^@/, '')),
       );
     }
 
@@ -124,7 +155,7 @@ export function MarketplaceScreen() {
       sorted.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
     }
     return sorted;
-  }, [search, category, sort, isBlocked]);
+  }, [search, category, sort, isBlocked, listingsQuery.data]);
 
   const clearFilters = () => {
     setSearch('');
@@ -134,16 +165,49 @@ export function MarketplaceScreen() {
 
   const hasFilters = category !== 'All' || search.trim().length > 0;
 
-  const renderCard = ({ item }: { item: Product }) => {
+  /**
+   * Pads an odd result count with one invisible cell.
+   *
+   * With `numColumns={2}` a lone card in the last row has no sibling to share
+   * the width with, and `flex: 1` makes it span the whole row — so it appears
+   * double-width whenever the count is odd. A spacer gives it a partner to
+   * split against, keeping every card identical.
+   */
+  const SPACER = '__spacer__';
+  const grid = useMemo(
+    () =>
+      results.length % 2 === 1
+        ? [...results, { id: SPACER } as MarketplaceListing]
+        : results,
+    [results],
+  );
+
+  const renderCard = ({ item }: { item: MarketplaceListing }) => {
+    // The padding cell: occupies a column, draws nothing.
+    if (item.id === SPACER) {
+      return <View style={styles.spacerCard} />;
+    }
+
     const saved = isSaved(item.id);
+    const isOwnListing = Boolean(user && item.sellerUsername === user.username);
+
+    /**
+     * Your own listing opens its **management** page, not its public one —
+     * mirroring the web's `isOwnListing ? /listings/:id : /marketplace/:id`.
+     *
+     * Mobile always opened the public page, which meant a seller tapping their
+     * own card landed on the shopfront view with a Buy button and no way to
+     * edit — and on a removed listing, on "Listing Not Found", since the public
+     * page correctly hides it. The web sends them to the editor instead.
+     */
+    const openListing = (l: MarketplaceListing) =>
+      router.push(isOwnListing ? `/listings/${l.id}` : `/marketplace/${l.id}`);
 
     return (
       <Pressable
-        // The web wraps the whole card in a link to /marketplace/:id, so the
-        // card — View chip included — opens the listing.
-        onPress={() => router.push(`/marketplace/${item.id}`)}
+        onPress={() => openListing(item)}
         accessibilityRole="button"
-        accessibilityLabel={`View ${item.title}`}
+        accessibilityLabel={`${isOwnListing ? 'Manage' : 'View'} ${item.title}`}
         style={({ pressed }) => [
           styles.card,
           {
@@ -154,7 +218,7 @@ export function MarketplaceScreen() {
       >
         {/* Image with category pill and save heart, as on the web card */}
         <View style={[styles.imageWrap, { backgroundColor: theme.backgroundElement }]}>
-          <ProductImage uri={item.images[0]} recyclingKey={item.id} />
+          <ProductImage uri={item.image ?? undefined} recyclingKey={item.id} />
 
           <View style={styles.categoryPill}>
             <Text style={styles.categoryPillText}>{item.category}</Text>
@@ -181,17 +245,29 @@ export function MarketplaceScreen() {
         <View style={styles.vendorRow}>
           <View style={styles.vendorName}>
             <Text numberOfLines={1} style={[styles.vendorText, { color: theme.textSecondary }]}>
-              @{item.vendor.username}
+              @{item.sellerUsername}
             </Text>
-            {item.vendor.verified ? <ShieldCheck size={11} color={theme.primary} /> : null}
+            {item.sellerVerified ? <ShieldCheck size={11} color={theme.primary} /> : null}
           </View>
         </View>
 
-        <Text numberOfLines={1} style={[styles.cardTitle, { color: theme.text }]}>
+        {/* Two lines always, padded when the title is short. Letting this grow
+            with the title made cards in the same row stretch to the tallest,
+            so the grid changed shape as you moved between categories. */}
+        <Text numberOfLines={2} style={[styles.cardTitle, { color: theme.text }]}>
           {item.title}
         </Text>
-        <View style={[styles.conditionPill, { backgroundColor: theme.backgroundElement }]}>
-          <Text style={[styles.conditionText, { color: theme.textSecondary }]}>{item.condition}</Text>
+        {/* Condition is optional on a listing. Rendering the pill regardless
+            put an empty box on some cards and none on others — another source
+            of uneven heights. The slot is reserved either way. */}
+        <View style={styles.conditionSlot}>
+          {item.condition ? (
+            <View style={[styles.conditionPill, { backgroundColor: theme.backgroundElement }]}>
+              <Text style={[styles.conditionText, { color: theme.textSecondary }]}>
+                {item.condition}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Footer: price + View, split by a rule like the web card */}
@@ -202,21 +278,36 @@ export function MarketplaceScreen() {
               {formatMoney(item.price, item.currency)}
             </Text>
           </View>
-          {/* Its own pressable, like the web's View link — the card opens the
+          {/* Its own pressable, like the web's link — the card opens the
               listing too, but this gives the chip a proper tap target. */}
           <Pressable
-            onPress={() => router.push(`/marketplace/${item.id}`)}
+            onPress={() => openListing(item)}
             hitSlop={6}
             accessibilityRole="button"
-            accessibilityLabel={`View ${item.title}`}
+            accessibilityLabel={`${isOwnListing ? 'Manage' : 'View'} ${item.title}`}
             style={({ pressed }) => [
               styles.viewChip,
-              { backgroundColor: pressed ? theme.primary : theme.primaryLight },
+              {
+                backgroundColor: pressed
+                  ? isOwnListing
+                    ? '#059669'
+                    : theme.primary
+                  : isOwnListing
+                    ? '#d1fae5'
+                    : theme.primaryLight,
+              },
             ]}
           >
             {({ pressed }) => (
-              <Text style={[styles.viewChipText, { color: pressed ? '#ffffff' : theme.primary }]}>
-                View
+              <Text
+                style={[
+                  styles.viewChipText,
+                  {
+                    color: pressed ? '#ffffff' : isOwnListing ? '#047857' : theme.primary,
+                  },
+                ]}
+              >
+                {isOwnListing ? 'Manage' : 'View'}
               </Text>
             )}
           </Pressable>
@@ -228,7 +319,7 @@ export function MarketplaceScreen() {
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
       <FlatList
-        data={results}
+        data={grid}
         renderItem={renderCard}
         keyExtractor={(item) => item.id}
         numColumns={2}
@@ -360,7 +451,7 @@ export function MarketplaceScreen() {
             <View style={[styles.countRow, { borderTopColor: theme.border }]}>
               <Text style={[styles.countText, { color: theme.textSecondary }]}>
                 Showing <Text style={{ color: theme.text }}>{results.length}</Text> of{' '}
-                <Text style={{ color: theme.text }}>{mockProducts.length}</Text> listings
+                <Text style={{ color: theme.text }}>{listingsQuery.data?.total ?? 0}</Text> listings
               </Text>
               {hasFilters ? (
                 <Pressable onPress={clearFilters} hitSlop={6}>
@@ -370,21 +461,64 @@ export function MarketplaceScreen() {
             </View>
           </View>
         }
+        /**
+         * Three states, not one.
+         *
+         * This screen previously had neither a loading nor an error branch, so
+         * an in-flight fetch and a failed one both rendered "No listings match
+         * your search" — telling you your filters were wrong when in fact
+         * nothing had arrived yet, and offering a Clear Filters button that
+         * couldn't possibly help.
+         */
         ListEmptyComponent={
-          <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            <View style={[styles.emptyIcon, { backgroundColor: theme.backgroundElement }]}>
-              <Search size={18} color={theme.textSecondary} />
+          listingsQuery.isLoading ? (
+            <View style={styles.skeletonGrid}>
+              <View style={styles.skeletonRow}>
+                <SkeletonCard />
+                <SkeletonCard />
+              </View>
+              <View style={styles.skeletonRow}>
+                <SkeletonCard />
+                <SkeletonCard />
+              </View>
             </View>
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>
-              No listings match your search
-            </Text>
-            <Text style={[styles.emptyBody, { color: theme.textSecondary }]}>
-              Try adjusting your search keywords or clearing category filters.
-            </Text>
-            <Pressable onPress={clearFilters} style={[styles.emptyBtn, { backgroundColor: theme.primary }]}>
-              <Text style={styles.emptyBtnText}>Clear All Filters</Text>
-            </Pressable>
-          </View>
+          ) : listingsQuery.isError ? (
+            <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              <View style={[styles.emptyIcon, { backgroundColor: theme.backgroundElement }]}>
+                <Search size={18} color="#e11d48" />
+              </View>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                Couldn&apos;t load the marketplace
+              </Text>
+              <Text style={[styles.emptyBody, { color: theme.textSecondary }]}>
+                {apiErrorMessage(listingsQuery.error)}
+              </Text>
+              <Pressable
+                onPress={() => listingsQuery.refetch()}
+                style={[styles.emptyBtn, { backgroundColor: theme.primary }]}
+              >
+                <Text style={styles.emptyBtnText}>Try Again</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              <View style={[styles.emptyIcon, { backgroundColor: theme.backgroundElement }]}>
+                <Search size={18} color={theme.textSecondary} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                No listings match your search
+              </Text>
+              <Text style={[styles.emptyBody, { color: theme.textSecondary }]}>
+                Try adjusting your search keywords or clearing category filters.
+              </Text>
+              <Pressable
+                onPress={clearFilters}
+                style={[styles.emptyBtn, { backgroundColor: theme.primary }]}
+              >
+                <Text style={styles.emptyBtnText}>Clear All Filters</Text>
+              </Pressable>
+            </View>
+          )
         }
       />
     </SafeAreaView>
@@ -467,6 +601,8 @@ const styles = StyleSheet.create({
   countText: { fontSize: 12, fontFamily: Fonts.sans[400] },
   clearText: { fontSize: 12, fontFamily: Fonts.sans[700], color: '#e11d48' },
 
+  /** Invisible partner for a lone card, so it keeps a column's width. */
+  spacerCard: { flex: 1, height: 268, marginBottom: Spacing.three },
   card: {
     flex: 1,
     borderWidth: 1,
@@ -474,6 +610,15 @@ const styles = StyleSheet.create({
     padding: Spacing.two,
     marginBottom: Spacing.three,
     gap: 5,
+    /**
+     * Every card is the same size, whatever the category shows.
+     *
+     * In a two-column FlatList the cards in a row stretch to the tallest, so a
+     * short title or a missing condition made the grid change shape as you
+     * switched categories. Fixing the height — with the title pinned to two
+     * lines and the condition slot always reserved — keeps the grid steady.
+     */
+    height: 268,
   },
   imageWrap: {
     height: 118,
@@ -518,7 +663,10 @@ const styles = StyleSheet.create({
   vendorRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   vendorName: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   vendorText: { fontSize: 11, fontFamily: Fonts.sans[500] },
-  cardTitle: { fontSize: 12.5, fontFamily: Fonts.sans[700], lineHeight: 17 },
+  /** Two lines' worth of height whether or not the title needs both. */
+  cardTitle: { fontSize: 12.5, fontFamily: Fonts.sans[700], lineHeight: 17, height: 34 },
+  /** Fixed-height slot so a listing without a condition leaves the same gap. */
+  conditionSlot: { height: 18, justifyContent: 'center' },
   conditionPill: {
     alignSelf: 'flex-start',
     borderRadius: Radius.xs,
@@ -528,7 +676,9 @@ const styles = StyleSheet.create({
   conditionText: { fontSize: 10, fontFamily: Fonts.sans[600] },
 
   cardFooter: {
-    marginTop: 2,
+    // Pinned to the bottom of the fixed-height card, so the price rule sits on
+    // the same line across every card rather than wherever the text ended.
+    marginTop: 'auto',
     paddingTop: Spacing.two,
     borderTopWidth: 1,
     flexDirection: 'row',
@@ -545,6 +695,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   viewChipText: { fontSize: 11, fontFamily: Fonts.sans[700] },
+
+  // Two rows of two, matching the `numColumns={2}` grid the cards land in.
+  skeletonGrid: { gap: Spacing.three },
+  skeletonRow: { flexDirection: 'row', gap: Spacing.three },
 
   empty: {
     borderWidth: 1,

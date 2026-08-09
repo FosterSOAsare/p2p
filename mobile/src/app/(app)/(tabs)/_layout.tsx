@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Home, Package, ShieldCheck, Store, User } from 'lucide-react-native';
+import { Home, Package, ShieldCheck, Store } from '@/components/icons';
 
 import { useTheme } from '@/hooks/use-theme';
 import { Fonts, Spacing, TabBar } from '@/constants/theme';
@@ -9,8 +9,12 @@ import { Fonts, Spacing, TabBar } from '@/constants/theme';
 /**
  * Bottom tab bar for the signed-in area.
  *
- * Five tabs, the same five for everyone, in this order:
- * Home · Marketplace · My Deals · My Listings · Profile.
+ * Four tabs, the same four for everyone, in this order:
+ * Home · Marketplace · My Deals · My Listings.
+ *
+ * Profile is deliberately not among them — it is reached from the avatar in the
+ * home screen's app bar, which is where marketplace apps put it. Its route
+ * still resolves at `/profile`; it just lives outside this folder.
  *
  * Labels and icons mirror the web app's primary nav (`web/src/features/shared/
  * ui/Layout.tsx`): Marketplace uses Store, deals use ShieldCheck.
@@ -28,9 +32,9 @@ import { Fonts, Spacing, TabBar } from '@/constants/theme';
  * the navigator applies them for whatever route it renders; the children below
  * carry only `name`, which is what fixes the order.
  *
- * Activity is not in this folder at all (it lives at `(app)/activity`) — with
- * `href: null` unreliable, keeping a screen off the bar means keeping it out of
- * this directory.
+ * Activity and Profile are not in this folder at all — they live at
+ * `(app)/activity` and `(app)/profile`. Keeping a screen off the bar means
+ * keeping it out of this directory; `href: null` proved unreliable here.
  */
 
 interface TabMeta {
@@ -44,7 +48,6 @@ const TAB_META: Record<string, TabMeta> = {
   marketplace: { title: 'Marketplace', Icon: Store },
   deals: { title: 'My Deals', Icon: ShieldCheck },
   listings: { title: 'My Listings', Icon: Package },
-  profile: { title: 'Profile', Icon: User },
 };
 
 export default function TabsLayout() {
@@ -80,13 +83,11 @@ export default function TabsLayout() {
         };
       }}
     >
-      {/* Order of these children is what orders the bar. Profile stays last —
-          the web keeps its profile pill at the right-hand end of the nav too. */}
+      {/* Order of these children is what orders the bar. */}
       <Tabs.Screen name="home" />
       <Tabs.Screen name="marketplace" />
       <Tabs.Screen name="deals" />
       <Tabs.Screen name="listings" />
-      <Tabs.Screen name="profile" />
     </Tabs>
   );
 }

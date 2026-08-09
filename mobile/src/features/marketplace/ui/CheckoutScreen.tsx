@@ -13,7 +13,7 @@ import {
   Plus,
   ShieldCheck,
   Smartphone,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';

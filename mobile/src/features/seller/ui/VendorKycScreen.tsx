@@ -9,13 +9,15 @@ import {
   Clock,
   ShieldCheck,
   Store,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { SelectField } from '@/features/shared/ui/SelectField';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { useMyKyc, useSubmitKyc, type KycSubmission } from '../data/kycApi';
 
 /**
  * Vendor KYC — the phone version of `web/src/pages/VendorKyc.tsx`, serving both
@@ -56,9 +58,17 @@ export function VendorKycScreen() {
   const [momoNumber, setMomoNumber] = useState('');
   const [trxAddress, setTrxAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
 
-  const status = submitted ? 'pending' : (user?.kycStatus ?? 'unverified');
+  const myKyc = useMyKyc();
+  const submitKyc = useSubmitKyc();
+
+  /**
+   * `/api/kyc/me` is the authority — it knows about a submission made from any
+   * device, which the session's own `kycStatus` only learns on the next
+   * `/api/auth/me`. Fall back to the session while that query is in flight so
+   * the screen doesn't flash the blank form at an already-verified seller.
+   */
+  const status = myKyc.data?.status ?? user?.kycStatus ?? 'unverified';
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -150,7 +160,7 @@ export function VendorKycScreen() {
     </View>
   );
 
-  const onSubmit = () => {
+  const onSubmit = async () => {
     if (!legalName.trim() || !storeName.trim() || !address.trim() || !idNumber.trim()) {
       setError('Fill in your legal name, store name, address and document number.');
       return;
@@ -159,9 +169,29 @@ export function VendorKycScreen() {
       setError('Add at least one payout account — mobile money or a TRX address.');
       return;
     }
-    // TODO(api): POST the KYC submission, then the status comes from /me.
     setError(null);
-    setSubmitted(true);
+
+    // Optional fields are omitted rather than sent empty: the server validates
+    // `trxAddress` against the TRON pattern, and "" would fail it.
+    const body: KycSubmission = {
+      legalName: legalName.trim(),
+      storeName: storeName.trim(),
+      country,
+      address: address.trim(),
+      idType: idType as KycSubmission['idType'],
+      idNumber: idNumber.trim(),
+      ...(taxId.trim() ? { taxId: taxId.trim() } : {}),
+      ...(momoNumber.trim() ? { momoNumber: momoNumber.trim() } : {}),
+      ...(trxAddress.trim() ? { trxAddress: trxAddress.trim() } : {}),
+    };
+
+    try {
+      // No local `submitted` flag: the mutation invalidates the KYC query, so
+      // `status` becomes 'pending' from the server's own answer.
+      await submitKyc.mutateAsync(body);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
   };
 
   /* ── Verified ─────────────────────────────────────────────── */
@@ -327,13 +357,19 @@ export function VendorKycScreen() {
 
         <Pressable
           onPress={onSubmit}
+          disabled={submitKyc.isPending}
           style={({ pressed }) => [
             styles.primaryBtn,
-            { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+            {
+              backgroundColor: theme.primary,
+              opacity: submitKyc.isPending ? 0.5 : pressed ? 0.85 : 1,
+            },
           ]}
         >
           <ShieldCheck size={16} color="#ffffff" />
-          <Text style={styles.primaryBtnText}>Submit Vendor KYC Application</Text>
+          <Text style={styles.primaryBtnText}>
+            {submitKyc.isPending ? 'Submitting...' : 'Submit Vendor KYC Application'}
+          </Text>
         </Pressable>
 
         <Text style={[styles.footNote, { color: theme.textTertiary }]}>

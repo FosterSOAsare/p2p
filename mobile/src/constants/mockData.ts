@@ -709,3 +709,145 @@ export const mockMessages: Message[] = [
   { id: 'm-3', from: 'kofi_buyer', to: 'kwame_tech', content: 'Great, I\'ll proceed with the escrow checkout.', createdAt: '2025-03-10T09:10:00Z' },
   { id: 'm-4', from: 'kwame_tech', to: 'kofi_buyer', content: 'Sounds good! I\'ll ship within 24 hours once payment is locked.', createdAt: '2025-03-10T09:12:00Z' },
 ];
+
+/* ── Conversations (messages inbox) ───────────────────────────── */
+/**
+ * Inbox rows — the shape the web's `useConversations` returns
+ * (`ConversationSummary` in `web/src/features/messages/data/messagesApi.ts`):
+ * the counterparty, a preview of the last message, and an unread count.
+ *
+ * `mine` is from the point of view of the signed-in account, so the preview can
+ * prefix "You: " exactly as the web's `previewOf` does.
+ */
+export interface ConversationSummary {
+  id: string;
+  counterparty: {
+    username: string;
+    storeName?: string;
+    verified: boolean;
+    avatarUrl?: string;
+  };
+  lastMessage: {
+    body: string;
+    type: 'text' | 'file' | 'system';
+    mine: boolean;
+    createdAt: string;
+  } | null;
+  unreadCount: number;
+  updatedAt: string;
+}
+
+export const mockConversations: ConversationSummary[] = [
+  {
+    id: 'c-1',
+    counterparty: { username: 'kofi_buyer', verified: false },
+    lastMessage: {
+      body: "Great, I'll proceed with the escrow checkout.",
+      type: 'text',
+      mine: false,
+      createdAt: '2025-03-10T09:10:00Z',
+    },
+    unreadCount: 2,
+    updatedAt: '2025-03-10T09:10:00Z',
+  },
+  {
+    id: 'c-2',
+    counterparty: { username: 'ama_designs', storeName: 'Ama Designs', verified: true },
+    lastMessage: {
+      body: '📎 Attachment',
+      type: 'file',
+      mine: true,
+      createdAt: '2025-03-09T16:42:00Z',
+    },
+    unreadCount: 0,
+    updatedAt: '2025-03-09T16:42:00Z',
+  },
+  {
+    id: 'c-3',
+    counterparty: { username: 'yaw_mensah', verified: false },
+    lastMessage: {
+      body: '💰 Deal ESC-7K2P is funded — GH₵12,687.50 locked in escrow.',
+      type: 'system',
+      mine: false,
+      createdAt: '2025-03-08T11:20:00Z',
+    },
+    unreadCount: 0,
+    updatedAt: '2025-03-08T11:20:00Z',
+  },
+];
+
+/* ── In-app notifications ─────────────────────────────────────── */
+/**
+ * Matches the web's `AppNotification`
+ * (`web/src/features/notifications/data/notificationsApi.ts`): the category
+ * drives only the icon and accent, the copy carries the specifics, and `link`
+ * is where tapping the row goes.
+ */
+export type NotificationCategory = 'deal' | 'listing' | 'dispute' | 'kyc' | 'wallet' | 'system';
+
+export interface AppNotification {
+  id: string;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  link: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export const mockNotifications: AppNotification[] = [
+  {
+    id: 'n-1',
+    category: 'deal',
+    title: 'Escrow funded',
+    body: 'kofi_buyer funded ESC-7K2P — GH₵12,687.50 is locked. Ship to release.',
+    link: '/escrow/deal-001',
+    readAt: null,
+    createdAt: '2025-03-10T10:02:00Z',
+  },
+  {
+    id: 'n-2',
+    category: 'wallet',
+    title: 'Payout cleared',
+    body: 'GH₵8,420.00 has cleared into your payout balance.',
+    link: '/wallet',
+    readAt: null,
+    createdAt: '2025-03-09T18:30:00Z',
+  },
+  {
+    id: 'n-3',
+    category: 'listing',
+    title: 'Listing running low',
+    body: 'MacBook Pro 14" M3 Pro has 1 unit left in stock.',
+    link: '/listings',
+    readAt: null,
+    createdAt: '2025-03-09T08:15:00Z',
+  },
+  {
+    id: 'n-4',
+    category: 'dispute',
+    title: 'Dispute opened',
+    body: 'A dispute was opened on ESC-3L8N. Funds are frozen until an admin rules.',
+    link: '/escrow/deal-003',
+    readAt: '2025-03-08T12:00:00Z',
+    createdAt: '2025-03-08T11:45:00Z',
+  },
+  {
+    id: 'n-5',
+    category: 'kyc',
+    title: 'KYC approved',
+    body: 'Your vendor verification was approved. You can now list items for sale.',
+    link: '/vendor/kyc',
+    readAt: '2025-03-01T09:00:00Z',
+    createdAt: '2025-03-01T08:55:00Z',
+  },
+  {
+    id: 'n-6',
+    category: 'system',
+    title: 'Welcome to P2P Escrow',
+    body: 'Every sale settles through escrow — buyers pay in, you ship, funds release.',
+    link: null,
+    readAt: '2025-02-20T10:00:00Z',
+    createdAt: '2025-02-20T09:58:00Z',
+  },
+];

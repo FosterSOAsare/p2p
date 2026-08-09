@@ -11,7 +11,7 @@ import {
   TriangleAlert,
   Users,
   Wallet,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';

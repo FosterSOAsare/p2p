@@ -1,15 +1,25 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import {
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowRight, Inbox, Plus, ShieldCheck, Wallet } from 'lucide-react-native';
+import { ArrowRight, Inbox, Plus, ShieldCheck, Wallet } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
-import { useAuth } from '@/context/AuthContext';
-import { mockDeals, type EscrowDeal } from '@/constants/mockData';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { SkeletonList } from '@/features/shared/ui/Skeleton';
+import { useDeals, type Deal } from '../data/dealsApi';
 import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
+
 
 /**
  * My Deals tab — the phone version of the web's deals list
@@ -19,16 +29,23 @@ import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
  * Same tabs, same card anatomy: status badge, rail · currency pill, title,
  * counterparty line with date, escrow amount and a View affordance.
  *
- * Reads `mockDeals` — no API yet. The web keeps the active tab in the URL; a
- * phone has no address bar, so it's component state here.
+ * Reads `GET /api/escrows`. The web keeps the active tab in the URL; a phone
+ * has no address bar, so it's component state here.
  */
 
-const TABS: { id: string; label: string; status?: DealStatus[] }[] = [
+/**
+ * The web's six tabs, one server status each — matching
+ * `web/.../DealsListView.tsx` exactly, including the Cancelled tab this screen
+ * previously lacked. One status per tab is what lets the server do the
+ * filtering via `?status=`, rather than fetching everything and filtering here.
+ */
+const TABS: { id: string; label: string; status?: DealStatus }[] = [
   { id: 'all', label: 'All' },
-  { id: 'active', label: 'Active', status: ['funded', 'shipped'] },
-  { id: 'confirm', label: 'To Confirm', status: ['delivered'] },
-  { id: 'completed', label: 'Completed', status: ['released'] },
-  { id: 'disputed', label: 'Disputed', status: ['disputed'] },
+  { id: 'funded', label: 'Active', status: 'funded' },
+  { id: 'delivered', label: 'To Confirm', status: 'delivered' },
+  { id: 'disbursed', label: 'Completed', status: 'disbursed' },
+  { id: 'disputed', label: 'Disputed', status: 'disputed' },
+  { id: 'cancelled', label: 'Cancelled', status: 'cancelled' },
 ];
 
 function formatMoney(amount: number, currency: string) {
@@ -48,22 +65,35 @@ export function DealsListScreen() {
   const theme = useTheme();
   const tabBarHeight = useTabBarHeight();
   const router = useRouter();
-  const { user } = useAuth();
   const [tab, setTab] = useState('all');
 
-  const deals = useMemo(() => {
-    const active = TABS.find((t) => t.id === tab) ?? TABS[0];
-    if (!active.status) return mockDeals;
-    return mockDeals.filter((d) => active.status!.includes(d.status));
-  }, [tab]);
+  /**
+   * One fetch, filtered in memory — so switching tabs is instant rather than a
+   * fresh round trip each time. The statuses are the server's own, so the
+   * filter is a straight comparison with no translation.
+   */
+  const dealsQuery = useDeals();
 
-  const renderDeal = ({ item }: { item: EscrowDeal }) => {
+  const deals = useMemo(() => {
+    const rows = dealsQuery.data?.deals ?? [];
+    const active = TABS.find((t) => t.id === tab) ?? TABS[0];
+    return active.status ? rows.filter((d) => d.status === active.status) : rows;
+  }, [tab, dealsQuery.data]);
+
+  /** Count for the current tab, shown as the web's "N total". */
+  const total = deals.length;
+
+  const renderDeal = ({ item }: { item: Deal }) => {
     const badge = statusBadge(item.status);
     const tone = TONE_COLORS[badge.tone];
-    // Role-aware, like the web's DealCard: show the *other* party and label the
-    // relationship. Mock deals are buyer-created, so the creator is the buyer.
-    const isBuyer = item.creator.username === user?.username;
-    const other = isBuyer ? item.counterparty : item.creator;
+    /**
+     * Role-aware, like the web's DealCard: show the *other* party and label the
+     * relationship. `myRole` is decided server-side, so there's no need to
+     * compare usernames — which the mock had to do, and which broke as soon as
+     * a deal wasn't buyer-created.
+     */
+    const isBuyer = item.myRole === 'buyer';
+    const other = isBuyer ? item.seller : item.buyer;
     const roleLabel = isBuyer ? 'Buying from' : 'Selling to';
 
     return (
@@ -80,11 +110,22 @@ export function DealsListScreen() {
         ]}
       >
         <View style={styles.cardTop}>
-          {/* Deals have no listing photo in the mock, so the web's wallet
-              fallback icon is used for every row. */}
-          <View style={[styles.thumb, { backgroundColor: theme.backgroundElement }]}>
-            <Wallet size={20} color={theme.textTertiary} />
-          </View>
+          {/**
+           * The listing's cover photo, exactly as the web's DealCard does it.
+           *
+           * The server has always sent `listing.image` on a deal created from a
+           * listing; this row was drawing the wallet icon for every deal because
+           * the note below it was written against the mock, which had no photo.
+           * The wallet stays as the fallback — a standalone escrow has no
+           * listing behind it, so there is genuinely no image to show.
+           */}
+          {item.listing?.image ? (
+            <Image source={item.listing.image} style={styles.thumb} contentFit="cover" />
+          ) : (
+            <View style={[styles.thumb, { backgroundColor: theme.backgroundElement }]}>
+              <Wallet size={20} color={theme.textTertiary} />
+            </View>
+          )}
 
           <View style={styles.cardBody}>
             <View style={styles.badgeRow}>
@@ -103,7 +144,7 @@ export function DealsListScreen() {
             </Text>
 
             <Text numberOfLines={2} style={[styles.meta, { color: theme.textSecondary }]}>
-              {roleLabel} <Text style={{ color: theme.text }}>@{other.username}</Text>
+              {roleLabel} <Text style={{ color: theme.text }}>@{other?.username ?? "—"}</Text>
               <Text style={{ color: theme.textTertiary }}> · {formatDate(item.createdAt)}</Text>
             </Text>
           </View>
@@ -196,12 +237,30 @@ export function DealsListScreen() {
           </View>
         }
         ListEmptyComponent={
-          <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            <Inbox size={26} color={theme.textTertiary} />
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-              No deals in this tab yet.
-            </Text>
-          </View>
+          /* "No deals" is a claim about the account, so it must not be shown
+             while the answer is still in flight — and neither should a bare
+             spinner, which looks the same as a screen that failed. */
+          dealsQuery.isLoading ? (
+            <SkeletonList count={4} />
+          ) : (
+            <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              {dealsQuery.isError ? (
+              <>
+                <Inbox size={26} color="#e11d48" />
+                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                  {apiErrorMessage(dealsQuery.error)}
+                </Text>
+              </>
+              ) : (
+                <>
+                  <Inbox size={26} color={theme.textTertiary} />
+                  <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                    No deals in this tab yet.
+                  </Text>
+                </>
+              )}
+            </View>
+          )
         }
       />
     </SafeAreaView>
