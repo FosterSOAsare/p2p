@@ -33,7 +33,7 @@ export function ResetPassword() {
   const onSubmit = handleSubmit((values) => reset.mutate({ token, newPassword: values.newPassword }))
 
   return (
-    <div className="mx-auto max-w-md py-10 space-y-8">
+    <div className="mx-auto max-w-md py-4 sm:py-10 space-y-6 sm:space-y-8">
       <div className="text-center space-y-2">
         <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Set new password</h1>
         <p className="text-sm text-slate-600 dark:text-slate-300">
@@ -41,7 +41,7 @@ export function ResetPassword() {
         </p>
       </div>
 
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 shadow-xl space-y-6">
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-8 shadow-xl space-y-6">
         {!token ? (
           <div className="space-y-3 text-center py-4">
             <h3 className="font-display font-semibold text-slate-900 dark:text-white">Invalid reset link</h3>

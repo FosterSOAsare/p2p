@@ -19,7 +19,7 @@ export function ForgotPassword() {
   const onSubmit = handleSubmit((values) => forgot.mutate(values.email))
 
   return (
-    <div className="mx-auto max-w-md py-10 space-y-8">
+    <div className="mx-auto max-w-md py-4 sm:py-10 space-y-6 sm:space-y-8">
       <div className="text-center space-y-2">
         <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-600 text-white shadow-lg shadow-primary-600/20 mb-2">
           <KeyRound size={24} />
@@ -30,7 +30,7 @@ export function ForgotPassword() {
         </p>
       </div>
 
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 shadow-xl space-y-6">
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-8 shadow-xl space-y-6">
         {forgot.isSuccess ? (
           <div className="space-y-4 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">

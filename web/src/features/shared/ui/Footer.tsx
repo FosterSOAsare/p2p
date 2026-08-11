@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
-import { Handshake, ShieldCheck, Lock, Wallet } from 'lucide-react'
+import { ShieldCheck, Lock, Wallet } from 'lucide-react'
+import logo from '../../../assets/logo.svg'
 
 export function Footer() {
   return (
@@ -8,13 +9,8 @@ export function Footer() {
         <div className="grid grid-cols-1 gap-10 md:grid-cols-12">
           {/* Brand Column */}
           <div className="md:col-span-4 space-y-4">
-            <Link to="/" className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 text-white shadow-md">
-                <Handshake size={20} />
-              </span>
-              <span className="font-display text-xl font-bold tracking-tight text-white">
-                P2P Trust Market
-              </span>
+            <Link to="/" className="inline-flex w-fit items-center">
+              <img src={logo} alt="P2P Trust Market" className="h-11 w-auto" />
             </Link>
             <p className="text-xs text-slate-400 leading-relaxed max-w-sm">
               The trust-first P2P marketplace and standalone escrow platform. Built on a rail-agnostic ledger supporting both Fiat and self-custody Crypto transactions.

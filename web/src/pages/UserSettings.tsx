@@ -17,6 +17,10 @@ import {
   Camera,
   Loader2,
   Trash2,
+  Palette,
+  Sun,
+  Moon,
+  Check,
 } from 'lucide-react'
 import { useMe } from '../features/auth/data/authApi'
 import { useUpdateNotificationPrefs, useUpdateProfile } from '../features/user/data/usersApi'
@@ -35,8 +39,38 @@ const inputClass =
 const lockedInputClass =
   'w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-500 dark:text-slate-400 cursor-not-allowed'
 
+/**
+ * A miniature of the app in one theme, so the choice is legible before it's
+ * made. Fixed colours on purpose — no `dark:` variants — otherwise the light
+ * swatch would render dark while you're in dark mode and preview nothing.
+ */
+function ThemePreview({ dark }: { dark: boolean }) {
+  return (
+    <span
+      className={`block rounded-xl border p-3 ${
+        dark ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-white'
+      }`}
+    >
+      <span className="mb-2.5 flex items-center gap-1.5">
+        <span className={`h-4 w-4 rounded-md ${dark ? 'bg-primary-500' : 'bg-primary-600'}`} />
+        <span className={`h-1.5 w-10 rounded-full ${dark ? 'bg-slate-600' : 'bg-slate-300'}`} />
+      </span>
+      <span className="block space-y-1.5">
+        <span className={`block h-1.5 w-full rounded-full ${dark ? 'bg-slate-700' : 'bg-slate-200'}`} />
+        <span className={`block h-1.5 w-4/5 rounded-full ${dark ? 'bg-slate-700' : 'bg-slate-200'}`} />
+        <span className={`block h-1.5 w-2/3 rounded-full ${dark ? 'bg-slate-800' : 'bg-slate-100'}`} />
+      </span>
+    </span>
+  )
+}
+
+const THEME_OPTIONS = [
+  { dark: false, label: 'Light', icon: Sun, hint: 'Bright surfaces with dark text. Best in daylight.' },
+  { dark: true, label: 'Dark', icon: Moon, hint: 'Dimmed surfaces, easier on the eyes at night.' },
+] as const
+
 export function UserSettings() {
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications' | 'appearance'>('profile')
   const [isDarkTheme, setIsDarkTheme] = useState(() =>
     typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false,
   )
@@ -85,10 +119,9 @@ export function UserSettings() {
   const removeAvatar = () => updateProfile.mutate({ avatarUrl: null })
   const avatarBusy = uploadAvatar.isPending || updateProfile.isPending
 
-  const onToggleTheme = () => {
-    const next = !document.documentElement.classList.contains('dark')
-    applyTheme(next)
-    setIsDarkTheme(next)
+  const selectTheme = (dark: boolean) => {
+    applyTheme(dark)
+    setIsDarkTheme(dark)
   }
 
   useEffect(() => {
@@ -108,7 +141,7 @@ export function UserSettings() {
         Back to Dashboard
       </Link>
 
-      <div className="border-b border-slate-200 dark:border-slate-800 pb-5">
+      <div className="border-b border-slate-200 dark:border-slate-800 pb-4 sm:pb-5">
         <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
           Account Settings & Security
         </h1>
@@ -131,18 +164,19 @@ export function UserSettings() {
       )}
 
       {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8">
         {/* Left Sidebar Menu */}
         <div className="lg:col-span-4 space-y-4">
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-1 text-xs font-semibold">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5 sm:p-4 shadow-sm space-y-1 text-xs font-semibold">
             {[
               { id: 'profile', label: 'Personal Information', icon: User },
               { id: 'security', label: 'Security & Password', icon: Lock },
               { id: 'notifications', label: 'Escrow Notifications', icon: Bell },
+              { id: 'appearance', label: 'Appearance', icon: Palette },
             ].map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
-                onClick={() => setActiveTab(id as 'profile' | 'security' | 'notifications')}
+                onClick={() => setActiveTab(id as 'profile' | 'security' | 'notifications' | 'appearance')}
                 className={`w-full flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 transition-all text-left cursor-pointer ${
                   activeTab === id
                     ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-semibold shadow-sm'
@@ -156,7 +190,7 @@ export function UserSettings() {
           </div>
 
           {/* KYC Status Card — live from /me */}
-         {me?.role == "user" && !me.kycStatus && <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-5 space-y-3">
+         {me?.role == "user" && !me.kycStatus && <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-4 sm:p-5 space-y-3">
             <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white text-xs">
               <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
               KYC Verification Status
@@ -207,7 +241,7 @@ export function UserSettings() {
         {/* Right Content Area */}
         <div className="lg:col-span-8">
           {activeTab === 'profile' && (
-            <form onSubmit={onSaveProfile} className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-5 shadow-sm" noValidate>
+            <form onSubmit={onSaveProfile} className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-8 space-y-5 shadow-sm" noValidate>
               <h3 className="font-display text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-3">
                 Personal Information
               </h3>
@@ -340,7 +374,7 @@ export function UserSettings() {
           )}
 
           {activeTab === 'security' && (
-            <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-5 shadow-sm">
+            <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-8 space-y-5 shadow-sm">
               <h3 className="font-display text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-3">
                 Security & Password Management
               </h3>
@@ -357,7 +391,7 @@ export function UserSettings() {
           )}
 
           {activeTab === 'notifications' && (
-            <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-5 shadow-sm">
+            <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-8 space-y-5 shadow-sm">
               <h3 className="font-display text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-3">
                 Escrow Notification Preferences
               </h3>
@@ -403,44 +437,65 @@ export function UserSettings() {
               </div>
             </div>
           )}
-        </div>
+          {activeTab === 'appearance' && (
+            <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-8 space-y-5 shadow-sm">
+              <h3 className="font-display text-base font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-3">
+                Appearance
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                Choose how the app looks. The change applies immediately, everywhere.
+              </p>
 
-              {/* Appearance */}
-              <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-4 mt-4">
-                <div className="space-y-1">
-                  <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">Appearance</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Switch between light and dark mode.</p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onToggleTheme}
-                  className="flex w-full items-center justify-between rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-left transition-colors hover:bg-slate-100 dark:hover:bg-slate-900"
-                >
-                  <div className="space-y-0.5">
-                    <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Theme</span>
-                    <span className="block text-sm font-bold text-slate-900 dark:text-white">
-                      {isDarkTheme ? 'Dark mode' : 'Light mode'}
-                    </span>
-                  </div>
-                  <span
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-                      isDarkTheme ? 'bg-primary-600' : 'bg-slate-300 dark:bg-slate-700'
-                    }`}
-                    aria-hidden="true"
-                  >
-                    <span
-                      className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                        isDarkTheme ? 'translate-x-6' : 'translate-x-1'
+              <div
+                role="radiogroup"
+                aria-label="Theme"
+                className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+              >
+                {THEME_OPTIONS.map(({ dark, label, icon: Icon, hint }) => {
+                  const isSelected = isDarkTheme === dark
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      role="radio"
+                      aria-checked={isSelected}
+                      onClick={() => selectTheme(dark)}
+                      className={`rounded-2xl border p-4 text-left space-y-3 transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-primary-500 bg-primary-50/60 dark:bg-primary-950/40 shadow-md ring-1 ring-primary-500'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 hover:-translate-y-0.5 hover:border-primary-400 hover:shadow-md dark:hover:border-primary-700'
                       }`}
-                    />
-                  </span>
-                </button>
+                    >
+                      <ThemePreview dark={dark} />
 
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  The theme switch is stored in your browser and applies across the app.
-                </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                          <Icon size={14} className={dark ? 'text-indigo-500' : 'text-amber-500'} />
+                          {label}
+                        </span>
+                        <span
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                            isSelected
+                              ? 'border-primary-600 bg-primary-600 text-white'
+                              : 'border-slate-300 dark:border-slate-700'
+                          }`}
+                        >
+                          {isSelected && <Check size={10} />}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{hint}</p>
+                    </button>
+                  )
+                })}
               </div>
+
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Stored in this browser, so it follows you across every page here — but not to your other devices.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

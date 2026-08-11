@@ -116,7 +116,7 @@ export function Signup() {
 
         {/* Right Side: Form Container */}
         <div className="lg:col-span-7 flex flex-col justify-between">
-          <div className="p-6 sm:p-10 space-y-5">
+          <div className="p-4 sm:p-10 space-y-5">
             <div className="space-y-1">
               <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 px-2.5 py-1 rounded-md mb-1">
                 <ShieldCheck size={14} />

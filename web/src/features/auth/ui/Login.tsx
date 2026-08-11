@@ -66,7 +66,7 @@ export function Login() {
 
   return (
     <div className="py-4 sm:py-10">
-      <div className="mx-auto max-w-5xl overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl grid grid-cols-1 lg:grid-cols-12 min-h-[580px] transition-colors duration-300">
+      <div className="mx-auto max-w-5xl overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl grid grid-cols-1 lg:grid-cols-12 lg:min-h-[580px] transition-colors duration-300">
         {/* Left Side: Desktop Visual Image Banner */}
         <div className="relative hidden lg:flex lg:col-span-5 flex-col justify-between p-10 bg-emerald-50 dark:bg-slate-950 text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 overflow-hidden">
           <img
@@ -113,8 +113,8 @@ export function Login() {
         </div>
 
         {/* Right Side: Form Container */}
-        <div className="lg:col-span-7 flex flex-col justify-between">
-          <div className="p-6 sm:p-10 space-y-6">
+        <div className="lg:col-span-7 flex flex-col justify-between ">
+          <div className="p-4 sm:p-10 space-y-6">
             <div className="space-y-1">
               <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 px-2.5 py-1 rounded-md mb-1">
                 <ShieldCheck size={14} />

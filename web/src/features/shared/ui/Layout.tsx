@@ -32,6 +32,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Footer } from './Footer'
+import logo from '../../../assets/logo.svg'
 
 /** Unread pill on a nav entry. Capped so a busy inbox can't stretch the item. */
 function UnreadDot({ count }: { count: number }) {
@@ -44,6 +45,10 @@ function UnreadDot({ count }: { count: number }) {
 
 const dropdownLinkClass =
   'flex items-center gap-2 rounded-lg px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 hover:text-primary-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
+
+/** The drawer's equivalent of `dropdownLinkClass` — the two menus carry the same entries. */
+const drawerLinkClass =
+  'flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900'
 
 export function Layout() {
   const navigate = useNavigate()
@@ -119,13 +124,14 @@ export function Layout() {
       <header className="sticky top-0 z-40 border-b backdrop-blur-md transition-colors duration-300 border-slate-200/80 bg-white/90 dark:border-slate-800 dark:bg-slate-950/90">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 text-white shadow-md transition-transform group-hover:scale-105">
-              <Handshake size={20} />
-            </span>
-            <span className="font-display text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white">
-              P2P Trust Market
-            </span>
+          {/* The mark carries the name, so no wordmark beside it. `alt` keeps
+              the accessible name that the removed text used to provide. */}
+          <Link to="/" className="flex shrink-0 items-center group">
+            <img
+              src={logo}
+              alt="P2P Trust Market"
+              className="h-9 w-auto sm:h-10 transition-transform group-hover:scale-105"
+            />
           </Link>
 
           {/* Desktop Navigation Bar */}
@@ -152,7 +158,11 @@ export function Layout() {
 
           {/* Action Links, Theme Toggle & Profile Dropdown */}
           <div className="flex items-center gap-2">
-            <div className="hidden sm:flex items-center gap-2">
+            {/* Hands off to the drawer at exactly the width the hamburger
+                appears (`md`). At `sm` it left a 640–768px band where this
+                cluster was hidden but the drawer hadn't taken over its
+                contents — Settings and Sign Out fell into that gap. */}
+            <div className="hidden md:flex items-center gap-2">
               {isLoggedIn && !isAdmin && (
                 <Link
                   to="/wallet"
@@ -396,34 +406,40 @@ export function Layout() {
                 </Link>
               )}
 
+              {/* Below `md` this drawer is the only menu, so it carries the
+                  whole profile dropdown — identity, Settings and Sign Out
+                  included — not just the primary nav. */}
               <div className="pt-2 border-t space-y-1 font-medium border-slate-100 dark:border-slate-800">
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-3">Account & Support</span>
+
+                {isLoggedIn && (
+                  <div className="flex items-center gap-2.5 px-3 py-2">
+                    {me?.avatarUrl ? (
+                      <img src={me.avatarUrl} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
+                    ) : (
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-[11px] font-bold text-white uppercase">
+                        {me?.username.charAt(0)}
+                      </span>
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-slate-900 dark:text-white">{me?.fullName}</p>
+                      <p className="truncate text-[11px] text-slate-400">{me?.email}</p>
+                    </div>
+                  </div>
+                )}
+
                 {!isAdmin && (
                   <>
-                    <Link
-                      to="/dashboard"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                    >
+                    <Link to="/dashboard" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                       <LayoutDashboard size={16} /> Dashboard
                     </Link>
-                    <Link
-                      to="/wallet"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                    >
+                    <Link to="/wallet" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                       <Wallet size={16} /> Payout Wallet
                     </Link>
+                    <Link to="/deals" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
+                      <ShoppingBag size={16} /> {isSeller ? 'My Sales' : 'My Orders'}
+                    </Link>
                   </>
-                )}
-                {!isAdmin && (
-                  <Link
-                    to="/deals"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                  >
-                    <ShoppingBag size={16} /> {isSeller ? 'My Sales' : 'My Orders'}
-                  </Link>
                 )}
                 {isLoggedIn && (
                   <button
@@ -431,55 +447,86 @@ export function Layout() {
                       setMobileMenuOpen(false)
                       setNotificationsOpen(true)
                     }}
-                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900 cursor-pointer"
+                    className={`cursor-pointer ${drawerLinkClass}`}
                   >
                     <Bell size={16} /> Notifications
                     {unreadNotifications > 0 && <UnreadDot count={unreadNotifications} />}
                   </button>
                 )}
                 {isLoggedIn && (
-                  <Link
-                    to="/messages"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                  >
+                  <Link to="/messages" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                     <MessageSquare size={16} /> Messages
+                    {unreadTotal > 0 && <UnreadDot count={unreadTotal} />}
                   </Link>
                 )}
                 {!isSeller && !isAdmin && (
-                  <Link
-                    to="/bookmarks"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                  >
+                  <Link to="/bookmarks" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                     <Heart size={16} className="text-rose-500" /> My Bookmarks
                   </Link>
                 )}
                 {isSeller && (
-                  <Link
-                    to="/listings"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                  >
-                    <Package size={16} /> My Listings
-                  </Link>
+                  <>
+                    <Link to="/listings" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
+                      <Package size={16} /> My Listings
+                    </Link>
+                    <Link to="/promotions" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
+                      <Sparkles size={16} /> Promotions
+                    </Link>
+                  </>
                 )}
                 {!isAdmin && (
-                  <Link
-                    to="/deals?tab=disputed"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                  >
+                  <Link to="/deals?tab=disputed" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                     <AlertTriangle size={16} /> Disputes
                   </Link>
                 )}
-                <Link
-                  to="/terms"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                >
+                {/* The other admin surfaces are already in the primary nav above;
+                    deals oversight is the one that only lived in the dropdown. */}
+                {isAdmin && (
+                  <Link to="/deals" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
+                    <Handshake size={16} /> Escrow Deals Oversight
+                  </Link>
+                )}
+                {isLoggedIn && (
+                  <Link to="/settings" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
+                    <Settings size={16} /> Account Settings
+                  </Link>
+                )}
+                <Link to="/terms" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                   <FileText size={16} /> Terms & Privacy
                 </Link>
+
+                {isLoggedIn ? (
+                  <div className="pt-1 mt-1 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false)
+                        logout.mutate(undefined, { onSettled: () => navigate('/') })
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                    >
+                      <LogOut size={16} /> Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  /* The header's Log In / Sign Up buttons are desktop-only, so
+                     without these a signed-out visitor on a phone had no way in. */
+                  <div className="grid grid-cols-2 gap-2 pt-3 mt-1 border-t border-slate-100 dark:border-slate-800">
+                    <Link
+                      to="/login"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="rounded-xl border border-slate-300 py-2.5 text-center text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
+                    >
+                      Log In
+                    </Link>
+                    <Link
+                      to="/signup"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="rounded-xl bg-primary-600 py-2.5 text-center text-xs font-semibold text-white shadow-sm hover:bg-primary-700"
+                    >
+                      Sign Up
+                    </Link>
+                  </div>
+                )}
               </div>
             </nav>
           </div>

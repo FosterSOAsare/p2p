@@ -32,7 +32,7 @@ export function VerifyEmail() {
   // 1. Verifying the emailed link right now
   if (token && verify.isLoading) {
     return (
-      <div className="mx-auto max-w-md py-12 space-y-6 text-center">
+      <div className="mx-auto max-w-md py-8 sm:py-12 space-y-6 text-center">
         <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-950 text-primary-600 dark:text-primary-400 shadow-md">
           <Loader2 size={32} className="animate-spin" />
         </div>
@@ -49,7 +49,7 @@ export function VerifyEmail() {
   // 2. Verified via the link just now → confirmation flash, then redirect to login
   if (token && verify.isSuccess) {
     return (
-      <div className="mx-auto max-w-md py-12 space-y-6 text-center">
+      <div className="mx-auto max-w-md py-8 sm:py-12 space-y-6 text-center">
         <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 shadow-md">
           <CheckCircle2 size={32} />
         </div>
@@ -72,7 +72,7 @@ export function VerifyEmail() {
   // 2b. Already-confirmed account visiting without a token
   if (!token && me?.emailVerified) {
     return (
-      <div className="mx-auto max-w-md py-12 space-y-6 text-center">
+      <div className="mx-auto max-w-md py-8 sm:py-12 space-y-6 text-center">
         <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 shadow-md">
           <CheckCircle2 size={32} />
         </div>
@@ -138,7 +138,7 @@ export function VerifyEmail() {
         </div>
       )}
 
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-4 text-xs">
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-sm space-y-4 text-xs">
         <p className="text-slate-500 dark:text-slate-400">
           Email confirmation activates your account so you can sign in and receive order & escrow release alerts.
         </p>

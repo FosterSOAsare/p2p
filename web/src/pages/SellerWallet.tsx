@@ -22,11 +22,101 @@ import {
   useWallet,
   useWalletTransactions,
   useWithdraw,
+  type WalletTransaction,
 } from '../features/escrow/data/walletApi'
 import { useInitDeposit, pendingAction, type PayMethod } from '../features/escrow/data/paymentsApi'
 import { PayMethodPicker } from '../features/escrow/ui/PayMethodPicker'
 import { formatMoney } from '../features/shared/libs/currency'
 import { apiErrorMessage } from '../features/shared/libs/api'
+
+/**
+ * Everything the two renderings of a transaction need. Derived once so the
+ * phone card and the desktop table can't drift on what "cleared" means.
+ */
+function txView(tx: WalletTransaction) {
+  const createdAt = new Date(tx.createdAt)
+  const ageInHours = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60)
+  return {
+    isCredit: tx.amount > 0,
+    // A payout is spendable a day after release; until then it's on the clock.
+    isRelease: tx.type === 'escrow_release',
+    isPendingClearance: tx.type === 'escrow_release' && ageInHours < 24,
+    hoursRemaining: Math.max(1, Math.ceil(24 - ageInHours)),
+    label: tx.type.replace('_', ' ').toUpperCase(),
+    // The note repeats the deal code, which gets its own column/line.
+    note: tx.note ? tx.note.replace(/\s*\([A-Z0-9-]+\)/gi, '') : 'Wallet activity',
+    when: createdAt.toLocaleString(),
+  }
+}
+
+function TypeChip({ isCredit, label }: { isCredit: boolean; label: string }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+        isCredit
+          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+          : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+      }`}
+    >
+      {isCredit ? <ArrowDownLeft size={11} /> : <ArrowUpRight size={11} />}
+      {label}
+    </span>
+  )
+}
+
+function ClearanceChip({ tx }: { tx: WalletTransaction }) {
+  const v = txView(tx)
+  if (!v.isRelease) return <span className="text-[10px] text-slate-400">Settled</span>
+  return v.isPendingClearance ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold">
+      <Clock size={10} /> Clears in ~{v.hoursRemaining}h
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold">
+      <CheckCircle2 size={10} /> Cleared
+    </span>
+  )
+}
+
+/**
+ * The phone rendering of a ledger row. Six columns behind a horizontal
+ * scrollbar isn't a table anyone reads on a 390px screen, so the same fields
+ * are stacked: what and how much on top, why in the middle, when and against
+ * which deal underneath.
+ */
+function TransactionCard({ tx }: { tx: WalletTransaction }) {
+  const v = txView(tx)
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <TypeChip isCredit={v.isCredit} label={v.label} />
+        <span
+          className={`shrink-0 font-display text-sm font-bold ${
+            v.isCredit ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'
+          }`}
+        >
+          {v.isCredit ? '+' : ''}
+          {formatMoney(tx.amount)}
+        </span>
+      </div>
+
+      <p className="text-[11px] leading-relaxed text-slate-700 dark:text-slate-300 line-clamp-2">{v.note}</p>
+
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <ClearanceChip tx={tx} />
+        {tx.escrow && (
+          <Link
+            to={`/escrow/${tx.escrow.id}`}
+            className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary-600 dark:text-primary-400 hover:underline"
+          >
+            {tx.escrow.code || tx.escrow.id.slice(0, 8)} <ExternalLink size={10} />
+          </Link>
+        )}
+        <span className="ml-auto text-[10px] text-slate-400">{v.when}</span>
+      </div>
+    </div>
+  )
+}
 
 export function SellerWallet() {
   const { data: me, isLoading: meLoading } = useMe()
@@ -137,7 +227,7 @@ export function SellerWallet() {
   }
 
   return (
-    <div className="py-6 space-y-6 sm:space-y-8">
+    <div className="py-4 sm:py-6 space-y-5 sm:space-y-8">
       {/* Payout confirmation — shown here once the modal closes */}
       {withdrawSuccess && !withdrawModalOpen && (
         <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 p-4 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
@@ -154,7 +244,7 @@ export function SellerWallet() {
       )}
 
       {/* Header Banner */}
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-emerald-50 dark:bg-slate-900 p-6 sm:p-8 text-slate-900 dark:text-white shadow-xl space-y-4">
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-emerald-50 dark:bg-slate-900 p-2 sm:p-8 text-slate-900 dark:text-white shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 dark:bg-emerald-950 px-3 py-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
@@ -226,7 +316,7 @@ export function SellerWallet() {
       </div>
 
       {/* Security Holding Period Info Card */}
-      <div className="rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 p-4 text-slate-800 dark:text-amber-200 text-xs flex items-start gap-3">
+      <div className="rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 p-2 sm:p-4 text-slate-800 dark:text-amber-200 text-xs flex items-start gap-3">
         <Clock size={20} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
         <div className="space-y-1">
           <h4 className="font-bold text-slate-900 dark:text-white">24-Hour Safety Holding Period</h4>
@@ -263,7 +353,7 @@ export function SellerWallet() {
             {apiErrorMessage(txQuery.error)}
           </div>
         ) : (txQuery.data?.transactions ?? []).length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-8 text-center space-y-2">
+          <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-6 sm:p-8 text-center space-y-2">
             <WalletIcon size={32} className="mx-auto text-slate-400" />
             <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">No transactions recorded yet</p>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
@@ -272,7 +362,14 @@ export function SellerWallet() {
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+            {/* Cards on a phone, the ledger table from `md` up. */}
+            <div className="space-y-2 md:hidden">
+              {txQuery.data?.transactions.map((tx) => (
+                <TransactionCard key={tx.id} tx={tx} />
+              ))}
+            </div>
+
+            <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -287,49 +384,20 @@ export function SellerWallet() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                     {txQuery.data?.transactions.map((tx) => {
-                      const isCredit = tx.amount > 0
-                      const txDate = new Date(tx.createdAt)
-                      const ageInHours = (Date.now() - txDate.getTime()) / (1000 * 60 * 60)
-                      const isPendingClearance = tx.type === 'escrow_release' && ageInHours < 24
-                      const hoursRemaining = Math.max(1, Math.ceil(24 - ageInHours))
-
-                      const cleanNote = tx.note
-                        ? tx.note.replace(/\s*\([A-Z0-9-]+\)/gi, '')
-                        : 'Wallet activity'
+                      const v = txView(tx)
 
                       return (
                         <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                           <td className="px-3 py-2 font-semibold">
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                isCredit
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                              }`}
-                            >
-                              {isCredit ? <ArrowDownLeft size={11} /> : <ArrowUpRight size={11} />}
-                              {tx.type.replace('_', ' ').toUpperCase()}
-                            </span>
+                            <TypeChip isCredit={v.isCredit} label={v.label} />
                           </td>
 
                           <td className="px-3 py-2 font-semibold">
-                            {tx.type === 'escrow_release' ? (
-                              isPendingClearance ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold">
-                                  <Clock size={10} /> Clears in ~{hoursRemaining}h
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold">
-                                  <CheckCircle2 size={10} /> Cleared
-                                </span>
-                              )
-                            ) : (
-                              <span className="text-slate-400 text-[10px]">Settled</span>
-                            )}
+                            <ClearanceChip tx={tx} />
                           </td>
 
                           <td className="px-3 py-2 text-slate-700 dark:text-slate-300 text-[11px] truncate max-w-xs">
-                            {cleanNote}
+                            {v.note}
                           </td>
 
                           <td className="px-3 py-2 text-[11px]">
@@ -347,16 +415,14 @@ export function SellerWallet() {
 
                           <td
                             className={`px-3 py-2 text-right font-display text-[11px] font-bold ${
-                              isCredit ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'
+                              v.isCredit ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'
                             }`}
                           >
-                            {isCredit ? '+' : ''}
+                            {v.isCredit ? '+' : ''}
                             {formatMoney(tx.amount)}
                           </td>
 
-                          <td className="px-3 py-2 text-right text-slate-400 text-[10px]">
-                            {new Date(tx.createdAt).toLocaleString()}
-                          </td>
+                          <td className="px-3 py-2 text-right text-slate-400 text-[10px]">{v.when}</td>
                         </tr>
                       )
                     })}
@@ -397,7 +463,7 @@ export function SellerWallet() {
       {/* Add Funds Modal */}
       {topUpModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="relative w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4">
+          <div className="relative w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-950 text-primary-600 dark:text-primary-400">
@@ -482,7 +548,7 @@ export function SellerWallet() {
       {/* Withdraw Modal */}
       {withdrawModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="relative w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4">
+          <div className="relative w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">

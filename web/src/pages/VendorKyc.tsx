@@ -112,7 +112,7 @@ export function VendorKyc() {
     return (
       <div className="mx-auto max-w-3xl py-4 sm:py-6 space-y-6">
         {header}
-        <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center space-y-4 shadow-xl">
+        <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-8 text-center space-y-4 shadow-xl">
           <p className="text-sm text-slate-600 dark:text-slate-300">Sign in to your account to start seller verification.</p>
           <Link
             to="/login"
@@ -130,7 +130,7 @@ export function VendorKyc() {
     return (
       <div className="mx-auto max-w-3xl py-4 sm:py-6 space-y-6">
         {header}
-        <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center space-y-3 shadow-xl">
+        <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-10 text-center space-y-3 shadow-xl">
           <Loader2 size={28} className="mx-auto animate-spin text-primary-600 dark:text-primary-400" />
           <p className="text-xs text-slate-500 dark:text-slate-400">Checking your verification status...</p>
         </div>
@@ -143,7 +143,7 @@ export function VendorKyc() {
     return (
       <div className="mx-auto max-w-3xl py-4 sm:py-6 space-y-6">
         {header}
-        <div className="rounded-3xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/60 p-8 sm:p-10 text-center space-y-5 animate-fade-in shadow-xl">
+        <div className="rounded-3xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/60 p-5 sm:p-10 text-center space-y-5 animate-fade-in shadow-xl">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/30">
             <CheckCircle2 size={32} />
           </div>
@@ -183,7 +183,7 @@ export function VendorKyc() {
     return (
       <div className="mx-auto max-w-3xl py-4 sm:py-6 space-y-6">
         {header}
-        <div className="rounded-3xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/40 p-8 sm:p-10 text-center space-y-5 animate-fade-in shadow-xl">
+        <div className="rounded-3xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/40 p-5 sm:p-10 text-center space-y-5 animate-fade-in shadow-xl">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-lg shadow-amber-500/30">
             <Clock size={32} />
           </div>
@@ -216,7 +216,7 @@ export function VendorKyc() {
       {header}
 
       {status === 'rejected' && (
-        <div className="rounded-2xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/60 p-5 space-y-2 animate-fade-in">
+        <div className="rounded-2xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/60 p-4 sm:p-5 space-y-2 animate-fade-in">
           <div className="flex items-center gap-2 text-xs font-bold text-rose-800 dark:text-rose-300">
             <XCircle size={16} /> Your previous application was rejected
           </div>
@@ -229,7 +229,7 @@ export function VendorKyc() {
         </div>
       )}
 
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-10 shadow-xl space-y-8">
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-10 shadow-xl space-y-6 sm:space-y-8">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
           <span className="flex items-center gap-2 text-slate-900 dark:text-white font-bold">
             <ShieldCheck size={18} className="text-primary-600 dark:text-primary-400" />

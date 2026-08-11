@@ -253,7 +253,7 @@ export function Products() {
 
       {/* Listing Grid */}
       {data && data.listings.length > 0 && (
-        <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 transition-opacity ${listingsQuery.isFetching ? 'opacity-60' : ''}`}>
+        <div className={`grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 transition-opacity ${listingsQuery.isFetching ? 'opacity-60' : ''}`}>
           {data.listings.filter((p) => !blockedSellers.has(p.sellerUsername)).map((p) => {
             const isSaved = savedIds.has(p.id)
             const isOwnListing = me && p.sellerUsername === me.username
@@ -267,11 +267,15 @@ export function Products() {
                     navigate(`/marketplace/${p.id}`)
                   }
                 }}
-                className="group cursor-pointer relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm hover:shadow-md hover:border-primary-300 dark:hover:border-primary-600 transition-all duration-200"
+                className="group cursor-pointer relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm hover:shadow-md hover:border-primary-300 dark:hover:border-primary-600 transition-all duration-200"
               >
-                <div>
+                {/* A row on a phone, the stacked card from `sm` up. Full-width
+                    vertical cards spend a whole 390px screen on one listing and
+                    leave a one-line title floating in empty space; side by side,
+                    three fit where one did and the text gets the width. */}
+                <div className="flex flex-1 gap-3 sm:flex-col sm:gap-0">
                   {/* Image Container */}
-                  <div className="relative h-36 w-full overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800 mb-2.5">
+                  <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800 sm:mb-2.5 sm:h-36 sm:w-full">
                     {p.image ? (
                       <img
                         src={p.image}
@@ -279,19 +283,21 @@ export function Products() {
                         className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-slate-400 text-xs">
+                      <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] text-slate-400 sm:text-xs">
                         No image available
                       </div>
                     )}
 
-                    <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+                    <div className="absolute left-1.5 top-1.5 flex flex-col items-start gap-1 sm:left-2 sm:top-2">
                       {/* Paid placement, disclosed as one. */}
                       {p.promoted && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-md">
                           <Flame size={9} /> Promoted
                         </span>
                       )}
-                      <span className="rounded-full bg-slate-900/80 backdrop-blur-md px-2 py-0.5 text-[9px] font-semibold text-white">
+                      {/* Two badges crowd a 112px thumbnail, so the category
+                          moves into the description line on mobile instead. */}
+                      <span className="hidden rounded-full bg-slate-900/80 backdrop-blur-md px-2 py-0.5 text-[9px] font-semibold text-white sm:inline-flex">
                         {p.category}
                       </span>
                     </div>
@@ -304,7 +310,9 @@ export function Products() {
                           (unsaveListing.isPending && unsaveListing.variables === p.id)
                         }
                         title={isSaved ? 'Remove from saved' : 'Save listing'}
-                        className={`absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full backdrop-blur-md transition-all cursor-pointer disabled:opacity-60 ${
+                        /* Bottom corner on mobile — the top one belongs to the
+                           promoted badge, and 112px won't hold both. */
+                        className={`absolute bottom-1.5 right-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full backdrop-blur-md transition-all cursor-pointer disabled:opacity-60 sm:bottom-auto sm:right-2 sm:top-2 sm:h-7 sm:w-7 ${
                           isSaved
                             ? 'bg-rose-500 text-white shadow-md'
                             : 'bg-white/80 dark:bg-slate-900/80 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 hover:text-rose-500'
@@ -312,55 +320,61 @@ export function Products() {
                       >
                         {(saveListing.isPending && saveListing.variables === p.id) ||
                         (unsaveListing.isPending && unsaveListing.variables === p.id) ? (
-                          <Loader2 size={14} className="animate-spin" />
+                          <Loader2 size={13} className="animate-spin" />
                         ) : (
-                          <Heart size={14} fill={isSaved ? 'currentColor' : 'none'} />
+                          <Heart size={13} fill={isSaved ? 'currentColor' : 'none'} />
                         )}
                       </button>
                     )}
                   </div>
 
-                  {/* Vendor Panel */}
-                  <div className="flex items-center justify-between text-[11px] mb-1">
-                    <span className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300 truncate max-w-[65%]">
-                      @{p.sellerUsername}
-                      {p.sellerVerified && (
-                        <span title="KYC Verified Vendor" className="flex shrink-0">
-                          <ShieldCheck size={12} className="text-primary-600 dark:text-primary-400" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    {/* Vendor Panel */}
+                    <div className="flex items-center justify-between gap-2 text-[11px] mb-1">
+                      <span className="flex min-w-0 items-center gap-1 truncate font-medium text-slate-600 dark:text-slate-300">
+                        @{p.sellerUsername}
+                        {p.sellerVerified && (
+                          <span title="KYC Verified Vendor" className="flex shrink-0">
+                            <ShieldCheck size={12} className="text-primary-600 dark:text-primary-400" />
+                          </span>
+                        )}
+                      </span>
+                      {p.condition && (
+                        <span className="shrink-0 rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-medium text-slate-500 dark:text-slate-400 text-[10px]">
+                          {p.condition}
                         </span>
                       )}
-                    </span>
-                    {p.condition && (
-                      <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-medium text-slate-500 dark:text-slate-400 text-[10px]">
-                        {p.condition}
-                      </span>
-                    )}
+                    </div>
+
+                    <h3 className="font-display font-semibold text-slate-900 dark:text-white text-sm line-clamp-2 leading-snug group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors sm:text-xs sm:line-clamp-1">
+                      {p.title}
+                    </h3>
+                    <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 sm:mt-1">
+                      <span className="sm:hidden">{p.category} · </span>
+                      {p.short}
+                    </p>
+
+                    {/* Pinned to the bottom on both axes, so prices stay on a
+                        line across a grid row however tall the titles run. */}
+                    <div className="mt-auto pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 sm:mt-3 sm:pt-2.5">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-medium">In Escrow</span>
+                        <span className="font-display text-sm font-bold text-slate-900 dark:text-white">
+                          {formatMoney(p.price)}
+                        </span>
+                      </div>
+
+                      {isOwnListing ? (
+                        <span className="inline-flex shrink-0 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                          Manage
+                        </span>
+                      ) : (
+                        <span className="inline-flex shrink-0 items-center justify-center rounded-xl bg-primary-50 dark:bg-primary-950/60 px-2.5 py-1 text-[11px] font-semibold text-primary-700 dark:text-primary-400 group-hover:bg-primary-600 group-hover:text-white transition-all">
+                          View
+                        </span>
+                      )}
+                    </div>
                   </div>
-
-                  <h3 className="font-display font-semibold text-slate-900 dark:text-white text-xs line-clamp-1 leading-snug group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                    {p.title}
-                  </h3>
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">{p.short}</p>
-                </div>
-
-                {/* Card Footer */}
-                <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">In Escrow</span>
-                    <span className="font-display text-sm font-bold text-slate-900 dark:text-white">
-                      {formatMoney(p.price)}
-                    </span>
-                  </div>
-
-                  {isOwnListing ? (
-                    <span className="inline-flex items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 group-hover:bg-emerald-600 group-hover:text-white transition-all">
-                      Manage
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center justify-center rounded-xl bg-primary-50 dark:bg-primary-950/60 px-2.5 py-1 text-[11px] font-semibold text-primary-700 dark:text-primary-400 group-hover:bg-primary-600 group-hover:text-white transition-all">
-                      View
-                    </span>
-                  )}
                 </div>
               </div>
             )

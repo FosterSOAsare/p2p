@@ -285,7 +285,7 @@ export function EscrowDetail() {
         {/* Left: stepper + terms + timeline */}
         <div className="lg:col-span-7 space-y-6">
           {/* Stepper */}
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm">
             <div className="flex items-center justify-between">
               {HAPPY_PATH.map((step, i) => {
                 const done = !isDisputed && !isCancelled && i <= currentStepIndex
@@ -343,7 +343,7 @@ export function EscrowDetail() {
           </div>
 
           {/* Terms */}
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-3 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-3 shadow-sm">
             <h3 className="font-display text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <FileText size={18} className="text-emerald-600 dark:text-emerald-400" /> Deal Details
             </h3>
@@ -371,7 +371,7 @@ export function EscrowDetail() {
           </div>
 
           {/* Timeline */}
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm space-y-4">
             <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">Audit Timeline</h3>
             <div className="space-y-4 border-l-2 border-slate-200 dark:border-slate-800 pl-4 text-xs">
               {deal.events.map((ev) => (
@@ -392,7 +392,7 @@ export function EscrowDetail() {
               the header chip: on a one-sided deal, getting someone to join is
               the only thing left to do here. */}
           {deal.share && (
-            <div className="rounded-2xl border border-primary-200 dark:border-primary-900 bg-primary-50/40 dark:bg-primary-950/20 p-5 shadow-sm space-y-3">
+            <div className="rounded-2xl border border-primary-200 dark:border-primary-900 bg-primary-50/40 dark:bg-primary-950/20 p-4 sm:p-5 shadow-sm space-y-3">
               <div className="flex items-center gap-2">
                 <QrCode size={16} className="text-primary-600 dark:text-primary-400" />
                 <h3 className="font-display text-sm font-bold text-slate-900 dark:text-white">
@@ -439,7 +439,7 @@ export function EscrowDetail() {
             </div>
           )}
 
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm space-y-4">
             <h3 className="font-display text-base font-bold text-slate-900 dark:text-white">Actions</h3>
 
             {isAdmin && (
@@ -536,8 +536,10 @@ export function EscrowDetail() {
               </button>
             )}
 
+            {/* Destructive and irreversible — coloured like the confirm step it
+                opens, not like the neutral secondary actions above it. */}
             {has('CANCEL') && !cancelOpen && (
-              <button onClick={() => setCancelOpen(true)} disabled={busy} className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-sm disabled:opacity-50">
+              <button onClick={() => setCancelOpen(true)} disabled={busy} className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 py-3 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-950/70 transition-all cursor-pointer shadow-sm disabled:opacity-50">
                 <Ban size={15} /> {cancelRefunds ? 'Cancel Order & Refund Buyer' : 'Cancel Deal'}
               </button>
             )}
@@ -761,7 +763,7 @@ export function EscrowDetail() {
       {/* Edit Deal Modal */}
       {editOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="font-display text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Pencil size={18} className="text-primary-600" />

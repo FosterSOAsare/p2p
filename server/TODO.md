@@ -1,9 +1,5 @@
 # Server TODO — open items
 
-## Seller
-
-- [ ] Promote/boost listing (paid placement)
-
 ## Admin (`/api/admin` 👑)
 
 - [ ] Support tickets

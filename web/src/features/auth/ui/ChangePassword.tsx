@@ -1,6 +1,7 @@
+import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Lock, CheckCircle2, ArrowRight } from 'lucide-react'
+import { Lock, CheckCircle2, ArrowRight, ArrowLeft } from 'lucide-react'
 import { changePasswordSchema, type ChangePasswordForm } from '../data/schemas'
 import { useChangePassword } from '../data/authApi'
 import { apiErrorMessage } from '../../shared/libs/api'
@@ -26,13 +27,22 @@ export function ChangePassword() {
   })
 
   return (
-    <div className="mx-auto max-w-md py-8 space-y-6">
+    <div className="mx-auto max-w-md py-4 sm:py-8 space-y-5 sm:space-y-6">
+      {/* Settings sends you here but the header's own way back is desktop-only,
+          so on a phone this was a dead end. */}
+      <Link
+        to="/settings"
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+      >
+        <ArrowLeft size={16} /> Back to Account Settings
+      </Link>
+
       <div className="space-y-1">
         <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-white">Change Password</h1>
         <p className="text-xs text-slate-500 dark:text-slate-400">Update your account password for enhanced security.</p>
       </div>
 
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xl space-y-4">
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-xl space-y-4">
         {changePassword.isSuccess && (
           <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800 p-3 text-xs font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
             <CheckCircle2 size={16} /> Password updated successfully! Other devices have been signed out.
