@@ -161,6 +161,11 @@ export function useMyPromotions(query = '') {
 /**
  * Live price for the current slider position. Enabled only once a plan and a
  * listing are known; the studio falls back to `promotionPrice` while it loads.
+ *
+ * The slider position is part of the key, so every move is a fresh key. Holding
+ * the previous answer while the new one loads keeps `data` defined throughout —
+ * otherwise the studio watches `current` blink to undefined and back on every
+ * move, which is enough to make it re-adopt the saved rank and undo the edit.
  */
 export function usePromotionQuote(listingId: string, planId: PromotionPlanId, priority: number, enabled = true) {
   return useQuery({
@@ -170,6 +175,7 @@ export function usePromotionQuote(listingId: string, planId: PromotionPlanId, pr
         `/api/promotions/quote?listingId=${encodeURIComponent(listingId)}&planId=${planId}&priority=${priority}`,
       ),
     enabled: enabled && Boolean(listingId),
+    placeholderData: keepPreviousData,
     retry: false,
     staleTime: 15_000,
   })

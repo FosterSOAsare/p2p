@@ -1,6 +1,6 @@
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
-import type { Prisma, Promotion, PromotionPlan } from "../../generated/prisma/client";
+import type { Prisma, Promotion, PromotionPlan, PromotionStatus } from "../../generated/prisma/client";
 import { fromPesewas, toPesewas } from "../escrows/money";
 import * as walletService from "../wallet/wallet.service";
 import { notify } from "../notifications/notifications.service";
@@ -62,10 +62,22 @@ export type SerializedPromotion = ReturnType<typeof serialize>;
 
 const withListing = { listing: { select: { title: true, images: true, category: true } } };
 
-/** The seller's own promotions, newest first. */
-export async function listMine(userId: string, page: number, limit: number) {
+/**
+ * The seller's own promotions, newest first. `status` narrows the page, and
+ * "live" is the active-or-paused pair the studio manages — the hub asks for it
+ * because a seller with a long history of finished runs would otherwise push
+ * their own running campaigns off the first page and out of the managed list.
+ */
+export async function listMine(userId: string, page: number, limit: number, status?: string) {
   await sweepExpired();
-  const where = { sellerId: userId };
+  const where: Prisma.PromotionWhereInput = {
+    sellerId: userId,
+    ...(status === "live"
+      ? { status: { in: ["active", "paused"] } }
+      : status
+        ? { status: status as PromotionStatus }
+        : {}),
+  };
   const [total, rows] = await Promise.all([
     prisma.promotion.count({ where }),
     prisma.promotion.findMany({
@@ -172,18 +184,32 @@ async function ownedPromotion(id: string, userId: string) {
  * code — a preview that can disagree with the charge is worse than no preview.
  */
 export async function quote(userId: string, listingId: string, planId: string, priority: number) {
-  await sweepExpired();
   const plan = requirePlan(planId);
   requirePriority(priority);
-  const listing = await requireOwnListing(listingId, userId);
+  // Deliberately lenient about the listing's status: the studio reads the live
+  // run out of this response, so refusing to quote a listing that has gone
+  // out_of_stock would leave the seller's running campaign with no pause or
+  // cancel controls on the very page that manages it. `launch` still insists.
+  const listing = await requireOwnListing(listingId, userId, { mustBeActive: false });
+  const now = new Date();
   // The studio needs the live run's id and status to draw its pause/resume/cancel
   // controls, and it needs the price for the same slider position — one request
   // for both keeps the two from disagreeing mid-render.
+  //
+  // No `sweepExpired()` here, unlike everywhere else: the slider re-quotes on
+  // every move, and a read that writes would turn a drag into a burst of
+  // UPDATEs. Filtering on the clock gives the same answer without the write —
+  // an active row past its `endsAt` is finished whether or not the flag caught
+  // up, and the next launch/pause/list sweeps it for real.
   const existing = await prisma.promotion.findFirst({
-    where: { listingId: listing.id, status: { in: ["active", "paused"] } },
+    where: {
+      listingId: listing.id,
+      OR: [{ status: "active", endsAt: { gt: now } }, { status: "paused" }],
+    },
+    orderBy: { createdAt: "desc" },
     include: withListing,
   });
-  const change = planChange(existing, plan, priority, new Date());
+  const change = planChange(existing, plan, priority, now);
   // No wallet balance here on purpose — /api/wallet owns that number, and
   // serving a second copy alongside the price invites the two to disagree.
   return {
@@ -216,7 +242,7 @@ function requirePriority(priority: number) {
   }
 }
 
-async function requireOwnListing(listingId: string, userId: string) {
+async function requireOwnListing(listingId: string, userId: string, opts?: { mustBeActive?: boolean }) {
   const listing = await prisma.listing.findUnique({
     where: { id: listingId },
     select: { id: true, sellerId: true, status: true, title: true },
@@ -226,7 +252,8 @@ async function requireOwnListing(listingId: string, userId: string) {
   // wallet, so buying a spotlight for someone else's shop would bill the wrong
   // person.
   if (listing.sellerId !== userId) throw ApiError.forbidden("You can only promote your own listings");
-  if (listing.status !== "active") {
+  // Only spending money needs a live listing — reading a quote doesn't.
+  if (opts?.mustBeActive !== false && listing.status !== "active") {
     throw ApiError.badRequest("Only an active listing can be promoted — publish it first");
   }
   return listing;

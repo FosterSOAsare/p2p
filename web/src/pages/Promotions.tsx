@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
   BadgeDollarSign,
+  Check,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -133,6 +134,24 @@ export function Promotions() {
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1)
   const search = searchParams.get('search') ?? ''
 
+  // The receipt for a purchase made in the studio, which redirects here once the
+  // spotlight is bought. Read once into state and then stripped from history, so
+  // a refresh — or a trip forward and back — doesn't replay a stale one.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [notice, setNotice] = useState<string | null>(
+    () => (location.state as { notice?: string } | null)?.notice ?? null,
+  )
+  useEffect(() => {
+    if (!location.state) return
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null })
+  }, [location, navigate])
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), 6000)
+    return () => clearTimeout(timer)
+  }, [notice])
+
   const updateParams = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(searchParams)
     for (const [key, value] of Object.entries(patch)) {
@@ -144,8 +163,9 @@ export function Promotions() {
 
   const listingsQuery = useMyListings(`page=${page}&limit=30`)
   // Seller-wide, not page-scoped: a promotion on a listing from page 2 still
-  // belongs in this list.
-  const promotionsQuery = useMyPromotions('limit=50')
+  // belongs in this list. Narrowed to live runs server-side so a long history of
+  // finished ones can't fill the page and hide the campaigns being managed.
+  const promotionsQuery = useMyPromotions('status=live&limit=50')
   const { data: metrics } = usePromotionMetrics()
 
   const pause = usePausePromotion()
@@ -182,6 +202,13 @@ export function Promotions() {
       <Link to="/listings" className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
         <ArrowLeft size={16} /> Back to My Listings
       </Link>
+
+      {notice && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/60 p-4 text-xs font-semibold text-emerald-800 dark:text-emerald-200 flex items-center gap-2 shadow-sm animate-fade-in">
+          <Check size={16} className="text-emerald-600 dark:text-emerald-400" />
+          <span>{notice}</span>
+        </div>
+      )}
 
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-br from-slate-900 via-slate-800 to-primary-950 p-6 sm:p-8 text-white shadow-xl space-y-6 relative overflow-hidden">
         <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-primary-500/10 blur-3xl" />

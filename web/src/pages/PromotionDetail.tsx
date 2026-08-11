@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
   BadgeDollarSign,
@@ -76,6 +76,7 @@ function getBoostTier(score: number) {
 
 export function PromotionDetail() {
   const { listingId = '' } = useParams()
+  const navigate = useNavigate()
 
   const listingQuery = useListing(listingId)
   const { data: me } = useMe()
@@ -83,31 +84,47 @@ export function PromotionDetail() {
 
   const [planId, setPlanId] = useState<PromotionPlanId>('14d')
   const [priority, setPriority] = useState<number>(10)
+  // What the quote is actually keyed on. The slider steps in fives, so dragging
+  // it across the range fires one request per step; let the position settle
+  // first and `keepPreviousData` holds the last answer on screen meanwhile.
+  const [quotedPriority, setQuotedPriority] = useState(priority)
   const [redirecting, setRedirecting] = useState(false)
-  const [successNotice, setSuccessNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (quotedPriority === priority) return
+    const timer = setTimeout(() => setQuotedPriority(priority), 250)
+    return () => clearTimeout(timer)
+  }, [priority, quotedPriority])
 
   // Same source the deals pages use. Deliberately not read off the quote: a
   // pricing call that fails would then render a real balance as GH₵0.00.
   const walletQuery = useWallet()
-  const quoteQuery = usePromotionQuote(listingId, planId, priority, Boolean(listingId))
+  const quoteQuery = usePromotionQuote(listingId, planId, quotedPriority, Boolean(listingId))
   const launch = useLaunchPromotion()
   const pause = usePausePromotion()
   const resume = useResumePromotion()
   const cancel = useCancelPromotion()
   const initDeposit = useInitDeposit()
 
-  const currentPromotion = quoteQuery.data?.current ?? null
+  const quoteData = quoteQuery.data
+  const currentPromotion = quoteData?.current ?? null
 
-  // Adopt the live run's settings once, when the studio first learns about it —
-  // keyed on the promotion id so it doesn't stomp the seller's edits on every
-  // refetch of the quote.
-  const adoptedId = currentPromotion?.id ?? null
+  // Adopt the live run's settings once, when the studio first learns about it.
+  // A ref rather than an effect dependency: the quote is re-keyed on every
+  // slider move, so anything derived from it flickers, and a dependency that
+  // flickers re-runs the effect and stomps the edit the seller just made. The
+  // listingId check keeps a quote still in flight for the previous listing from
+  // adopting its settings here.
+  const adoptedRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!currentPromotion) return
+    if (!currentPromotion || currentPromotion.listingId !== listingId) return
+    if (adoptedRef.current === currentPromotion.id) return
+    adoptedRef.current = currentPromotion.id
     setPlanId(currentPromotion.planId)
     setPriority(currentPromotion.priority)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adoptedId])
+    // Moved together, so adopting doesn't cost a debounce round-trip.
+    setQuotedPriority(currentPromotion.priority)
+  }, [currentPromotion, listingId])
 
   if (!listingId) return <Navigate to="/promotions" replace />
 
@@ -147,29 +164,56 @@ export function PromotionDetail() {
   const isActive = listing.status === 'active'
   const boostTier = getBoostTier(priority)
 
-  const quote = quoteQuery.data
-  // Preview from the mirrored formula until the server's quote lands, so the
-  // slider stays responsive; the charge itself always comes from the server.
+  // Two grades of freshness, because a held-over quote is right about some of
+  // its answer and wrong about the rest. What a change does to the *term* —
+  // which mode it is, the days it adds, when it ends — turns on the plan and
+  // the live run, not on the rank, so a quote for this plan still answers it at
+  // any slider position. The *money* turns on the rank, so it needs a quote for
+  // exactly this position; until one lands the mirrored formula covers it.
+  const planQuote = quoteData?.planId === planId ? quoteData : undefined
+  const priceQuote = planQuote?.priority === priority ? planQuote : undefined
+
+  // Mirror of the server's amendment rule (planChange), for the gap before the
+  // quote catches up: no live run pays list price, the same plan pays only the
+  // difference in rank, and a different plan buys that term outright.
+  const previewMode = !currentPromotion ? 'new' : currentPromotion.planId === planId ? 'priority' : 'extend'
   const previewTotal = promotionPrice(planId, priority, plans)
-  const total = quote?.total ?? previewTotal
-  const charge = quote?.charge ?? previewTotal
-  const mode = quote?.mode ?? 'new'
-  const addedDays = quote?.addedDays ?? 0
+  const previewCharge =
+    currentPromotion && previewMode === 'priority'
+      ? Math.max(
+          0,
+          Math.round((previewTotal - promotionPrice(currentPromotion.planId, currentPromotion.priority, plans)) * 100) / 100,
+        )
+      : previewTotal
+
+  const total = priceQuote?.total ?? previewTotal
+  const charge = priceQuote?.charge ?? previewCharge
+  const mode = planQuote?.mode ?? previewMode
+  const addedDays = planQuote?.addedDays ?? (previewMode === 'priority' ? 0 : getPromotionPlanDetails(planId, plans).days)
   const walletBalance = walletQuery.data?.balance ?? 0
-  const endsAt = quote?.endsAt ?? null
+  const endsAt = planQuote?.endsAt ?? null
 
   const busy = launch.isPending || initDeposit.isPending || redirecting
   const mutationError =
     launch.error ?? initDeposit.error ?? pause.error ?? resume.error ?? cancel.error ?? null
   const errorMessage = mutationError ? apiErrorMessage(mutationError) : null
 
+  /**
+   * Buying is the end of the studio's job, so hand back to the hub — that's
+   * where the run is managed from, and its list and header numbers are the
+   * confirmation that the purchase landed. The receipt rides along as
+   * navigation state instead of flashing here on a page we're leaving.
+   */
   const onLaunched = (charged: number) => {
-    setSuccessNotice(
-      charged > 0
-        ? `Spotlight live — ${formatMoney(charged)} debited from your wallet.`
-        : 'Spotlight updated — no extra charge for this change.',
-    )
-    setTimeout(() => setSuccessNotice(null), 5000)
+    navigate('/promotions', {
+      replace: true,
+      state: {
+        notice:
+          charged > 0
+            ? `Spotlight live — ${formatMoney(charged)} debited from your wallet.`
+            : 'Spotlight updated — no extra charge for this change.',
+      },
+    })
   }
 
   const submitLaunch = () => {
@@ -284,13 +328,6 @@ export function PromotionDetail() {
           </div>
         </div>
       </div>
-
-      {successNotice && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/60 p-4 text-xs font-semibold text-emerald-800 dark:text-emerald-200 flex items-center gap-2 shadow-sm animate-fade-in">
-          <Check size={16} className="text-emerald-600 dark:text-emerald-400" />
-          <span>{successNotice}</span>
-        </div>
-      )}
 
       {/* Main 2-Column Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
@@ -603,7 +640,10 @@ export function PromotionDetail() {
                   <Info size={14} /> Inactive Listing
                 </p>
                 <p className="text-[11px] leading-relaxed">
-                  This listing must be active before it can be promoted. Update its status first from My Listings.
+                  This listing must be active before it can be promoted — update its status from My Listings.
+                  {currentPromotion
+                    ? ' Its current spotlight keeps running in the meantime, and the clock does not stop on its own: pause it below to bank the time you have left.'
+                    : ''}
                 </p>
               </div>
             )}

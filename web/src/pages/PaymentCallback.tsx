@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2, CheckCircle2, AlertTriangle, ArrowLeft } from 'lucide-react'
 import { api, apiErrorMessage } from '../features/shared/libs/api'
+import { formatMoney } from '../features/shared/libs/currency'
 import { pendingAction } from '../features/escrow/data/paymentsApi'
 import type { VerifyDepositResult } from '../features/escrow/data/paymentsApi'
 import type { Deal, DealDetail } from '../features/escrow/data/ordersApi'
@@ -89,7 +90,7 @@ export function PaymentCallback() {
 
         if (action.kind === 'promotion') {
           // The top-up landed in the wallet — now buy the spotlight with it.
-          await api('/api/promotions', {
+          const { charged } = await api<{ charged: number }>('/api/promotions', {
             method: 'POST',
             body: { listingId: action.listingId, planId: action.planId, priority: action.priority },
           })
@@ -97,7 +98,12 @@ export function PaymentCallback() {
           queryClient.invalidateQueries({ queryKey: ['promotions'] })
           queryClient.invalidateQueries({ queryKey: ['wallet'] })
           setPhase('done')
-          navigate(`/promotions/${action.listingId}`, { replace: true })
+          // Same landing as a launch paid straight from the wallet: the hub, with
+          // the receipt in tow.
+          navigate('/promotions', {
+            replace: true,
+            state: { notice: `Spotlight live — ${formatMoney(charged)} debited from your wallet.` },
+          })
           return
         }
 

@@ -7,8 +7,12 @@ export const getMetrics = asyncHandler(async (req, res) => {
 });
 
 export const mine = asyncHandler(async (req, res) => {
-  const { page, limit } = req.query as unknown as { page: number; limit: number };
-  const result = await promotionsService.listMine(req.user!.id, page, limit);
+  const { page, limit, status } = req.query as unknown as {
+    page: number;
+    limit: number;
+    status?: string;
+  };
+  const result = await promotionsService.listMine(req.user!.id, page, limit, status);
   res.json(result);
 });
 
