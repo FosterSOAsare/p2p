@@ -3,11 +3,13 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator } from 'react-native';
-import { ArrowRight, CheckCircle2, MailCheck, RefreshCw } from 'lucide-react-native';
+import { ArrowRight, CheckCircle2, MailCheck, RefreshCw } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { useResendVerification, useVerifyEmail } from '../data/authApi';
 
 /**
  * Verify email — the phone version of `web/src/features/auth/ui/VerifyEmail.tsx`.
@@ -27,22 +29,33 @@ export function VerifyEmailScreen() {
   const { user } = useAuth();
   const { token, email } = useLocalSearchParams<{ token?: string; email?: string }>();
 
-  const [verifying, setVerifying] = useState(Boolean(token));
   const [verified, setVerified] = useState(false);
-  const [resending, setResending] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
   const [resent, setResent] = useState(false);
+
+  const verifyEmail = useVerifyEmail();
+  const resendVerification = useResendVerification();
+
+  const verifying = verifyEmail.isPending;
+  const resending = resendVerification.isPending;
 
   const displayEmail = user?.email ?? email;
 
-  // A link with a token verifies on arrival, as the web's query does.
+  /**
+   * A link with a token verifies on arrival, as the web's query does.
+   *
+   * `mutate` is called exactly once per token: the effect depends only on
+   * `token`, and the mutation object is deliberately left out of the deps — it
+   * changes identity on every state transition, which would re-fire the call
+   * and fail on the second attempt, since the token is single-use.
+   */
   useEffect(() => {
     if (!token) return;
-    // TODO(api): GET /api/auth/verify-email?token=... and use the result.
-    const t = setTimeout(() => {
-      setVerifying(false);
-      setVerified(true);
-    }, 900);
-    return () => clearTimeout(t);
+    verifyEmail.mutate(token, {
+      onSuccess: () => setVerified(true),
+      onError: (err) => setVerifyError(apiErrorMessage(err)),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Verified → straight to sign in after a beat, matching the web's 1.5s.
@@ -53,11 +66,14 @@ export function VerifyEmailScreen() {
   }, [verified, router]);
 
   const resend = async () => {
-    setResending(true);
-    // TODO(api): POST /api/auth/resend-verification.
-    await new Promise((r) => setTimeout(r, 700));
-    setResending(false);
-    setResent(true);
+    try {
+      await resendVerification.mutateAsync();
+      setResent(true);
+    } catch {
+      // Surfaced from `resendVerification.error`. Expect a 401 straight after
+      // signup: the endpoint is behind `auth`, and a new account has no
+      // session until it verifies — the link it was already sent is the way in.
+    }
   };
 
   const page = (children: React.ReactNode) => (
@@ -81,6 +97,36 @@ export function VerifyEmailScreen() {
         <Text style={[styles.body, { color: theme.textSecondary }]}>
           Hold on a second while we confirm your verification link.
         </Text>
+      </>,
+    );
+  }
+
+  /* ── 1b. The link didn't work ─────────────────────────────── */
+  // Expired, tampered with, or already used — tokens are single-use, so
+  // re-opening a link that already worked lands here. Without this branch the
+  // screen would fall through to "check your inbox" and look like nothing
+  // happened.
+  if (verifyError) {
+    return page(
+      <>
+        <View style={[styles.badge, { backgroundColor: '#fee2e2' }]}>
+          <MailCheck size={32} color="#e11d48" />
+        </View>
+        <Text style={[styles.title, { color: theme.text }]}>This link didn&apos;t work</Text>
+        <Text style={[styles.body, { color: theme.textSecondary }]}>{verifyError}</Text>
+        <Text style={[styles.body, { color: theme.textTertiary }]}>
+          Verification links are single-use and expire. Sign in to request a new one.
+        </Text>
+        <Pressable
+          onPress={() => router.replace('/login')}
+          style={({ pressed }) => [
+            styles.primaryBtn,
+            { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+          ]}
+        >
+          <Text style={styles.primaryBtnText}>Back to Sign In</Text>
+          <ArrowRight size={16} color="#ffffff" />
+        </Pressable>
       </>,
     );
   }

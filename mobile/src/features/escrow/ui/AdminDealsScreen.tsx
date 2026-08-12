@@ -2,13 +2,42 @@ import { useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, Inbox, Search, ShieldCheck } from 'lucide-react-native';
+import { AlertTriangle, Inbox, Search, ShieldCheck } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { mockDeals, type EscrowDeal } from '@/constants/mockData';
-import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
+import { TONE_COLORS, type BadgeTone } from './dealStatus';
+
+/**
+ * This screen still reads `mockDeals`, whose statuses are the mock vocabulary
+ * (`shipped`, `released`, `refunded`). The shared `statusBadge` now speaks the
+ * server's instead, so the labels live here until this screen is wired to the
+ * API. Tones are still shared — those didn't change.
+ */
+type DealStatus = EscrowDeal['status'];
+
+function statusBadge(status: DealStatus): { tone: BadgeTone; label: string } {
+  switch (status) {
+    case 'created':
+      return { tone: 'warning', label: 'Awaiting Funding' };
+    case 'funded':
+      return { tone: 'info', label: 'Funded — In Progress' };
+    case 'shipped':
+      return { tone: 'info', label: 'Shipped — In Transit' };
+    case 'delivered':
+      return { tone: 'info', label: 'Delivered — Confirm Receipt' };
+    case 'released':
+      return { tone: 'success', label: 'Completed' };
+    case 'disputed':
+      return { tone: 'danger', label: 'Disputed' };
+    case 'refunded':
+      return { tone: 'neutral', label: 'Refunded' };
+    default:
+      return { tone: 'neutral', label: status };
+  }
+}
 
 /**
  * Platform-wide deals oversight — the phone version of the web's

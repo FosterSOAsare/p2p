@@ -1,37 +1,40 @@
 /**
  * Auth context for the P2P mobile app.
  *
- * Mid-migration: a login attempt hits the REAL `/api/auth/login` first, and
- * only falls back to the mock accounts when the server can't authenticate it
- * (wrong credentials, or the API isn't running). That keeps the existing demo
- * logins working while the admin screens — which read live data — get a genuine
- * JWT session.
+ * Sessions are real: `login` goes to `/api/auth/login`, stores the token pair
+ * in the device keychain, and reads the account back from `/api/auth/me`. A
+ * rejected login throws so the screen can say why.
  *
- * `isRealSession` tells a screen which world it's in: admin screens require a
- * real session because there's no mock backing for them.
+ * There used to be a mock fallback here — a failed sign-in quietly became a
+ * fake `mockCurrentUser` session. It made every authenticated request 401 while
+ * the app looked signed in, which reads as broken screens rather than a bad
+ * password. Screens still on mock data don't need a session at all, so nothing
+ * depended on it.
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { mockCurrentUser, mockSellerUser, mockAdminUser, type User } from '@/constants/mockData';
-import { API_URL } from '@/features/shared/data/config';
+import type { User } from '@/constants/mockData';
 import { tokenStore } from '@/features/shared/data/tokenStore';
 import { api, setSessionExpiredHandler } from '@/features/shared/data/api';
+import { dashboardKeys, type DashboardResponse } from '@/features/dashboard/data/dashboardApi';
+import { runTeardown } from '@/features/shared/data/teardown';
 
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  /** True when the session is backed by real server tokens, not a mock user. */
+  /**
+   * Kept for screens that gate on a server-backed session (AdminDashboard).
+   * Every session is server-backed now, so this tracks `isAuthenticated`.
+   */
   isRealSession: boolean;
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
-  signup: (data: { username: string; email: string; password: string }) => Promise<void>;
+  /** Throws on failure — the screen renders the message. */
+  login: (identifier: string, password: string) => Promise<void>;
   logout: () => void;
-  /** Dev helper: switch between mock user roles */
-  switchRole: (role: 'buyer' | 'seller' | 'admin') => void;
 }
 
 /** Shape of `/api/auth/me` — the fields the app actually consumes. */
@@ -51,6 +54,9 @@ interface ServerMe {
  * The server tracks `user | admin`; the app's screens branch on
  * `buyer | seller | admin`. A verified KYC profile is what makes someone a
  * seller — the same rule the web uses.
+ *
+ * Note this is why signing in takes two calls: `/api/auth/login` returns the
+ * user but not `kycStatus`, and `kycStatus` is what decides the persona.
  */
 function toAppUser(me: ServerMe): User {
   return {
@@ -68,75 +74,6 @@ function toAppUser(me: ServerMe): User {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const roleUsers: Record<string, User> = {
-  buyer: mockCurrentUser,
-  seller: mockSellerUser,
-  admin: mockAdminUser,
-};
-
-/**
- * Resolves the mock account from whatever was typed into the login field, so
- * all three home dashboards are reachable without a role-switch control:
- *
- *   kofi_buyer  / kofi@example.com     -> buyer
- *   kwame_tech  / kwame@example.com    -> seller
- *   admin_ama   / ama@p2p-admin.com    -> admin
- *
- * Anything else falls back to the buyer, so a random login still works.
- * Replace this whole function with the real POST /api/auth/login.
- */
-function resolveMockUser(identifier: string): User {
-  const id = identifier.trim().toLowerCase();
-  if (!id) return mockCurrentUser;
-
-  const accounts = [mockCurrentUser, mockSellerUser, mockAdminUser];
-
-  // 1. Exact username or email — what a real login would match on.
-  const exact = accounts.find(
-    (u) => u.username.toLowerCase() === id || u.email.toLowerCase() === id,
-  );
-  if (exact) return exact;
-
-  // 2. Testing conveniences, mock-only: the role word on its own ("seller",
-  //    "admin"), or any fragment of a username/email. Exact matching alone
-  //    meant a near-miss like "kwame" silently signed you in as the buyer,
-  //    which is confusing when you're trying to view a specific persona.
-  if (id === 'seller' || id === 'admin' || id === 'buyer') {
-    return roleUsers[id] ?? mockCurrentUser;
-  }
-
-  const partial = accounts.find(
-    (u) => u.username.toLowerCase().includes(id) || u.email.toLowerCase().startsWith(id),
-  );
-  return partial ?? mockCurrentUser;
-}
-
-/**
- * Try a genuine sign-in. Returns the app user on success, or null when the
- * server rejects the credentials / can't be reached — the caller then falls
- * back to the mock accounts.
- */
-async function realLogin(identifier: string, password: string): Promise<User | null> {
-  try {
-    const res = await fetch(`${API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier, password }),
-    });
-    if (!res.ok) return null;
-    const body = (await res.json()) as {
-      tokens?: { accessToken: string; refreshToken: string };
-    };
-    if (!body.tokens?.accessToken || !body.tokens?.refreshToken) return null;
-
-    await tokenStore.set(body.tokens.accessToken, body.tokens.refreshToken);
-    // `me` carries kycStatus, which login's payload doesn't.
-    const me = await api<ServerMe>('/api/auth/me');
-    return toAppUser(me);
-  } catch {
-    return null; // offline / API down — mock path still works
-  }
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -147,85 +84,95 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isRealSession: false,
   });
 
-  // Restore a real session on cold start: the tokens outlive the process, so
-  // without this the app would bounce a signed-in admin back to the login
-  // screen every launch. A mock session has no tokens and is simply not
-  // restored — the demo user signs in again, as before.
+  /**
+   * The app always starts signed out. Credentials are required every launch.
+   *
+   * This used to restore a session from the keychain on cold start, which is
+   * the usual convenience — but it meant the login screen appeared and then
+   * signed itself in a few seconds later, with nobody typing anything. That
+   * behaviour is not wanted here, so any leftover tokens are dropped on
+   * startup rather than used: no token can outlive the process.
+   *
+   * Tokens are still written during a session — `api()` needs them to
+   * authenticate requests and to refresh on a 401 — they simply don't survive a
+   * restart.
+   */
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const access = await tokenStore.getAccess();
-      if (!access) return;
-      try {
-        const me = await api<ServerMe>('/api/auth/me');
-        if (!cancelled) {
-          setState({
-            user: toAppUser(me),
-            isAuthenticated: true,
-            isLoading: false,
-            isRealSession: true,
-          });
-        }
-      } catch {
-        // Expired or revoked — drop the tokens and stay signed out.
-        await tokenStore.clear();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void tokenStore.clear();
   }, []);
 
   const login = useCallback(async (identifier: string, password: string) => {
     setState((s) => ({ ...s, isLoading: true }));
+    try {
+      const { tokens } = await api<{ tokens: { accessToken: string; refreshToken: string } }>(
+        '/api/auth/login',
+        { method: 'POST', body: { identifier, password } },
+      );
+      await tokenStore.set(tokens.accessToken, tokens.refreshToken);
 
-    const realUser = await realLogin(identifier, password);
-    if (realUser) {
-      setState({ user: realUser, isAuthenticated: true, isLoading: false, isRealSession: true });
-      return;
+      /**
+       * Warm every tab NOW, in parallel with `/me`, rather than letting each
+       * screen start its own fetch when you first tap it.
+       *
+       * A single DB-backed request against this database costs 1–4.5 seconds
+       * measured *on the server*, before the phone's network is involved at all.
+       * Fetched lazily that is a multi-second stall the first time you open each
+       * tab, which is exactly what "the tabs take time to show up" is. Started
+       * here they overlap with each other and with the rest of sign-in, so by the
+       * time a tab is tapped its data is usually already in cache and the screen
+       * paints immediately.
+       *
+       * Deliberately NOT awaited: sign-in must not block on any of them, and a
+       * failure is harmless — each screen's own query retries it. They are also
+       * fired together rather than in sequence, since the cost here is latency,
+       * not bandwidth.
+       */
+      void queryClient.prefetchQuery({
+        queryKey: dashboardKeys.data,
+        queryFn: () => api<DashboardResponse>('/api/users/me/dashboard'),
+      });
+      // My Deals
+      void queryClient.prefetchQuery({
+        queryKey: ['deals', 'list', 'all'],
+        queryFn: () => api('/api/escrows?limit=48'),
+      });
+      // My Listings
+      void queryClient.prefetchQuery({
+        queryKey: ['listings', 'mine'],
+        queryFn: () => api('/api/listings/mine?limit=48'),
+      });
+      // Marketplace — the unfiltered first page, which is what it opens on.
+      void queryClient.prefetchQuery({
+        queryKey: ['listings', 'browse', '', ''],
+        queryFn: () => api('/api/listings?limit=48'),
+      });
+
+      // Second call on purpose: `me` carries kycStatus, which decides persona.
+      const me = await api<ServerMe>('/api/auth/me');
+      setState({
+        user: toAppUser(me),
+        isAuthenticated: true,
+        isLoading: false,
+        isRealSession: true,
+      });
+    } catch (err) {
+      // Leave no half-session behind before handing the error to the screen.
+      await tokenStore.clear();
+      setState({ user: null, isAuthenticated: false, isLoading: false, isRealSession: false });
+      throw err;
     }
-
-    // Fall back to the mock accounts (demo logins, offline dev).
-    await tokenStore.clear();
-    await new Promise((r) => setTimeout(r, 400));
-    setState({
-      user: resolveMockUser(identifier),
-      isAuthenticated: true,
-      isLoading: false,
-      isRealSession: false,
-    });
-  }, []);
-
-  const signup = useCallback(async (_data: { username: string; email: string; password: string }) => {
-    setState((s) => ({ ...s, isLoading: true }));
-    await new Promise((r) => setTimeout(r, 800));
-    setState({
-      user: mockCurrentUser,
-      isAuthenticated: true,
-      isLoading: false,
-      isRealSession: false,
-    });
   }, []);
 
   const logout = useCallback(() => {
-    void tokenStore.clear();
     queryClient.clear(); // never show one account's data to the next
+    // Closes the chat socket if one was ever opened. It authenticates once at
+    // handshake and stays open, so clearing the tokens isn't enough — left
+    // connected it would keep delivering the previous account's messages to
+    // whoever signs in next.
+    runTeardown();
     setState({ user: null, isAuthenticated: false, isLoading: false, isRealSession: false });
+    void tokenStore.clear();
   }, [queryClient]);
-
-  const switchRole = useCallback(
-    (role: 'buyer' | 'seller' | 'admin') => {
-      void tokenStore.clear();
-      queryClient.clear();
-      setState({
-        user: roleUsers[role] ?? mockCurrentUser,
-        isAuthenticated: true,
-        isLoading: false,
-        isRealSession: false,
-      });
-    },
-    [queryClient],
-  );
 
   // A spent refresh token signs the user out rather than leaving screens
   // retrying against a dead session.
@@ -234,10 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setSessionExpiredHandler(null);
   }, [logout]);
 
-  const value = useMemo(
-    () => ({ ...state, login, signup, logout, switchRole }),
-    [state, login, signup, logout, switchRole],
-  );
+  const value = useMemo(() => ({ ...state, login, logout }), [state, login, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -11,11 +11,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, Lock } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, Lock } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { useChangePassword } from '../data/authApi';
 import { changePasswordSchema, type ChangePasswordForm } from '../data/schemas';
 import { AuthField } from './AuthField';
 
@@ -45,6 +47,8 @@ export function ChangePasswordScreen() {
   });
   const [updating, setUpdating] = useState(false);
   const [done, setDone] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const changePassword = useChangePassword();
 
   const {
     control,
@@ -57,13 +61,23 @@ export function ChangePasswordScreen() {
     defaultValues: { currentPassword: '', newPassword: '', confirmPassword: '' },
   });
 
-  const onSubmit = handleSubmit(async () => {
+  const onSubmit = handleSubmit(async (values) => {
+    setApiError(null);
     setUpdating(true);
-    // TODO(api): POST /api/auth/change-password with the current + new password.
-    await new Promise((r) => setTimeout(r, 700));
-    setUpdating(false);
-    setDone(true);
-    reset();
+    try {
+      await changePassword.mutateAsync({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      });
+      setDone(true);
+      reset();
+    } catch (err) {
+      // The common case is a wrong current password, and the server says so —
+      // silently doing nothing would look like the button was broken.
+      setApiError(apiErrorMessage(err));
+    } finally {
+      setUpdating(false);
+    }
   });
 
   const goBack = () => {
@@ -207,6 +221,15 @@ export function ChangePasswordScreen() {
             )}
           />
 
+          {/* Server-side refusals — a wrong current password, or a new one the
+              server's policy rejects. Field-level validation is handled by the
+              resolver above; this is everything only the server can know. */}
+          {apiError ? (
+            <View style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+              <Text style={styles.apiErrorText}>{apiError}</Text>
+            </View>
+          ) : null}
+
           <Pressable
             onPress={onSubmit}
             disabled={updating}
@@ -275,6 +298,8 @@ const styles = StyleSheet.create({
   },
   successText: { flex: 1, fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.sans[600], color: '#166534' },
 
+  apiError: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
   button: {
     flexDirection: 'row',
     alignItems: 'center',

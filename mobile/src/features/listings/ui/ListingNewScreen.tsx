@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, PlusCircle } from 'lucide-react-native';
+import { ArrowLeft, PlusCircle } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
-import { ListingForm } from './ListingForm';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { useCreateListing } from '../data/listingsApi';
+import { ListingForm, type ListingFormValues } from './ListingForm';
 
 /**
  * Create a listing — the phone version of `web/src/pages/ListingNew.tsx`.
@@ -21,20 +23,40 @@ import { ListingForm } from './ListingForm';
 export function ListingNewScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const [pending, setPending] = useState(false);
+  const createListing = useCreateListing();
+  const [error, setError] = useState<string | null>(null);
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
     else router.replace('/listings');
   };
 
-  const onSubmit = async () => {
-    setPending(true);
-    // TODO(api): POST /api/listings, then land on /listings as the web does.
-    // Nothing is persisted yet, so the new listing won't appear in the list.
-    await new Promise((r) => setTimeout(r, 600));
-    setPending(false);
-    router.replace('/listings');
+  const onSubmit = async (values: ListingFormValues) => {
+    setError(null);
+    try {
+      await createListing.mutateAsync({
+        title: values.title,
+        description: values.description || null,
+        price: Number(values.price),
+        category: values.category,
+        condition: values.condition,
+        quantity: Number(values.quantity),
+        location: values.location || null,
+        // Create only accepts draft/active — `out_of_stock` is a state a
+        // listing reaches later, not one you can publish into.
+        status: values.status === 'out_of_stock' ? 'draft' : values.status,
+        // Already uploaded by the form, so these are hosted URLs. The guard is
+        // belt and braces: the server rejects anything that isn't http(s).
+        images: values.images.filter(
+          (i): i is string => typeof i === 'string' && /^https?:\/\//.test(i),
+        ),
+      });
+      // The mutation invalidates the listings cache, so My Listings shows the
+      // new row without this screen telling it anything.
+      router.replace('/listings');
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
   };
 
   return (
@@ -69,11 +91,19 @@ export function ListingNewScreen() {
           </Text>
         </View>
 
+        {/* Why the server refused — a missing field, a bad price, a photo it
+            couldn't accept. Without this a rejected publish just does nothing. */}
+        {error ? (
+          <View style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+            <Text style={styles.apiErrorText}>{error}</Text>
+          </View>
+        ) : null}
+
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
           <ListingForm
             submitLabel="Publish Listing"
             pendingLabel="Publishing..."
-            isPending={pending}
+            isPending={createListing.isPending}
             showStatus={false}
             onSubmit={onSubmit}
           />
@@ -119,4 +149,6 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[400] },
 
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four },
+  apiError: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
 });

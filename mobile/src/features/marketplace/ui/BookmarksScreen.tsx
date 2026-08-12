@@ -1,14 +1,13 @@
-import { useMemo } from 'react';
 import { Image } from 'expo-image';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ExternalLink, Heart, Lock, Store, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, ExternalLink, Heart, Lock, Package, Store, Trash2 } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSaved } from '@/context/SavedContext';
-import { mockProducts } from '@/constants/mockData';
+import { SkeletonList } from '@/features/shared/ui/Skeleton';
 
 /**
  * Bookmarks — the phone version of `web/src/pages/Bookmarks.tsx`.
@@ -31,12 +30,13 @@ function formatMoney(amount: number, currency = 'GH₵') {
 export function BookmarksScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { savedIds, toggleSaved } = useSaved();
-
-  const items = useMemo(
-    () => mockProducts.filter((p) => savedIds.has(p.id)),
-    [savedIds],
-  );
+  /**
+   * The rows come from the server now, not from filtering `mockProducts` by a
+   * local id set — which could only ever show mock listings, so anything you
+   * actually saved was invisible here.
+   */
+  const { saved, toggleSaved, isLoading } = useSaved();
+  const items = saved;
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -76,7 +76,11 @@ export function BookmarksScreen() {
           </Text>
         </View>
 
-        {items.length === 0 ? (
+        {isLoading ? (
+          /* "Nothing saved" is a claim about the account, so it waits for the
+             answer rather than being asserted while the fetch is in flight. */
+          <SkeletonList count={3} />
+        ) : items.length === 0 ? (
           /* Empty state, same copy as the web */
           <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <View style={styles.emptyIcon}>
@@ -108,7 +112,14 @@ export function BookmarksScreen() {
                 onPress={() => router.push(`/marketplace/${item.id}`)}
                 style={styles.imageWrap}
               >
-                <Image source={item.images[0]} style={styles.image} contentFit="cover" />
+                {/* One cover URL from the API, and it can be null. */}
+                {item.image ? (
+                  <Image source={item.image} style={styles.image} contentFit="cover" />
+                ) : (
+                  <View style={[styles.image, styles.imageEmpty, { backgroundColor: theme.backgroundElement }]}>
+                    <Package size={20} color={theme.textTertiary} />
+                  </View>
+                )}
 
                 <View style={styles.categoryChip}>
                   <Text style={styles.categoryChipText}>{item.category}</Text>
@@ -126,7 +137,7 @@ export function BookmarksScreen() {
 
               <View style={styles.metaRow}>
                 <Text style={[styles.seller, { color: theme.textTertiary }]} numberOfLines={1}>
-                  @{item.vendor.username}
+                  @{item.sellerUsername}
                 </Text>
                 {item.condition ? (
                   <View style={[styles.conditionChip, { backgroundColor: theme.backgroundElement }]}>
@@ -142,9 +153,6 @@ export function BookmarksScreen() {
                   {item.title}
                 </Text>
               </Pressable>
-              <Text style={[styles.cardShort, { color: theme.textTertiary }]} numberOfLines={1}>
-                {item.description}
-              </Text>
 
               <View style={[styles.cardFooter, { borderTopColor: theme.border }]}>
                 <View>
@@ -228,6 +236,8 @@ const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.three, gap: Spacing.two },
   imageWrap: { height: 160, borderRadius: Radius.md, overflow: 'hidden' },
   image: { height: '100%', width: '100%' },
+  // A listing published without photos would otherwise render a broken box.
+  imageEmpty: { alignItems: 'center', justifyContent: 'center' },
   categoryChip: {
     position: 'absolute',
     left: Spacing.two,

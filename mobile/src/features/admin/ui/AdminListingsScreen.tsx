@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ChevronRight, Gavel, PackageSearch, Search, Trash2 } from 'lucide-react-native';
+import { ChevronRight, Gavel, PackageSearch, Search, Trash2 } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
