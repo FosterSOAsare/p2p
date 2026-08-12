@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/features/shared/data/api';
+import type { CheckoutMethod } from '@/features/wallet/data/paymentsApi';
 
 /**
  * Escrow deals — `GET /api/escrows` and `GET /api/escrows/:id`.
@@ -181,6 +182,29 @@ function useInvalidateDeals() {
     qc.invalidateQueries({ queryKey: ['listings'] });
     if (id) qc.invalidateQueries({ queryKey: dealKeys.detail(id) });
   };
+}
+
+export interface CheckoutInput {
+  listingId: string;
+  quantity: number;
+  /** Recorded on the `funded` event — the debit itself is always from the wallet. */
+  paymentMethod: CheckoutMethod;
+}
+
+/**
+ * Buy a listing: creates the escrow and funds it in one server call.
+ *
+ * Not idempotent — a second call buys a second time. Callers must make sure a
+ * retry can't fire on its own (a double tap, an effect running twice), because
+ * the server has no request key to collapse them on.
+ */
+export function useCheckout() {
+  const invalidate = useInvalidateDeals();
+  return useMutation({
+    mutationFn: (input: CheckoutInput) =>
+      api<{ deal: Deal }>('/api/escrows/from-listing', { method: 'POST', body: input }),
+    onSuccess: () => invalidate(),
+  });
 }
 
 /** Buyer pays — the server debits the wallet for the full `fundingTotal`. */

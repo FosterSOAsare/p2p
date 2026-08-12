@@ -3,6 +3,8 @@ import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, Package, ShieldCheck, Store } from '@/components/icons';
 
+import { usePersona } from '@/hooks/use-persona';
+
 import { useTheme } from '@/hooks/use-theme';
 import { Fonts, Spacing, TabBar } from '@/constants/theme';
 
@@ -42,16 +44,28 @@ interface TabMeta {
   Icon: ComponentType<{ color?: string; size?: number }>;
 }
 
-/** Keyed by route name — the folder name inside this directory. */
-const TAB_META: Record<string, TabMeta> = {
-  home: { title: 'Home', Icon: Home },
-  marketplace: { title: 'Marketplace', Icon: Store },
-  deals: { title: 'My Deals', Icon: ShieldCheck },
-  listings: { title: 'My Listings', Icon: Package },
-};
+/**
+ * Keyed by route name — the folder name inside this directory.
+ *
+ * The fourth tab is the one that differs by persona, exactly as the web's nav
+ * does: a seller manages listings, a buyer is offered the way to become one.
+ * Showing a buyer "My Listings" sent them to a "Sellers only" wall.
+ */
+function tabMeta(isSeller: boolean): Record<string, TabMeta> {
+  return {
+    home: { title: 'Home', Icon: Home },
+    marketplace: { title: 'Marketplace', Icon: Store },
+    deals: { title: 'My Deals', Icon: ShieldCheck },
+    listings: isSeller
+      ? { title: 'My Listings', Icon: Package }
+      : { title: 'Sell Goods', Icon: Store },
+  };
+}
 
 export default function TabsLayout() {
   const theme = useTheme();
+  const persona = usePersona();
+  const TAB_META = tabMeta(persona === 'seller');
   // The bar has to grow by the device's bottom inset, otherwise the icons sit
   // under the home indicator / gesture pill on phones that have one.
   const insets = useSafeAreaInsets();

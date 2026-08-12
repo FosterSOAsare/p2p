@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   Ban,
   CheckCircle2,
+  Lock,
   FileText,
   MessageCircle,
   Pencil,
@@ -24,11 +25,12 @@ import {
   Truck,
 } from '@/components/icons';
 
-import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Accent, Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import {
   useCancelDeal,
+  useFundDeal,
   useDeal,
   useDeliverDeal,
   useDisputeDeal,
@@ -36,6 +38,9 @@ import {
   useUpdateEscrow,
   type EscrowAction,
 } from '../data/dealsApi';
+import { useWallet } from '@/features/wallet/data/walletApi';
+import { useTopUp, type PayMethod } from '@/features/wallet/data/paymentsApi';
+import { PaymentSheet } from '@/features/wallet/ui/PaymentSheet';
 import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
 
 /**
@@ -222,6 +227,13 @@ export function EscrowDetailScreen() {
   const deliverDeal = useDeliverDeal();
   const releaseDeal = useReleaseDeal();
   const cancelDeal = useCancelDeal();
+  const fundDeal = useFundDeal();
+  const wallet = useWallet();
+  const topUp = useTopUp();
+  const [fundOpen, setFundOpen] = useState(false);
+  const [fundError, setFundError] = useState<string | null>(null);
+  /** Funding isn't idempotent either — see the same guard in CheckoutScreen. */
+  const funding = useRef(false);
   const disputeDeal = useDisputeDeal();
   const updateEscrow = useUpdateEscrow();
 
@@ -316,10 +328,60 @@ export function EscrowDetailScreen() {
     deliverDeal.isPending ||
     releaseDeal.isPending ||
     cancelDeal.isPending ||
-    disputeDeal.isPending;
+    disputeDeal.isPending ||
+    fundDeal.isPending ||
+    topUp.isPending;
 
   const actionError =
     deliverDeal.error ?? releaseDeal.error ?? cancelDeal.error ?? disputeDeal.error;
+
+  const walletBalance = wallet.data?.balance ?? 0;
+
+  const payFromWallet = async () => {
+    if (funding.current) return;
+    funding.current = true;
+    setFundError(null);
+    try {
+      await fundDeal.mutateAsync(deal.id);
+      setFundOpen(false);
+    } catch (err) {
+      setFundError(apiErrorMessage(err));
+    } finally {
+      funding.current = false;
+    }
+  };
+
+  const payWithProvider = async (_walletAmount: number, method: PayMethod) => {
+    if (funding.current) return;
+    funding.current = true;
+    setFundError(null);
+    try {
+      /*
+        Top up the shortfall first, then fund from the wallet — the same order
+        as checkout, and for the same reason: if the funding call fails after a
+        successful charge, the money is sitting in the buyer's balance rather
+        than lost, and the button can simply be pressed again.
+      */
+      const shortfall =
+        Math.round((deal.fundingTotal - Math.min(walletBalance, deal.fundingTotal)) * 100) / 100;
+      const outcome = await topUp.run(shortfall, method);
+
+      if (!outcome.ok) {
+        setFundError(
+          outcome.reason === 'cancelled'
+            ? 'Payment cancelled — nothing was charged.'
+            : "We couldn't confirm that payment. If you were charged, the amount will appear in your wallet shortly.",
+        );
+        return;
+      }
+      await fundDeal.mutateAsync(deal.id);
+      setFundOpen(false);
+    } catch (err) {
+      setFundError(apiErrorMessage(err));
+    } finally {
+      funding.current = false;
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
@@ -714,6 +776,37 @@ export function EscrowDetailScreen() {
             </View>
           ) : null}
 
+          {/*
+            Paying for a deal that was created but never funded — a standalone
+            escrow, or one the buyer backed out of at checkout. Same sheet as
+            marketplace checkout, so the wallet-plus-shortfall split behaves
+            identically wherever money is taken.
+          */}
+          {has('FUND') ? (
+            <>
+              <Pressable
+                onPress={() => {
+                  setFundError(null);
+                  setFundOpen(true);
+                }}
+                disabled={busy}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  { backgroundColor: theme.primary, opacity: busy ? 0.5 : pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Lock size={16} color="#ffffff" />
+                <Text style={styles.primaryBtnText}>
+                  Pay {formatMoney(deal.fundingTotal, deal.currency)} &amp; Fund Escrow
+                </Text>
+              </Pressable>
+              {fundError ? (
+                <Text style={[styles.fundError, { color: Accent.error }]}>{fundError}</Text>
+              ) : null}
+            </>
+          ) : null}
+
           {has('RELEASE') && !confirmRelease ? (
             <Pressable
               onPress={() => setConfirmRelease(true)}
@@ -1072,11 +1165,27 @@ export function EscrowDetailScreen() {
         </View>
 
       </ScrollView>
+
+      <PaymentSheet
+        open={fundOpen}
+        total={deal.fundingTotal}
+        balance={walletBalance}
+        rail={deal.rail === 'crypto' ? 'crypto' : 'fiat'}
+        currency={deal.currency === 'TRX' ? 'TRX' : 'GHS'}
+        isPending={fundDeal.isPending || topUp.isPending}
+        errorMessage={fundError}
+        onClose={() => {
+          if (!busy) setFundOpen(false);
+        }}
+        onPayFromWallet={payFromWallet}
+        onPayWithProvider={payWithProvider}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  fundError: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[500], textAlign: 'center' },
   flex: { flex: 1 },
   scroll: {
     padding: Spacing.four,
