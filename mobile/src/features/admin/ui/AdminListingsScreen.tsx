@@ -90,6 +90,8 @@ export function AdminListingsScreen() {
 
   return (
     <AdminScreen
+      // A tab in the console's bottom bar, not a pushed screen.
+      tabRoot
       title="Listings"
       subtitle="Remove listings that break the rules, and rule on sellers' appeals."
       onRefresh={() => (showAppeals ? appealsQuery.refetch() : listingsQuery.refetch())}

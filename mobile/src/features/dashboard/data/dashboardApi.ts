@@ -37,18 +37,36 @@ export interface SellerProductListing {
   status: 'draft' | 'active' | 'out_of_stock' | 'removed';
 }
 
+/**
+ * A purchase from the buyer's side.
+ *
+ * The field names differ from `SellerSaleOrder` and that is the server's
+ * shape, not a mistake here — the two halves of `/api/users/me/dashboard` were
+ * written at different times. Verified against a live response before being
+ * corrected: the buyer block sends `orderDate` / `vendorName` / `price`, where
+ * the seller block sends `date` / `buyerUsername` / `amount`.
+ *
+ * Note also that `status` here is the **raw** escrow status. The seller block
+ * remaps its own to UI words (`funded` → `awaiting_shipment`); the buyer block
+ * does not, so screens have to map it themselves.
+ */
 export interface DashboardOrder {
   id: string;
   code: string;
+  /** Raw escrow status: created | funded | delivered | disbursed | disputed | cancelled. */
   status: string;
-  rawStatus: string;
-  sellerUsername: string;
-  date: string;
+  /** Pre-formatted by the server, e.g. "Aug 5, 2026". */
+  orderDate: string;
+  vendorName: string;
   title: string;
-  amount: number;
+  price: number;
   currency: 'GHS' | 'TRX';
   imageUrl: string | null;
-  tracking?: string | null;
+  /** Absent for a standalone escrow with no marketplace listing behind it. */
+  productId?: string;
+  /** Both only once the seller has dispatched. */
+  trackingCode?: string;
+  shippingCarrier?: string;
 }
 
 export interface DashboardResponse {

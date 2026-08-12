@@ -21,6 +21,7 @@ import { useAdminDisputes } from '@/features/admin/data/adminDisputesApi';
 import { useAdminListingDisputes } from '@/features/admin/data/adminListingsApi';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { AdminError, AdminLoading, money } from '@/features/admin/ui/AdminScaffold';
+import { AppBar } from '@/features/shared/ui/AppBar';
 import { StatCard } from './StatCard';
 
 /**
@@ -184,6 +185,13 @@ export function AdminDashboard() {
           <Pressable
             key={section.label}
             onPress={() => router.push(section.href)}
+            accessibilityRole="button"
+            // The count is the whole point of the row for a screen reader —
+            // "Disputes, 1 waiting" is the difference between a list of links
+            // and knowing where the work is.
+            accessibilityLabel={
+              section.count > 0 ? `${section.label}, ${section.count} waiting` : section.label
+            }
             style={({ pressed }) => [
               styles.row,
               { backgroundColor: theme.card, borderColor: theme.cardBorder, opacity: pressed ? 0.75 : 1 },
@@ -233,14 +241,20 @@ function ConsoleHeader() {
   const theme = useTheme();
   return (
     <View style={[styles.header, { borderBottomColor: theme.border }]}>
-      <View style={[styles.badge, { backgroundColor: theme.primaryLight }]}>
-        <ShieldCheck size={13} color={theme.primary} />
-        <Text style={[styles.badgeText, { color: theme.primary }]}>Admin Console</Text>
+      {/* Profile, messages and notifications live up here rather than in the
+          bottom bar, which the console reserves for its four review queues.
+          Same component the buyer and seller home screens use. */}
+      <AppBar />
+      <View style={styles.headerTitles}>
+        <View style={[styles.badge, { backgroundColor: theme.primaryLight }]}>
+          <ShieldCheck size={13} color={theme.primary} />
+          <Text style={[styles.badgeText, { color: theme.primary }]}>Admin Console</Text>
+        </View>
+        <Text style={[styles.title, { color: theme.text }]}>Platform Dashboard</Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+          Live snapshot of accounts, listings, escrow deals, and the review queues.
+        </Text>
       </View>
-      <Text style={[styles.title, { color: theme.text }]}>Platform Dashboard</Text>
-      <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-        Live snapshot of accounts, listings, escrow deals, and the review queues.
-      </Text>
     </View>
   );
 }
@@ -248,7 +262,10 @@ function ConsoleHeader() {
 const styles = StyleSheet.create({
   wrap: { gap: Spacing.three },
 
-  header: { borderBottomWidth: 1, paddingBottom: Spacing.three, gap: 6 },
+  // The app bar sits above the badge, so the block needs more breathing room
+  // between its rows than the 6px the title and subtitle want between them.
+  header: { borderBottomWidth: 1, paddingBottom: Spacing.three, gap: 6, paddingTop: Spacing.one },
+  headerTitles: { gap: 6, marginTop: Spacing.two },
   badge: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
