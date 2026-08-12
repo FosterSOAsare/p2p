@@ -43,6 +43,8 @@ export function AdminKycListScreen() {
 
   return (
     <AdminScreen
+      // A tab in the console's bottom bar, not a pushed screen.
+      tabRoot
       title="KYC Reviews"
       subtitle="Approve a seller's identity before they can list on the marketplace."
       onRefresh={() => query.refetch()}
