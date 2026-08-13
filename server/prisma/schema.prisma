@@ -524,6 +524,14 @@ model Escrow {
   disbursedAt     DateTime?
   disputedAt      DateTime?
   cancelledAt     DateTime? // seller pulled out of a funded order; buyer refunded in full
+  /// The share QR, rendered once on first view and kept — it never changes for
+  /// a given code, and re-encoding the PNG on every open of the deal page was
+  /// pure CPU waste.
+  shareQrDataUrl  String?
+  /// The WEB_ORIGIN the stored QR encodes. A deployment onto a new domain makes
+  /// the old image point at the old host, so the two are compared on read and a
+  /// mismatch re-renders rather than serving a dead link.
+  shareQrOrigin   String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -678,21 +686,40 @@ model Dispute {
 
 // ---------- Crypto rail (TRON Shasta testnet — the only real money) ----------
 
+/// The TRX deposit behind a crypto-rail escrow, settled through NOWPayments'
+/// hosted invoice. The provider holds the coins and owns the address, so there
+/// is no key material here — the platform never takes custody of a private key.
+///
+/// `orderRef` is our own reference, sent as NOWPayments' `order_id` and echoed
+/// back on the IPN. It is the idempotency key for the whole deposit: the FUND
+/// transition it triggers is claimed by escrow status, so a webhook and a poll
+/// racing each other still fund exactly once.
 model CryptoEscrow {
-  id                  String   @id @default(uuid(7))
-  escrowId            String   @unique
-  depositAddress      String
-  depositKeyEnc       String? // encrypted private key of the deposit address
+  id                  String    @id @default(uuid(7))
+  escrowId            String    @unique
+  provider            String    @default("nowpayments")
+  orderRef            String    @unique
+  invoiceId           String?
+  invoiceUrl          String?
+  /// Only known once the buyer actually picks a coin on the hosted page — it
+  /// arrives on the IPN, or as `NP_id` on the success redirect.
+  paymentId           String?
+  /// Raw provider status: waiting | confirming | confirmed | sending |
+  /// partially_paid | finished | failed | expired | refunded.
+  payStatus           String    @default("waiting")
+  payCurrency         String    @default("trx")
+  depositAddress      String?
   sellerPayoutAddress String?
   buyerRefundAddress  String?
-  expectedTrx         Decimal  @db.Decimal(18, 6)
-  receivedTrx         Decimal  @default(0) @db.Decimal(18, 6)
-  confirmations       Int      @default(0)
+  expectedTrx         Decimal   @db.Decimal(18, 6)
+  receivedTrx         Decimal   @default(0) @db.Decimal(18, 6)
   depositTxid         String?
   releaseTxid         String?
   refundTxid          String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  /// When the deposit was accepted and the escrow moved to `funded`.
+  settledAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   escrow Escrow @relation(fields: [escrowId], references: [id])
 

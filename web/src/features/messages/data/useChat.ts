@@ -42,6 +42,12 @@ interface OpenResult {
   counterparty: ChatCounterparty
   messages: ChatMessage[]
   incremental: boolean
+  hasMore: boolean
+}
+
+interface HistoryResult {
+  messages: ChatMessage[]
+  hasMore: boolean
 }
 
 const TYPING_THROTTLE_MS = 2000
@@ -61,6 +67,9 @@ export function useChat(username: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [counterpartyTyping, setCounterpartyTyping] = useState(false)
+  /** History above what we hold, reachable by scrolling to the top. */
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
 
   const conversationId = useRef<string | null>(null)
   /** Newest message we hold — the gap-fill cursor for the next open. */
@@ -68,6 +77,15 @@ export function useChat(username: string) {
   /** Read through a ref so identity changes don't re-subscribe the socket. */
   const meId = useRef<string | undefined>(undefined)
   meId.current = me?.id
+
+  // Mirrored into refs because the scroll handler that calls loadOlder fires on
+  // every frame while the reader sits at the top — it needs the current values,
+  // not the ones captured when the callback was last built.
+  const oldestMessageId = useRef<string | undefined>(undefined)
+  oldestMessageId.current = messages[0]?.id
+  const hasMoreRef = useRef(false)
+  hasMoreRef.current = hasMore
+  const loadingOlderRef = useRef(false)
 
   const lastTypingSent = useRef(0)
   const typingStopTimer = useRef<number | undefined>(undefined)
@@ -103,6 +121,10 @@ export function useChat(username: string) {
           // incremental = a gap-fill to append; otherwise it's the full history
           // and our cursor was stale, so replace what we hold.
           setMessages((prev) => (res.data.incremental ? [...prev, ...res.data.messages] : res.data.messages))
+          // Only meaningful on a full load. A gap-fill answers "what did I miss
+          // at the bottom", so its hasMore says nothing about the top and would
+          // wrongly clear a `true` we're already holding.
+          if (!res.data.incremental) setHasMore(res.data.hasMore)
           const newest = res.data.messages.at(-1)
           if (newest) lastMessageId.current = newest.id
         },
@@ -157,9 +179,45 @@ export function useChat(username: string) {
       window.clearTimeout(typingClearTimer.current)
       conversationId.current = null
       lastMessageId.current = undefined
+      loadingOlderRef.current = false
       setCounterpartyTyping(false)
+      setHasMore(false)
+      setLoadingOlder(false)
     }
   }, [username, appendMessage])
+
+  /**
+   * Fetch the page above what we hold. Safe to call on every scroll event: it
+   * no-ops while a page is in flight, once the top is reached, and before the
+   * first page has landed.
+   */
+  const loadOlder = useCallback(() => {
+    if (loadingOlderRef.current || !hasMoreRef.current) return
+    const before = oldestMessageId.current
+    if (!before) return
+
+    const socket = getSocket()
+    if (!socket.connected) return
+
+    loadingOlderRef.current = true
+    setLoadingOlder(true)
+    socket.emit('conversation:history', { username, beforeId: before }, (res: Ack<HistoryResult>) => {
+      loadingOlderRef.current = false
+      setLoadingOlder(false)
+      if (!res.ok) {
+        setError(res.error.message)
+        return
+      }
+      setHasMore(res.data.hasMore)
+      setMessages((prev) => {
+        // Guard against a double-fetch racing in with rows we already hold —
+        // prepending them would duplicate keys and break the scroll anchor.
+        const known = new Set(prev.map((m) => m.id))
+        const fresh = res.data.messages.filter((m) => !known.has(m.id))
+        return fresh.length ? [...fresh, ...prev] : prev
+      })
+    })
+  }, [username])
 
   const emitTyping = useCallback((isTyping: boolean) => {
     lastTypingSent.current = isTyping ? Date.now() : 0
@@ -207,6 +265,9 @@ export function useChat(username: string) {
     loading,
     error,
     counterpartyTyping,
+    hasMore,
+    loadingOlder,
+    loadOlder,
     sendText,
     sendFile,
     markRead,

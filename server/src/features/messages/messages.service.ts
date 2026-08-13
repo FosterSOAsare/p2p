@@ -166,6 +166,15 @@ async function createMessage(input: CreateMessageInput): Promise<MessageDto> {
 
 // ---------- Socket-facing operations ----------
 
+/**
+ * How much of a thread one open returns. A long-running deal chat used to send
+ * its entire history on every open and every reconnect.
+ */
+const THREAD_PAGE_SIZE = 50;
+
+/** Ceiling on the inbox list — see the note at its `take`. */
+const CONVERSATION_PAGE_SIZE = 100;
+
 export interface OpenConversationResult {
   conversationId: string;
   counterparty: ReturnType<typeof publicCounterparty>;
@@ -176,6 +185,12 @@ export interface OpenConversationResult {
    * its list with this full history rather than appending to it.
    */
   incremental: boolean;
+  /**
+   * There is older history above `messages` that this response doesn't carry.
+   * Nothing fetches it yet — it's here so a "load older" control has something
+   * to switch on rather than having to guess from the page being full.
+   */
+  hasMore: boolean;
 }
 
 /**
@@ -208,18 +223,102 @@ export async function openConversation(
     after = since?.createdAt;
   }
 
-  const messages = await prisma.message.findMany({
-    where: { conversationId, ...(after ? { createdAt: { gt: after } } : {}) },
-    orderBy: { createdAt: "asc" },
+  if (after) {
+    // One row past the page, purely to detect a gap too big to append.
+    const missed = await prisma.message.findMany({
+      where: { conversationId, createdAt: { gt: after } },
+      orderBy: { createdAt: "asc" },
+      take: THREAD_PAGE_SIZE + 1,
+      include: withSender,
+    });
+
+    if (missed.length <= THREAD_PAGE_SIZE) {
+      return {
+        conversationId,
+        counterparty: publicCounterparty(other),
+        messages: missed.map(toMessageDto),
+        incremental: true,
+        hasMore: false,
+      };
+    }
+    // Further behind than one page. Appending a capped slice would leave a hole
+    // between it and whatever arrives live next, so fall through and hand back
+    // the newest page as a replacement instead.
+  }
+
+  // Read newest-first so the cap keeps the recent end of the thread, then flip
+  // back into display order. Ordered by id as well as createdAt: two messages
+  // can share a millisecond (a system notice posted alongside a user's message),
+  // and loadOlderMessages pages off this order — a tie there would drop or
+  // repeat a row at the page boundary. Ids are UUIDv7, so id order is time
+  // order and the pair is a total order.
+  const recent = await prisma.message.findMany({
+    where: { conversationId },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: THREAD_PAGE_SIZE + 1,
     include: withSender,
   });
+  const hasMore = recent.length > THREAD_PAGE_SIZE;
+  if (hasMore) recent.pop();
+  recent.reverse();
 
   return {
     conversationId,
     counterparty: publicCounterparty(other),
-    messages: messages.map(toMessageDto),
-    incremental: Boolean(after),
+    messages: recent.map(toMessageDto),
+    incremental: false,
+    hasMore,
   };
+}
+
+export interface OlderMessagesResult {
+  messages: MessageDto[];
+  /** Still more above this page. */
+  hasMore: boolean;
+}
+
+/**
+ * The page directly above `beforeId` — what the thread asks for when the reader
+ * scrolls to the top.
+ *
+ * Same authorization boundary as openConversation: the thread is named by
+ * counterparty username and resolved against the caller's own id, so there is
+ * no conversation reachable here that isn't theirs. `beforeId` is then looked
+ * up *within* that conversation, so an id borrowed from another thread yields
+ * no cursor rather than a page of someone else's history.
+ */
+export async function loadOlderMessages(
+  userId: string,
+  username: string,
+  beforeId: string,
+): Promise<OlderMessagesResult> {
+  const other = await resolveCounterparty(userId, username);
+  const conversationId = await ensureConversation(userId, other.id);
+
+  const anchor = await prisma.message.findFirst({
+    where: { id: beforeId, conversationId },
+    select: { id: true },
+  });
+  // Unknown id, or one from a thread that isn't this one.
+  if (!anchor) return { messages: [], hasMore: false };
+
+  const older = await prisma.message.findMany({
+    where: { conversationId },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    // Cursor rather than `createdAt < anchor.createdAt`: the cursor row itself
+    // is skipped by id, so a same-millisecond sibling of the anchor is still
+    // returned instead of being silently cut off with it.
+    cursor: { id: anchor.id },
+    skip: 1,
+    take: THREAD_PAGE_SIZE + 1,
+    include: withSender,
+  });
+
+  const hasMore = older.length > THREAD_PAGE_SIZE;
+  if (hasMore) older.pop();
+  older.reverse();
+
+  return { messages: older.map(toMessageDto), hasMore };
 }
 
 export interface SendMessageInput {
@@ -370,6 +469,10 @@ export async function listConversations(userId: string) {
     // empty thread — they have nothing to show until someone actually writes.
     where: { OR: [{ userAId: userId }, { userBId: userId }], messages: { some: {} } },
     orderBy: { updatedAt: "desc" },
+    // Capped: the inbox renders one row per conversation with no pagination, so
+    // anything past this would be markup nobody scrolls to. Most-recently-active
+    // first means the cut falls on the threads furthest from mind.
+    take: CONVERSATION_PAGE_SIZE,
     include: {
       userA: { select: counterpartySelect },
       userB: { select: counterpartySelect },

@@ -70,6 +70,9 @@ function toDto(n: {
  * it — a takedown, a payout, a ruling must not fail because this insert did.
  * Same best-effort contract the socket emits already carry (see io.ts), except
  * here the failure is logged rather than silently dropped.
+ *
+ * Never make it throw: call sites fire it with `void` and don't await, so a
+ * rejection here would surface as an unhandled one.
  */
 export async function notify(input: NotifyInput): Promise<void> {
   try {

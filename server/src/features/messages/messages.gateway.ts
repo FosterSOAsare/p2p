@@ -72,6 +72,19 @@ export function registerMessageHandlers(socket: AppSocket) {
     }),
   );
 
+  /** Older history, for a thread scrolled up past what the client holds. */
+  socket.on("conversation:history", (payload: unknown, ack: unknown) =>
+    respond(ack, async () => {
+      const input = parse<{ username: string; beforeId: string }>(
+        validation.socketConversationHistory,
+        payload,
+      );
+      // No room join and no markRead here — this only reaches backwards through
+      // a thread the client already has open.
+      return messagesService.loadOlderMessages(userId, input.username, input.beforeId);
+    }),
+  );
+
   /** Closing/navigating away from a thread — stop receiving its live traffic. */
   socket.on("conversation:leave", () => {
     const open = socket.data.openConversationId;

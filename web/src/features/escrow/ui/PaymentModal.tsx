@@ -25,6 +25,8 @@ interface PaymentModalProps {
   onPayFromWallet: (walletAmount: number) => void
   /** Pay `walletAmount` from balance and the rest on the hosted page. */
   onPayWithProvider: (walletAmount: number, method: PayMethod) => void
+  /** Open the TRX invoice. Only ever called on the crypto rail. */
+  onPayWithCrypto?: () => void
 }
 
 /** Round to pesewas so on-screen math always matches what the server charges. */
@@ -41,6 +43,7 @@ export function PaymentModal({
   onClose,
   onPayFromWallet,
   onPayWithProvider,
+  onPayWithCrypto,
 }: PaymentModalProps) {
   const isCrypto = rail === 'crypto'
   // The wallet is GHS-only, so a TRX deal can't draw on it whatever the balance.
@@ -76,7 +79,8 @@ export function PaymentModal({
 
   const submit = () => {
     if (isPending) return
-    if (coveredByWallet) onPayFromWallet(walletAmount)
+    if (isCrypto) onPayWithCrypto?.()
+    else if (coveredByWallet) onPayFromWallet(walletAmount)
     else onPayWithProvider(walletAmount, method)
   }
 
@@ -135,7 +139,9 @@ export function PaymentModal({
                   <h4 className="text-xs font-bold text-slate-900 dark:text-white">Funded on-chain in TRX</h4>
                   <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
                     This deal settles on the Tron network, so mobile money, card and your GH₵ wallet
-                    don't apply. The TRX rail isn't live yet — funding opens once it ships.
+                    don't apply. You'll pay {formatMoney(total, 'TRX')} on a hosted invoice; the deal
+                    moves to <span className="font-semibold">funded</span> once the network confirms
+                    the transfer.
                   </p>
                 </div>
               </div>
@@ -243,7 +249,7 @@ export function PaymentModal({
 
           <button
             onClick={submit}
-            disabled={isPending || isCrypto}
+            disabled={isPending}
             className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isPending ? (
@@ -258,7 +264,7 @@ export function PaymentModal({
             {isPending
               ? 'Processing…'
               : isCrypto
-                ? 'TRX funding coming soon'
+                ? 'Continue to TRX invoice'
                 : coveredByWallet
                   ? `Pay ${formatMoney(total)} from wallet`
                   : `Continue to ${methodLabel}`}

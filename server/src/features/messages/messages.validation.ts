@@ -46,6 +46,14 @@ export const socketConversationOpen = Joi.object({
   sinceId: Joi.string().trim().max(64).optional(),
 });
 
+export const socketConversationHistory = Joi.object({
+  username,
+  // Oldest message the client holds; the page returned is the one directly
+  // above it. Loose string for the same reason as sinceId — an id we don't
+  // recognise simply comes back empty.
+  beforeId: Joi.string().trim().max(64).required(),
+});
+
 export const socketMessageSend = Joi.object({
   username,
   body: body.optional(),

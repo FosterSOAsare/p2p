@@ -92,6 +92,15 @@ export const review: RequestSchema = {
   }),
 };
 
+export const cryptoCheck: RequestSchema = {
+  params: Joi.object({ id: Joi.string().guid().required() }),
+  body: Joi.object({
+    // NOWPayments' payment id, read off `NP_id` on the success redirect. Absent
+    // on a plain poll, where the id already on file is used instead.
+    paymentId: Joi.string().trim().max(64).allow("", null),
+  }),
+};
+
 export const list: RequestSchema = {
   query: Joi.object({
     role: Joi.string().valid("buyer", "seller"),

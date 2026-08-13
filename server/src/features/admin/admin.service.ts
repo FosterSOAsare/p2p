@@ -46,7 +46,7 @@ export async function approveKyc(adminId: string, id: string) {
     data: { status: "verified", rejectionReason: null, reviewedById: adminId, reviewedAt: new Date() },
     include: kycWithUser,
   });
-  await notify({
+  void notify({
     userId: kyc.userId,
     category: "kyc",
     title: "You're verified",
@@ -63,7 +63,7 @@ export async function rejectKyc(adminId: string, id: string, reason: string) {
     data: { status: "rejected", rejectionReason: reason, reviewedById: adminId, reviewedAt: new Date() },
     include: kycWithUser,
   });
-  await notify({
+  void notify({
     userId: kyc.userId,
     category: "kyc",
     title: "Identity check not approved",
@@ -695,7 +695,7 @@ export async function removeListing(
   // arrive from the acting admin's personal account, and it shouldn't land in
   // the pair Conversation that listDealTranscript later reads as evidence. The
   // seller's reply path is the appeal, not a chat bubble.
-  await notify({
+  void notify({
     userId: listing.sellerId,
     category: "listing",
     title: "Your listing was removed",
@@ -717,7 +717,7 @@ export async function removeListing(
   // Close the loop with whoever flagged it. Links to the marketplace, not the
   // listing — that page 404s for everyone but the seller now.
   if (reporterIds.length > 0) {
-    await notifyMany(reporterIds, {
+    void notifyMany(reporterIds, {
       category: "listing",
       title: "Thanks — that listing is gone",
       body: `"${listing.title}" was removed after review. Thanks for reporting it.`,
@@ -868,7 +868,7 @@ export async function dismissListingReports(adminId: string, listingId: string, 
     data: { status: "dismissed", reviewNote, reviewedById: adminId, reviewedAt: new Date() },
   });
 
-  await notifyMany(
+  void notifyMany(
     open.map((o) => o.reporterId),
     {
       category: "listing",
@@ -1008,7 +1008,7 @@ export async function resolveListingDispute(
   });
 
   const title = dispute.listing.title;
-  await notify({
+  void notify({
     userId: dispute.sellerId,
     category: "listing",
     title: approved ? "Your dispute was approved" : "Your dispute was rejected",
@@ -1159,7 +1159,7 @@ export async function reinstateListing(adminId: string, listingId: string) {
     });
   });
 
-  await notify({
+  void notify({
     userId: listing.sellerId,
     category: "listing",
     title: "Your listing is back online",

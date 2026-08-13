@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -37,10 +37,39 @@ export function ChatPanel({ username, onBack }: { username: string; onBack?: () 
   // Scroll the message list itself, not via scrollIntoView on a sentinel —
   // that walks up and scrolls every ancestor container including the window,
   // which dragged the whole page down on each incoming message.
+  //
+  // Keyed on the newest id rather than the count: loading older history also
+  // changes the count, and jumping to the bottom is the opposite of what the
+  // reader asked for by scrolling up.
+  const newestId = chat.messages.at(-1)?.id
   useEffect(() => {
     const el = scrollRef.current
     el?.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-  }, [chat.messages.length, chat.counterpartyTyping])
+  }, [newestId, chat.counterpartyTyping])
+
+  /** Height and first id captured when a history request goes out. */
+  const anchor = useRef<{ height: number; firstId?: string } | null>(null)
+
+  const onScroll = () => {
+    const el = scrollRef.current
+    if (!el || el.scrollTop > 80 || !chat.hasMore || chat.loadingOlder) return
+    anchor.current = { height: el.scrollHeight, firstId: chat.messages[0]?.id }
+    chat.loadOlder()
+  }
+
+  // Older messages land *above* the viewport, so without this the content the
+  // reader was looking at gets shoved down by the height of the new page. Pin
+  // it by restoring the distance from the bottom, before the browser paints.
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    const pending = anchor.current
+    if (!el || !pending) return
+    // Same first id means nothing was prepended (empty page, or a duplicate
+    // that got filtered) — leave the anchor for the next attempt to overwrite.
+    if (chat.messages[0]?.id === pending.firstId) return
+    anchor.current = null
+    el.scrollTop = el.scrollHeight - pending.height
+  }, [chat.messages])
 
   // Anything that arrived while the tab was hidden is read once we come back.
   // Depends on the stable callback, not the hook result — `chat` is a fresh
@@ -140,8 +169,24 @@ export function ChatPanel({ username, onBack }: { username: string; onBack?: () 
       {/* Messages area */}
       <div
         ref={scrollRef}
+        onScroll={onScroll}
         className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 py-4 space-y-3 bg-slate-50/50 dark:bg-slate-950/40"
       >
+        {chat.loadingOlder && (
+          <p className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+            <Loader2 size={12} className="animate-spin" />
+            Loading earlier messages…
+          </p>
+        )}
+
+        {/* Only once the whole thread is loaded — otherwise it would claim the
+            start of a conversation that still has history above it. */}
+        {!chat.hasMore && !chat.loading && chat.messages.length > 0 && (
+          <p className="text-center text-[11px] text-slate-400 dark:text-slate-500">
+            This is the start of your conversation.
+          </p>
+        )}
+
         <div className="mx-auto max-w-sm rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-2 text-center text-[11px] text-slate-500 dark:text-slate-400">
           <Lock size={11} className="inline mr-1 -mt-0.5" />
           Messages are immutably logged and become dispute evidence for any deal between you two.

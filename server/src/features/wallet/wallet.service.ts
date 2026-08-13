@@ -225,7 +225,7 @@ async function settleDeposit(
   // both the webhook and the poll fallback, and the loser of that race must not
   // notify a second time.
   if (credited) {
-    await notify({
+    void notify({
       userId: intent.userId,
       category: "wallet",
       title: "Deposit confirmed",
@@ -278,7 +278,7 @@ export async function withdraw(userId: string, amount: number, destination: stri
     .then((u) => u && mailer.withdrawal(u.email, u.fullName, amount.toFixed(2), destination))
     .catch(() => undefined);
 
-  await notify({
+  void notify({
     userId,
     category: "wallet",
     title: "Withdrawal sent",

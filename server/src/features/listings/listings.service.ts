@@ -447,7 +447,7 @@ export async function submitDispute(
   // Every admin, not just the one who removed it: the review queue can't stall
   // because that person is away — and a listing removed before removedById was
   // set would otherwise reach nobody at all.
-  await notifyAdmins({
+  void notifyAdmins({
     category: "listing",
     title: "New listing appeal",
     body: `@${sellerName} is disputing the removal of "${listing.title}".`,
@@ -520,7 +520,7 @@ export async function submitReport(
   // Every admin: the queue is worked by whoever is on, and there's no acting
   // admin here to own it the way a takedown has one. No email either — a report
   // is a signal, not a decision anyone has to answer within the hour.
-  await notifyAdmins({
+  void notifyAdmins({
     category: "listing",
     title: "Listing reported",
     body: `@${reporter?.username ?? "someone"} reported "${listing.title}" — ${removalReasonText(input.reason, note)}`,

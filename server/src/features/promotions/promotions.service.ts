@@ -326,7 +326,7 @@ export async function launch(userId: string, listingId: string, planId: string, 
   // What moved out of the wallet just now — not the run's running total, which
   // is what `promotion.amount` holds.
   const charged = fromPesewas(chargeP);
-  await notify({
+  void notify({
     userId,
     category: "promotion",
     title: "Spotlight active",

@@ -34,7 +34,7 @@ export async function submit(userId: string, input: KycSubmissionInput): Promise
   // Nothing reached the review queue before this — a submission just sat in
   // `pending` until an admin happened to open /admin/kyc.
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { username: true } });
-  await notifyAdmins({
+  void notifyAdmins({
     category: "kyc",
     title: existing ? "KYC resubmitted" : "New KYC submission",
     body: `@${user?.username ?? "A user"} submitted identity documents for review.`,

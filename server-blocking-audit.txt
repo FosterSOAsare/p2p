@@ -1,0 +1,272 @@
+SERVER — BLOCKING / SLOW-RESPONSE AUDIT
+Date: 2026-08-11
+Scope: server/src, static read of every service. Nothing was profiled or load-tested,
+so the ordering below is by reasoning about the code, not measured latency.
+
+Legend:  [1] event loop actually blocks   [2] response waits on avoidable I/O
+         [3] cost grows with table size   [4] memory pressure
+
+
+================================================================================
+1. LIFECYCLE EMAILS ARE AWAITED IN THE REQUEST PATH                          [2]
+   server/src/features/escrows/escrows.service.ts:691
+   server/src/features/escrows/escrows.service.ts:697-760
+   server/src/shared/mail/mail.service.ts:64-78
+--------------------------------------------------------------------------------
+Line 691 reads:
+
+    // Email side-channel — best-effort, never blocks the transition.
+    await sendTransitionEmails(escrow, event, actor).catch(() => undefined);
+
+The comment says it never blocks; the `await` means it does. Every FUND, DELIVER,
+RELEASE, CANCEL and DISPUTE response waits for the mail work to finish.
+
+Worse, with MAIL_DRIVER=smtp each send builds a BRAND NEW transport
+(mail.service.ts:71 `nodemailer.createTransport` inside `sendSmtp`) — so every
+message pays a fresh TCP connect + TLS handshake + AUTH, with no pooling and no
+reuse. RESOLVE_* sends two messages, RELEASE by the system sends two.
+
+Fix: drop the await (`void sendTransitionEmails(...).catch(() => undefined)`), and
+hoist the transport to a module-level pooled singleton created once at boot.
+Note wallet.service.ts:276 already uses the fire-and-forget `.then()` pattern for
+withdrawal mail — the convention exists, escrows just doesn't follow it.
+
+
+================================================================================
+2. MAIL TEMPLATES READ SYNCHRONOUSLY, CACHED ONLY IN PRODUCTION              [1]
+   server/src/shared/mail/mail.service.ts:18-24
+--------------------------------------------------------------------------------
+    if (env.NODE_ENV === "production") fileCache.set(name, html);
+
+Outside production the cache is never populated, so every single mail does two
+blocking `fs.readFileSync` calls (the template + layout.html) on the event loop.
+That stalls the whole process, not just the request that triggered it.
+
+Fix: cache unconditionally (or preload all templates once at boot with
+fs.promises). Keep a dev-only bypass behind an explicit flag if hot-reload of
+templates is actually wanted.
+
+
+================================================================================
+3. RATING SORT LOADS THE ENTIRE MATCHING CATALOGUE                        [3][1]
+   server/src/features/listings/listings.service.ts:47-58
+--------------------------------------------------------------------------------
+    const rows = await prisma.listing.findMany({ where, include: cardInclude });
+
+No `take`. `?sort=rating` pulls every listing that matches the filters — with all
+their review rows — hydrates them, sorts in JS, then slices out one page. Cost is
+a function of catalogue size, not page size, and the sort itself is synchronous
+work on the event loop.
+
+The existing comment acknowledges it ("Fine at marketplace scale"), which is true
+today and stops being true as the catalogue grows.
+
+Fix: a denormalised ratingAvg/reviewCount column on Listing maintained on review
+write, or a raw SQL join with ORDER BY avg(rating) and LIMIT/OFFSET.
+
+
+================================================================================
+4. EVERY LISTING CARD FETCHES EVERY ONE OF ITS REVIEW ROWS                   [3]
+   server/src/features/listings/listings.service.ts:18-21 (cardInclude)
+   server/src/features/listings/listings.service.ts:397-401 (toCard)
+--------------------------------------------------------------------------------
+    reviews: { select: { rating: true } }
+    ...
+    rating: ratings.reduce((a, b) => a + b, 0) / ratings.length
+
+Two integers per card (average + count) are computed by transferring the full
+review set. A 12-card page where listings average 500 reviews moves ~6,000 rows
+to produce 12 numbers. This is on the hot path — it hits /api/listings for every
+sort, the featured feed, and my-listings.
+
+Fix: same denormalised columns as item 3, or `_count` + a groupBy aggregate.
+
+
+================================================================================
+5. QR CODE PNG GENERATED ON EVERY DEAL-DETAIL REQUEST          [1]  ** FIXED **
+   server/src/features/escrows/escrows.service.ts:861-903
+--------------------------------------------------------------------------------
+Was:
+    dataUrl: await QRCode.toDataURL(joinUrl, { width: 240, margin: 1 })
+
+Called from getDetail whenever a side of the deal is still empty. Despite the
+await, the PNG encode + base64 is synchronous CPU work on the event loop,
+repeated on every page load and refresh of an open deal. 240px is small, but it
+was pure waste — the image never changes for a given code.
+
+Fixed by persisting the rendered image on the escrow row — new columns
+`shareQrDataUrl` and `shareQrOrigin` (migration 20260811090000_escrow_share_qr).
+Rendered lazily on first view, so the create path pays nothing and rows that
+predate the columns need no backfill. Encoding now runs once per deal, ever,
+across restarts and across every process.
+
+`shareQrOrigin` stores the WEB_ORIGIN baked into the image. A deploy onto a new
+domain would otherwise serve a QR pointing at the old host forever; the origin
+is compared on read and a mismatch re-renders. Do not drop that column thinking
+it's redundant.
+
+
+================================================================================
+6. NOTIFICATIONS AWAITED BEFORE THE RESPONSE IS SENT           [2]  ** FIXED **
+   admin.service.ts:49, 66, 698, 720, 871, 1011, 1162
+   auth.service.ts:234, 263
+   wallet.service.ts:228, 281
+   listings.service.ts:450, 523
+   promotions.service.ts:329
+   kyc.service.ts:37
+   escrows.service.ts:681
+--------------------------------------------------------------------------------
+Each `await notify(...)` put a DB insert plus a socket emit on the critical path
+before the handler returned. `notifyAdmins` is worse — a `user.findMany` to
+resolve every admin, then a notifyMany, so two extra round trips. No caller
+reads the result.
+
+Fixed: all 15 call sites now `void notify(...)` / `void notifyAdmins(...)` /
+`void notifyMany(...)` and the handler returns without waiting.
+
+Safe because notify, notifyMany and notifyAdmins each swallow their own errors
+(notifications.service.ts:74-117) and cannot reject — otherwise every un-awaited
+call would be an unhandled rejection. If that contract is ever broken, these
+call sites break with it.
+
+Also checked: none of the 15 sits inside a `prisma.$transaction` callback. They
+must not — notify writes on its own connection, so a rollback would leave a
+notice about something that never happened. Every one is after its commit.
+
+Delivery is unaffected: the row is the source of truth but the `notify:new`
+socket emit is what surfaces it live, so it landing just after the response is
+invisible to the user.
+
+STILL OPEN, related: escrows.service.ts:467 awaits notifyAfterTransition(),
+which wraps postDealMessage + notifyAdmins + the lifecycle emails. The email
+half is item 1 above. The deal-message half writes a real message the client
+may expect on refetch, so it should not simply be un-awaited without checking
+what the deal page does after a transition.
+
+
+================================================================================
+7. sweepExpired() WRITES ON EVERY PROMOTIONS READ                            [2]
+   server/src/features/promotions/promotions.service.ts:33-38 and its callers
+   (listMine, launch, pause, resume, cancel, getPromotionMetrics)
+--------------------------------------------------------------------------------
+    await prisma.promotion.updateMany({ where: { status: "active", endsAt: { lte: now } }, ... })
+
+An UPDATE runs before every read. Reads become write transactions, which also
+means they can't be served by a read replica later.
+
+`quote` was already changed this session to filter on the clock instead — it
+returns the same answer with no write. The remaining readers (listMine,
+getPromotionMetrics) could do the same.
+
+Fix: move the sweep to a single interval timer at boot, and have readers
+clock-filter (`status: active AND endsAt > now`) the way quote now does.
+
+
+================================================================================
+8. UNBOUNDED ADMIN QUEUE QUERIES                                             [3]
+   server/src/features/admin/admin.service.ts:28   (all KYC profiles for a status)
+   server/src/features/admin/admin.service.ts:114  (all disputes for a filter)
+--------------------------------------------------------------------------------
+No skip/take, and :114 pulls a deep `escrow` include per row. Every other admin
+list (users :382, deals :446, listings :606) is paginated — these two are the
+exceptions. Fine at current volume; linear growth with no ceiling.
+
+
+================================================================================
+9. FULL CONVERSATION LOADS                                     [3]  ** FIXED **
+   server/src/features/messages/messages.service.ts (openConversation,
+   listConversations)
+--------------------------------------------------------------------------------
+openConversation loaded every message in a thread with its sender relation, no
+`take` and no cursor beyond the optional `after` — a long-running deal chat
+returned its entire history on every open AND every socket reconnect.
+listConversations loaded every conversation for the user with includes.
+
+Fixed:
+  - Initial thread load is capped at THREAD_PAGE_SIZE (50), read newest-first so
+    the cap keeps the recent end, then reversed into display order.
+  - Gap-fill (`sinceId` set) takes one row past the page. Within a page it
+    returns the missed messages and stays incremental. PAST a page it gives up
+    on appending and returns the newest page with incremental:false, so the
+    client replaces its list. This matters: appending a capped slice would leave
+    a hole between it and whatever arrives live next.
+  - listConversations capped at CONVERSATION_PAGE_SIZE (100), most-recent first.
+
+KNOWN TRADE — read before changing the cap:
+Older history above the first 50 is no longer reachable from the chat UI. There
+is no "load older" control, so a thread past 50 messages now opens on its tail
+with no way to scroll up. `hasMore` is returned so that control can be built
+without another server change; until it is, this is a real (if minor) loss of
+function traded for the load.
+
+NOT affected: dispute evidence. The admin transcript is collected by a separate
+function scoped to a date range, not by openConversation, so a ruling still sees
+the whole window.
+
+
+================================================================================
+10. UPLOADS BUFFERED FULLY IN MEMORY                                         [4]
+    server/src/features/upload/upload.router.ts:9-10, 39, 52
+--------------------------------------------------------------------------------
+    storage: multer.memoryStorage()
+
+Each file is held whole in RAM before being streamed on to Cloudinary, and
+`upload.array("files", 5)` allows five at once per request. Concurrent uploaders
+multiply that. Doesn't block the loop directly, but the allocation churn buys GC
+pauses, which look exactly like blocking from the outside.
+
+Fix: stream straight through to Cloudinary rather than buffering, or use disk
+storage with a small cap.
+
+
+================================================================================
+11. CLOUDINARY RECONFIGURED PER REQUEST                                      [-]
+    server/src/features/upload/upload.service.ts:44-62
+--------------------------------------------------------------------------------
+`cloudinary.config(...)` is called inside the per-request path even though the
+module already configures itself at import (lines 13-20). Cheap, but it is
+redundant per-request work and makes the config racy if it ever differs.
+
+
+================================================================================
+12. NO COMPRESSION, NO RATE LIMITING                                         [-]
+    server/src/app.ts:20-58
+--------------------------------------------------------------------------------
+No `compression()` middleware. The listing/deal payloads are the largest
+responses in the API and are highly compressible — this is the cheapest
+whole-app latency win available. No rate limiter either, which is a
+denial-of-service consideration rather than a latency one.
+
+
+================================================================================
+WHAT IS ALREADY DONE WELL — do not "fix" these
+================================================================================
+- Dashboard and admin stats fan out correctly with Promise.all
+  (users.service.ts:186-197, admin.service.ts:493-504).
+- Password hashing uses argon2's async API (auth.service.ts:48, 226, 254), which
+  runs on the libuv threadpool — it does NOT block the event loop. The dummy hash
+  at :117 for timing equalisation is deliberate and correct.
+- listings list() runs count and rows concurrently, with a comment explaining why
+  a transaction was deliberately avoided (listings.service.ts:76-91).
+- The auto-release sweep is bounded by take:10 and is currently disabled outright
+  (index.ts:21-22), so its sequential await loop is not live.
+- The Paystack webhook is mounted before express.json with its own raw parser
+  (app.ts:38) — correct, and not a perf issue.
+
+
+================================================================================
+SUGGESTED ORDER OF WORK
+================================================================================
+DONE
+  Item 5 — QR persisted on the escrow row (migration applied).
+  Item 6 — notifications fired without awaiting.
+  Item 9 — thread and inbox loads capped (see the known trade in that entry).
+
+NEXT
+1. Item 1  — stop awaiting mail; pool the SMTP transport.  (biggest win, small diff)
+2. Item 2  — always cache templates.                        (one-line fix)
+3. Item 12 — add compression().                             (one-line fix)
+4. Item 4  — denormalise rating/reviewCount.                (unblocks item 3 too)
+5. Item 3  — move the rating sort into SQL.
+6. Items 7, 8, 10 as the data grows.
+7. A "load older" control in the chat UI, to close the trade item 9 opened.

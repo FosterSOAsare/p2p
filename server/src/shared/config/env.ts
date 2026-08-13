@@ -48,6 +48,24 @@ export const env = {
     return url;
   })(),
 
+  // NOWPayments (sandbox). Funds the crypto rail: the buyer pays TRX on the
+  // provider's hosted invoice, the IPN (HMAC-SHA512 verified) — or the
+  // /crypto/check poll, for a laptop a webhook can't reach — moves the deal to
+  // `funded`. Leave the API key blank and crypto funding reports 501.
+  NOWPAYMENTS_API_KEY: process.env.NOWPAYMENTS_API_KEY ?? "",
+  NOWPAYMENTS_IPN_SECRET: process.env.NOWPAYMENTS_IPN_SECRET ?? "",
+  NOWPAYMENTS_BASE_URL: process.env.NOWPAYMENTS_BASE_URL ?? "https://api-sandbox.nowpayments.io/v1",
+  // Both default to TRX so the deal is priced in the coin it is paid in — no FX
+  // drift between invoice creation and payment. They are separately settable
+  // because the sandbox does not carry every coin the live API does: if TRX is
+  // missing there, point these at a coin it does have rather than editing code.
+  NOWPAYMENTS_PRICE_CURRENCY: process.env.NOWPAYMENTS_PRICE_CURRENCY ?? "trx",
+  NOWPAYMENTS_PAY_CURRENCY: process.env.NOWPAYMENTS_PAY_CURRENCY ?? "trx",
+  // Public origin of THIS API — where NOWPayments posts its IPN. On localhost
+  // it is unreachable by design; that is what the poll fallback is for. Point
+  // it at a tunnel (ngrok/cloudflared) to exercise the webhook path for real.
+  SERVER_ORIGIN: process.env.SERVER_ORIGIN ?? `http://localhost:${Number(process.env.PORT ?? 4000)}`,
+
   // Mail. "simulated" logs `[mail:simulated] To <email>: <subject>` (default);
   // flip to "smtp" + fill SMTP_* and install nodemailer to send for real.
   MAIL_DRIVER: (process.env.MAIL_DRIVER ?? "simulated") as "simulated" | "smtp",
@@ -75,3 +93,6 @@ if (missing.length > 0) {
  *  purpose — the platform is test-mode only, so a mis-pasted live key must not
  *  silently process real charges. */
 export const paystackEnabled = () => env.PAYSTACK_SECRET_KEY.startsWith("sk_test_");
+
+/** True once a NOWPayments API key is configured — see shared/lib/nowpayments.ts. */
+export const nowpaymentsEnabled = () => env.NOWPAYMENTS_API_KEY.length > 0;

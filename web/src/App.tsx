@@ -16,6 +16,7 @@ import { ChangePassword } from './features/auth/ui/ChangePassword'
 import { Deals } from './pages/Deals'
 import { NewEscrow } from './pages/NewEscrow'
 import { EscrowDetail } from './pages/EscrowDetail'
+import { CryptoCallback } from './pages/CryptoCallback'
 import { JoinDeal } from './pages/JoinDeal'
 import { Dashboard } from './pages/Dashboard'
 import { UserSettings } from './pages/UserSettings'
@@ -61,6 +62,8 @@ function App() {
         <Route path="deals" element={<Deals />} />
         <Route path="escrow/new" element={<NewEscrow />} />
         <Route path="escrow/:id" element={<EscrowDetail />} />
+        {/* Where NOWPayments returns the buyer after the hosted TRX invoice. */}
+        <Route path="escrow/:id/crypto/callback" element={<CryptoCallback />} />
         {/* Share-link / QR landing — public, so the deal is readable before signing in */}
         <Route path="join/:code" element={<JoinDeal />} />
         <Route path="sell" element={<VendorKyc />} />

@@ -20,6 +20,10 @@ type Actor = { id: string } | "system";
 const AUTO_RELEASE_HOURS = Number(process.env.AUTO_RELEASE_HOURS ?? 72);
 void AUTO_RELEASE_HOURS;
 
+/** A deal's amount in its own currency — a TRX deal is not denominated in GH₵. */
+const formatDealAmount = (escrow: Pick<Escrow, "amount" | "currency">) =>
+  escrow.currency === "TRX" ? `${Number(escrow.amount)} TRX` : `GH₵ ${Number(escrow.amount).toFixed(2)}`;
+
 // ---------- Share codes (ported from TaaS: no 0/O/1/I alphabet, 5-retry uniqueness) ----------
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -253,7 +257,7 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
     await postDealMessage(
       creatorId,
       invitedUserId,
-      `🤝 Escrow deal invite: "${escrow.title}" — ${escrow.currency === "TRX" ? `${Number(escrow.amount)} TRX` : `GH₵ ${Number(escrow.amount).toFixed(2)}`} (code ${escrow.code}). Open your deals to accept.`,
+      `🤝 Escrow deal invite: "${escrow.title}" — ${formatDealAmount(escrow)} (code ${escrow.code}). Open your deals to accept.`,
       escrow.id,
     ).catch((err) => console.error("[escrow] invite notice failed:", err));
   }
@@ -443,7 +447,7 @@ export async function transition(
       throw ApiError.forbidden(`Only the ${def.allow.filter((r) => r !== "system").join(" or ")} can do this`);
     }
 
-    const escrowData = await applyEffects(tx, current, event, payload);
+    const escrowData = await applyEffects(tx, current, event, role, payload);
 
     const claimed = await tx.escrow.updateMany({
       where: { id: current.id, status: current.status },
@@ -482,6 +486,7 @@ async function applyEffects(
   tx: Tx,
   escrow: Escrow,
   event: EscrowEvent,
+  role: ActorRole,
   payload?: TransitionPayload,
 ): Promise<Prisma.EscrowUpdateInput> {
   const amount = Number(escrow.amount);
@@ -494,7 +499,16 @@ async function applyEffects(
         throw ApiError.badRequest("The counterparty must join before the deal can be funded");
       }
       if (escrow.rail === "crypto") {
-        throw ApiError.notImplemented("TRX funding lands with the crypto rail — coming next");
+        // A crypto deal is not funded by asking us to fund it — it is funded by
+        // the deposit confirming, which only the settle path in crypto.service
+        // observes, and which runs as `system`. Without this guard the buyer's
+        // own POST /:id/fund would move a TRX deal to `funded` for free.
+        if (role !== "system") {
+          throw ApiError.badRequest("Pay the TRX invoice — the deal funds itself once the deposit confirms");
+        }
+        // The money arrived from outside the platform, so there is no wallet to
+        // debit. The provider's confirmation IS the payment.
+        return { fundedAt: new Date() };
       }
       // Buyer pays the funding total (item + their half of the fee) from their
       // wallet. Guarded debit rolls the whole transition back if the balance is
@@ -627,7 +641,7 @@ async function refundBuyer(tx: Tx, escrow: Escrow, refundAmount: number) {
 
 async function notifyAfterTransition(escrow: Escrow, event: EscrowEvent, actor: Actor, payload?: TransitionPayload) {
   if (!escrow.buyerId || !escrow.sellerId) return;
-  const money = `GH₵ ${Number(escrow.amount).toFixed(2)}`;
+  const money = formatDealAmount(escrow);
 
   // In-app thread message. RESOLVE_* is intentionally absent — the admin service
   // posts the official verdict itself.
@@ -678,7 +692,7 @@ async function notifyAfterTransition(escrow: Escrow, event: EscrowEvent, actor: 
       // The parties are covered by the notice above; the admins were not
       // covered by anything — a disputed deal freezes money and only surfaced
       // when someone happened to open /admin/disputes.
-      await notifyAdmins({
+      void notifyAdmins({
         category: "dispute",
         title: "New dispute — funds frozen",
         body: `"${escrow.title}" (${escrow.code}) is disputed and awaiting a ruling.`,
@@ -863,10 +877,43 @@ export async function list(userId: string, params: { role?: "buyer" | "seller"; 
  * of it. Built inline in getDetail rather than behind its own endpoint — the
  * deal page already makes that request, and one source means the QR can't drift
  * from the link it encodes. `/join/:code` mirrors the public preview endpoint.
+ *
+ * The image is rendered once and kept on the row. It's a pure function of the
+ * code, but `toDataURL` encodes a PNG and base64s it — synchronous CPU work on
+ * the event loop despite the promise — and this used to run on every open and
+ * every refresh of the deal page.
+ *
+ * Rendered lazily on first view rather than at creation: most deals are never
+ * shared by code, so this keeps the work off the create path entirely and needs
+ * no backfill for rows that predate the columns.
  */
-async function buildShareInvite(code: string) {
-  const joinUrl = `${env.WEB_ORIGIN}/join/${code}`;
-  return { code, joinUrl, dataUrl: await QRCode.toDataURL(joinUrl, { width: 240, margin: 1 }) };
+async function buildShareInvite(escrow: {
+  id: string;
+  code: string;
+  shareQrDataUrl: string | null;
+  shareQrOrigin: string | null;
+}) {
+  const joinUrl = `${env.WEB_ORIGIN}/join/${escrow.code}`;
+
+  // The origin check is the reason `shareQrOrigin` exists: a stored image bakes
+  // in whatever WEB_ORIGIN was live when it was drawn, so after a move to a new
+  // domain the old QR would send scanners to the old host forever.
+  if (escrow.shareQrDataUrl && escrow.shareQrOrigin === env.WEB_ORIGIN) {
+    return { code: escrow.code, joinUrl, dataUrl: escrow.shareQrDataUrl };
+  }
+
+  const dataUrl = await QRCode.toDataURL(joinUrl, { width: 240, margin: 1 });
+
+  // Not awaited — the caller has what it needs, and a failed write only costs
+  // the next viewer another render.
+  prisma.escrow
+    .update({
+      where: { id: escrow.id },
+      data: { shareQrDataUrl: dataUrl, shareQrOrigin: env.WEB_ORIGIN },
+    })
+    .catch(() => undefined);
+
+  return { code: escrow.code, joinUrl, dataUrl };
 }
 
 export async function getDetail(actor: { id: string; role?: string }, id: string) {
@@ -894,7 +941,7 @@ export async function getDetail(actor: { id: string; role?: string }, id: string
   // (and pays for) the QR. Same condition as getPublicByCode's `joinable`.
   const share =
     escrow.status === "created" && (!escrow.buyerId || !escrow.sellerId)
-      ? await buildShareInvite(escrow.code)
+      ? await buildShareInvite(escrow)
       : null;
 
   return {

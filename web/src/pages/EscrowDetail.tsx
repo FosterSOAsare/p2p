@@ -41,8 +41,10 @@ import { formatDateTime } from '../features/shared/libs/date'
 import { apiErrorMessage } from '../features/shared/libs/api'
 import { statusBadge, HAPPY_PATH } from '../features/escrow/ui/dealStatus'
 import { PaymentModal } from '../features/escrow/ui/PaymentModal'
+import { CryptoDepositPanel } from '../features/escrow/ui/CryptoDepositPanel'
 import { useWallet } from '../features/escrow/data/walletApi'
 import { useInitDeposit, pendingAction, type PayMethod } from '../features/escrow/data/paymentsApi'
+import { useCryptoDeposit, useStartCryptoDeposit, useCheckCryptoDeposit } from '../features/escrow/data/cryptoApi'
 
 const DISPUTE_REASONS = [
   { value: 'not_delivered', label: 'Item was never delivered' },
@@ -65,6 +67,13 @@ export function EscrowDetail() {
   const updateEscrow = useUpdateEscrow()
   const walletQuery = useWallet()
   const initDeposit = useInitDeposit()
+
+  // Crypto rail. The deposit query is only meaningful for a TRX deal, so it
+  // stays disabled everywhere else rather than 400-ing on every fiat deal.
+  const isCryptoDeal = dealQuery.data?.rail === 'crypto'
+  const depositQuery = useCryptoDeposit(id, isCryptoDeal)
+  const startCrypto = useStartCryptoDeposit()
+  const checkCrypto = useCheckCryptoDeposit()
 
   const [payOpen, setPayOpen] = useState(false)
   const [redirecting, setRedirecting] = useState(false)
@@ -177,6 +186,21 @@ export function EscrowDetail() {
         onError: () => setRedirecting(false),
       },
     )
+  }
+
+  // TRX deals never touch the wallet — the buyer pays the provider directly and
+  // the server funds the deal when the deposit confirms. Opening the invoice is
+  // re-entrant, so a buyer who comes back gets the same one rather than a second.
+  const payWithCrypto = () => {
+    setRedirecting(true)
+    startCrypto.mutate(id, {
+      onSuccess: (deposit) => {
+        setPayOpen(false)
+        setRedirecting(false)
+        if (deposit.invoiceUrl) window.location.href = deposit.invoiceUrl
+      },
+      onError: () => setRedirecting(false),
+    })
   }
 
   const copyCode = () => {
@@ -478,7 +502,27 @@ export function EscrowDetail() {
               </button>
             )}
 
-            {has('FUND') && (
+            {/* Crypto rail: once an invoice exists the panel IS the funding UI —
+                the deal moves itself when the deposit confirms, so a "Fund
+                Escrow" button on top of it would promise something it can't do. */}
+            {isCryptoDeal && depositQuery.data?.invoiceUrl && (
+              <CryptoDepositPanel
+                deposit={depositQuery.data}
+                isChecking={checkCrypto.isPending}
+                isReopening={startCrypto.isPending || redirecting}
+                errorMessage={
+                  checkCrypto.isError
+                    ? apiErrorMessage(checkCrypto.error)
+                    : startCrypto.isError
+                      ? apiErrorMessage(startCrypto.error)
+                      : null
+                }
+                onCheck={() => checkCrypto.mutate({ escrowId: id })}
+                onReopen={payWithCrypto}
+              />
+            )}
+
+            {has('FUND') && !(isCryptoDeal && depositQuery.data?.invoiceUrl) && (
               <button onClick={() => setPayOpen(true)} disabled={busy || redirecting} className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3.5 text-sm font-semibold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer disabled:opacity-50">
                 {fund.isPending || redirecting ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />} Fund Escrow
               </button>
@@ -909,17 +953,20 @@ export function EscrowDetail() {
         balance={walletQuery.data?.balance ?? 0}
         rail={deal.rail}
         currency={deal.currency}
-        isPending={fund.isPending || initDeposit.isPending || redirecting}
+        isPending={fund.isPending || initDeposit.isPending || startCrypto.isPending || redirecting}
         errorMessage={
           fund.isError
             ? apiErrorMessage(fund.error)
             : initDeposit.isError
               ? apiErrorMessage(initDeposit.error)
-              : null
+              : startCrypto.isError
+                ? apiErrorMessage(startCrypto.error)
+                : null
         }
         onClose={() => setPayOpen(false)}
         onPayFromWallet={payFromWallet}
         onPayWithProvider={payWithProvider}
+        onPayWithCrypto={payWithCrypto}
       />
     </div>
   )

@@ -231,7 +231,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
     data: { revokedAt: new Date() },
   });
 
-  await notify({
+  void notify({
     userId: user.id,
     category: "system",
     title: "Your password was reset",
@@ -260,7 +260,7 @@ export async function changePassword(
 
   // A durable in-app record survives an attacker who controls the mailbox —
   // which is the point of flagging a password change at all.
-  await notify({
+  void notify({
     userId,
     category: "system",
     title: "Your password was changed",
