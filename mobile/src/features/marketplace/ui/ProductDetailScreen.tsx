@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Image } from 'expo-image';
 import {
+  ActivityIndicator,
   Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -25,13 +27,20 @@ import {
   Store,
   Truck,
   UserX,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { useSaved } from '@/context/SavedContext';
-import { mockProducts } from '@/constants/mockData';
+import { useBlocked } from '@/context/BlockedContext';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import {
+  useListing,
+  useReportListing,
+  REMOVAL_REASONS,
+  type RemovalReason,
+} from '@/features/listings/data/listingsApi';
 
 /**
  * Listing detail — the phone version of
@@ -42,9 +51,8 @@ import { mockProducts } from '@/constants/mockData';
  * gallery, title and price, vendor, actions, escrow guarantee, delivery and
  * returns, specs, then reviews.
  *
- * Reads `mockProducts` — no API yet, so Buy Now and Message Vendor navigate to
- * their (still placeholder) routes rather than calling anything, and Save is
- * local state.
+ * Reads `GET /api/listings/:id`. Saving goes through the server, as does
+ * reporting the listing for admin review.
  */
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -66,12 +74,46 @@ export function ProductDetailScreen() {
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const product = useMemo(() => mockProducts.find((p) => p.id === id), [id]);
+  const listingQuery = useListing(id ?? '');
+
+  /**
+   * Adapts the server's listing onto the shape this screen expects.
+   *
+   * The public page and the seller's own listing row read the *same* record —
+   * which is the point of "View public page" in My Listings — so both go
+   * through `GET /api/listings/:id`. The only reshaping needed is the seller,
+   * which the screen calls `vendor`.
+   */
+  const product = useMemo(() => {
+    const l = listingQuery.data;
+    if (!l) return undefined;
+    return {
+      ...l,
+      description: l.description ?? '',
+      condition: l.condition ?? '',
+      location: l.location ?? '',
+      vendor: {
+        username: l.seller?.username ?? '',
+        storeName: l.seller?.storeName ?? l.seller?.username ?? '',
+        verified: Boolean(l.seller?.verified),
+      },
+      reviews: l.reviews ?? [],
+    };
+  }, [listingQuery.data]);
 
   const [slide, setSlide] = useState(0);
-  const [reported, setReported] = useState(false);
+  /**
+   * Reporting. Whether it *has* been reported comes from the server
+   * (`product.reported`), not from local state — the old flag reset on every
+   * navigation, so the button forgot and the report was never filed anyway.
+   */
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState<RemovalReason>('misleading');
+  const [reportNote, setReportNote] = useState('');
+  const reportListing = useReportListing();
   // Shared with the marketplace hearts and the bookmarks screen.
   const { isSaved, toggleSaved } = useSaved();
+  const { isBlocked } = useBlocked();
   const saved = product ? isSaved(product.id) : false;
 
   const goBack = () => {
@@ -105,8 +147,39 @@ export function ProductDetailScreen() {
     </Pressable>
   );
 
-  // The web renders a "Listing Not Found" card for an unknown id.
-  if (!product) {
+  /**
+   * Loading first, and this ordering is the whole point: without it a perfectly
+   * real listing showed "Listing Not Found" for the seconds the fetch takes,
+   * then corrected itself. A not-found claim must never be made about data that
+   * hasn't arrived.
+   */
+  if (listingQuery.isLoading) {
+    return (
+      <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          {backButton}
+          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <ActivityIndicator color={theme.primary} />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  /**
+   * "Listing Not Found" — the web's exact condition, including the last clause.
+   *
+   * `status === 'removed'` matters and isn't redundant: the server deliberately
+   * still returns a removed listing to its **owner** and to admins, so the
+   * seller's own `/listings/:id` can show the takedown reason and the appeal.
+   * This is the public shopfront, so it has to be gone here for them too —
+   * without that check a seller tapping "View public page" on a removed listing
+   * saw it rendered as though it were still on sale.
+   *
+   * `isError` is the other half: a 404 for everyone else arrives as an error,
+   * not as empty data, so checking `!product` alone missed it.
+   */
+  if (listingQuery.isError || !product || product.status === 'removed') {
     return (
       <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
         <ScrollView contentContainerStyle={styles.scroll}>
@@ -114,7 +187,9 @@ export function ProductDetailScreen() {
           <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.notFound, { color: theme.text }]}>Listing Not Found</Text>
             <Text style={[styles.body, { color: theme.textSecondary }]}>
-              This listing may have been removed or is no longer active.
+              {listingQuery.isError && listingQuery.error
+                ? apiErrorMessage(listingQuery.error)
+                : 'The listing you are looking for may have been sold or removed.'}
             </Text>
             <Pressable
               onPress={() => router.replace('/marketplace')}
@@ -131,8 +206,41 @@ export function ProductDetailScreen() {
     );
   }
 
+  /**
+   * A blocked vendor's listing shows the block, not the goods — the web's
+   * `Vendor Blocked` panel. Reaching this page directly is the one way past
+   * the marketplace filter, so the check has to live here too.
+   */
+  if (isBlocked(product.vendor.username)) {
+    return (
+      <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          {backButton}
+          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <UserX size={24} color="#e11d48" />
+            <Text style={[styles.notFound, { color: theme.text }]}>Vendor Blocked</Text>
+            <Text style={[styles.body, { color: theme.textSecondary }]}>
+              You blocked @{product.vendor.username}. Their listings are hidden from your feed.
+            </Text>
+            <Pressable
+              onPress={() => router.push(`/seller/${product.vendor.username}`)}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <Text style={styles.primaryBtnText}>Manage block on their profile</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   const isOwnListing = user?.username === product.vendor.username;
   const reviews = product.reviews ?? [];
+  /** Nothing left to buy — the web swaps the buy button for a notice. */
+  const outOfStock = product.quantity <= 0;
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
@@ -244,17 +352,34 @@ export function ProductDetailScreen() {
             </Pressable>
           ) : (
             <>
-              <Pressable
-                // Same query param the web uses: /checkout?listing=<id>
-                onPress={() => router.push(`/checkout?listing=${product.id}`)}
-                style={({ pressed }) => [
-                  styles.primaryBtn,
-                  { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <Lock size={18} color="#ffffff" />
-                <Text style={styles.primaryBtnText}>Buy Now (Fund Escrow)</Text>
-              </Pressable>
+              {/* Sold out replaces the buy button rather than disabling it —
+                  the web's wording, so the seller can still be messaged. */}
+              {outOfStock ? (
+                <View
+                  style={[
+                    styles.outOfStock,
+                    { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                  ]}
+                >
+                  <Text style={[styles.outOfStockTitle, { color: theme.text }]}>Out of stock</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>
+                    Every unit has sold. Message the seller to ask whether they&apos;re restocking,
+                    or save the listing to check back later.
+                  </Text>
+                </View>
+              ) : (
+                <Pressable
+                  // Same query param the web uses: /checkout?listing=<id>
+                  onPress={() => router.push(`/checkout?listing=${product.id}`)}
+                  style={({ pressed }) => [
+                    styles.primaryBtn,
+                    { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+                  ]}
+                >
+                  <Lock size={18} color="#ffffff" />
+                  <Text style={styles.primaryBtnText}>Buy Now (Fund Escrow)</Text>
+                </Pressable>
+              )}
 
               <View style={styles.secondaryRow}>
                 <Pressable
@@ -343,10 +468,22 @@ export function ProductDetailScreen() {
 
           {/* Report / block */}
           <View style={[styles.reportRow, { borderTopColor: theme.border }]}>
-            <Pressable onPress={() => setReported(true)} hitSlop={8} style={styles.reportBtn}>
-              <Flag size={13} color={theme.textTertiary} />
-              <Text style={[styles.reportText, { color: theme.textTertiary }]}>
-                {reported ? 'Listing Reported' : 'Report Listing'}
+            <Pressable
+              onPress={() => setReportOpen((v) => !v)}
+              // `product.reported` is the server's answer, so it survives a
+              // reload and can't be faked by local state as it used to be.
+              disabled={product.reported}
+              hitSlop={8}
+              style={styles.reportBtn}
+            >
+              <Flag size={13} color={product.reported ? '#059669' : theme.textTertiary} />
+              <Text
+                style={[
+                  styles.reportText,
+                  { color: product.reported ? '#059669' : theme.textTertiary },
+                ]}
+              >
+                {product.reported ? 'Listing Reported' : 'Report Listing'}
               </Text>
             </Pressable>
             <Pressable
@@ -358,6 +495,122 @@ export function ProductDetailScreen() {
               <Text style={[styles.reportText, { color: theme.textTertiary }]}>Block Vendor</Text>
             </Pressable>
           </View>
+
+          {/**
+           * The report form, expanded in place.
+           *
+           * A reason is required by the server, so it can't be a one-tap action
+           * — which is what the old button pretended to be, flipping its own
+           * label and filing nothing.
+           */}
+          {reportOpen && !product.reported ? (
+            <View style={[styles.reportForm, { borderColor: theme.border }]}>
+              <Text style={[styles.reportFormHead, { color: theme.textSecondary }]}>
+                Why are you reporting this listing?
+              </Text>
+
+              {REMOVAL_REASONS.map((r) => {
+                const on = reportReason === r.id;
+                return (
+                  <Pressable
+                    key={r.id}
+                    onPress={() => setReportReason(r.id)}
+                    style={[
+                      styles.reasonRow,
+                      {
+                        backgroundColor: on ? theme.primaryLight : theme.inputBackground,
+                        borderColor: on ? theme.primary : theme.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.reasonText,
+                        { color: on ? theme.primary : theme.textSecondary },
+                      ]}
+                    >
+                      {r.label}
+                    </Text>
+                    {on ? <CheckCircle2 size={15} color={theme.primary} /> : null}
+                  </Pressable>
+                );
+              })}
+
+              {/* The server demands at least 3 characters on "Other" — a bare
+                  "Other" tells a moderator nothing. Optional otherwise. */}
+              <TextInput
+                value={reportNote}
+                onChangeText={setReportNote}
+                placeholder={
+                  reportReason === 'other'
+                    ? 'Tell us what’s wrong (required)'
+                    : 'Anything else we should know? (optional)'
+                }
+                placeholderTextColor={theme.textTertiary}
+                maxLength={500}
+                multiline
+                textAlignVertical="top"
+                style={[
+                  styles.reportNote,
+                  {
+                    color: theme.text,
+                    backgroundColor: theme.inputBackground,
+                    borderColor: theme.inputBorder,
+                  },
+                ]}
+              />
+
+              {reportListing.isError ? (
+                <Text style={styles.reportError}>{apiErrorMessage(reportListing.error)}</Text>
+              ) : null}
+
+              <View style={styles.reportActions}>
+                <Pressable
+                  onPress={() => setReportOpen(false)}
+                  style={[styles.reportCancel, { borderColor: theme.border }]}
+                >
+                  <Text style={[styles.reportCancelText, { color: theme.textSecondary }]}>
+                    Cancel
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    reportListing.mutate(
+                      {
+                        id: product.id,
+                        reason: reportReason,
+                        note: reportNote.trim() || undefined,
+                      },
+                      { onSuccess: () => setReportOpen(false) },
+                    )
+                  }
+                  disabled={
+                    reportListing.isPending ||
+                    (reportReason === 'other' && reportNote.trim().length < 3)
+                  }
+                  style={({ pressed }) => [
+                    styles.reportSubmit,
+                    {
+                      opacity:
+                        reportListing.isPending ||
+                        (reportReason === 'other' && reportNote.trim().length < 3)
+                          ? 0.5
+                          : pressed
+                            ? 0.85
+                            : 1,
+                    },
+                  ]}
+                >
+                  {reportListing.isPending ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Flag size={14} color="#ffffff" />
+                  )}
+                  <Text style={styles.reportSubmitText}>Submit Report</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
         </View>
 
         {/* Specs */}
@@ -398,7 +651,7 @@ export function ProductDetailScreen() {
             reviews.map((review) => (
               <View key={review.id} style={[styles.review, { borderTopColor: theme.border }]}>
                 <View style={styles.reviewHead}>
-                  <Text style={[styles.reviewer, { color: theme.text }]}>@{review.fromUser}</Text>
+                  <Text style={[styles.reviewer, { color: theme.text }]}>@{review.author?.username ?? "buyer"}</Text>
                   <View style={styles.stars}>
                     {Array.from({ length: 5 }, (_, i) => (
                       <Star
@@ -488,6 +741,13 @@ const styles = StyleSheet.create({
   vendorName: { flexShrink: 1, fontSize: 13, fontFamily: Fonts.sans[700] },
   vendorMeta: { fontSize: 10.5, fontFamily: Fonts.sans[400] },
 
+  outOfStock: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+    gap: 4,
+  },
+  outOfStockTitle: { fontSize: 13, fontFamily: Fonts.sans[700] },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -528,7 +788,78 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     paddingTop: Spacing.three,
   },
-  reportBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  reportBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44 },
+
+  reportForm: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+    gap: Spacing.two,
+    marginTop: Spacing.two,
+  },
+  reportFormHead: {
+    fontSize: 10.5,
+    fontFamily: Fonts.sans[700],
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    minHeight: 44,
+  },
+  reasonText: { flex: 1, fontSize: 12, fontFamily: Fonts.sans[600] },
+  reportNote: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+    minHeight: 64,
+    fontSize: 13,
+    fontFamily: Fonts.sans[400],
+    outlineStyle: 'none',
+  } as never,
+  reportError: {
+    fontSize: 11.5,
+    lineHeight: 16,
+    fontFamily: Fonts.sans[600],
+    color: '#b91c1c',
+  },
+  reportActions: { flexDirection: 'row', gap: Spacing.two, marginTop: 2 },
+  reportCancel: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
+  reportCancelText: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[700] },
+  reportSubmit: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+    borderRadius: Radius.md,
+    backgroundColor: '#e11d48',
+  },
+  reportSubmitText: {
+    flexShrink: 1,
+    fontSize: 12.5,
+    fontFamily: Fonts.sans[700],
+    color: '#ffffff',
+  },
   reportText: { fontSize: 11, fontFamily: Fonts.sans[600] },
 
   sectionTitle: { fontSize: 14, fontFamily: Fonts.display[700] },

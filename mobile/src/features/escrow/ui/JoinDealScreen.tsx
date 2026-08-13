@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Handshake, LogIn, ShieldCheck, TriangleAlert } from 'lucide-react-native';
+import { ArrowLeft, Handshake, LogIn, ShieldCheck, TriangleAlert } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';

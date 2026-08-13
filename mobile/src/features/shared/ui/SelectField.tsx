@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Check, ChevronDown } from 'lucide-react-native';
+import { Check, ChevronDown } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';

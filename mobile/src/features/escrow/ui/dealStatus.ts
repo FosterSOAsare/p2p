@@ -1,17 +1,19 @@
-import type { EscrowDeal } from '@/constants/mockData';
+import type { DealStatus } from '../data/dealsApi';
 
 /**
  * Status badge tones and labels — the phone port of
- * `web/src/features/escrow/ui/dealStatus.ts`.
+ * `web/src/features/escrow/ui/dealStatus.ts`, now matching it exactly.
  *
- * The web models 5 states (created · funded · delivered · disbursed · disputed).
- * The mobile mock adds three more (shipped, released, refunded), so those are
- * mapped onto the nearest web tone and given labels in the same voice.
+ * These are the SERVER's five states: created · funded · delivered ·
+ * disbursed · disputed · cancelled. They used to be the mock's vocabulary
+ * (`shipped`, `released`, `refunded`), which meant every screen reading a real
+ * deal had to translate first — and a missed translation silently emptied a
+ * filter tab. Using the server's names removes that whole class of bug.
  */
 
 export type BadgeTone = 'neutral' | 'info' | 'warning' | 'success' | 'danger';
 
-export type DealStatus = EscrowDeal['status'];
+export type { DealStatus };
 
 export function statusBadge(status: DealStatus): { tone: BadgeTone; label: string } {
   switch (status) {
@@ -19,16 +21,14 @@ export function statusBadge(status: DealStatus): { tone: BadgeTone; label: strin
       return { tone: 'warning', label: 'Awaiting Funding' };
     case 'funded':
       return { tone: 'info', label: 'Funded — In Progress' };
-    case 'shipped':
-      return { tone: 'info', label: 'Shipped — In Transit' };
     case 'delivered':
       return { tone: 'info', label: 'Delivered — Confirm Receipt' };
-    case 'released':
+    case 'disbursed':
       return { tone: 'success', label: 'Completed' };
     case 'disputed':
       return { tone: 'danger', label: 'Disputed' };
-    case 'refunded':
-      return { tone: 'neutral', label: 'Refunded' };
+    case 'cancelled':
+      return { tone: 'neutral', label: 'Cancelled — Refunded' };
     default:
       return { tone: 'neutral', label: status };
   }
@@ -48,5 +48,5 @@ export const HAPPY_PATH: { status: DealStatus; label: string }[] = [
   { status: 'created', label: 'Created' },
   { status: 'funded', label: 'Funded' },
   { status: 'delivered', label: 'Delivered' },
-  { status: 'released', label: 'Released' },
+  { status: 'disbursed', label: 'Released' },
 ];

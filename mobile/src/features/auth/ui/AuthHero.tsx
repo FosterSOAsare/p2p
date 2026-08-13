@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
-import { CheckCircle2, LockKeyhole, Sparkles } from 'lucide-react-native';
+import { CheckCircle2, LockKeyhole, Sparkles } from '@/components/icons';
 
 import { Primary, Radius, Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';

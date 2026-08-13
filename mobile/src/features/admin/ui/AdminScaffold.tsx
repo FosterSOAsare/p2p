@@ -11,10 +11,11 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ShieldCheck, TriangleAlert } from 'lucide-react-native';
+import { ArrowLeft, ShieldCheck, TriangleAlert } from '@/components/icons';
 
 import { Accent, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 
 /**
  * Shared furniture for the admin console screens.
@@ -40,6 +41,11 @@ export function AdminScreen({
   refreshing = false,
   /** Hidden on the console itself, which is reached from the tab bar. */
   showBack = true,
+  /**
+   * This screen is one of the console's bottom-bar destinations rather than
+   * something pushed on top of one — so there is nowhere to go "back" to.
+   */
+  tabRoot = false,
   footer,
 }: {
   title: string;
@@ -48,18 +54,28 @@ export function AdminScreen({
   onRefresh?: () => void;
   refreshing?: boolean;
   showBack?: boolean;
+  tabRoot?: boolean;
   footer?: ReactNode;
 }) {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useTabBarHeight();
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.background }]}>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + Spacing.three, paddingBottom: insets.bottom + Spacing.eight },
+          {
+            paddingTop: insets.top + Spacing.three,
+            /*
+              Every console screen sits inside the admin tab navigator — a
+              detail screen pushed within a section's stack keeps the bar on
+              screen too — so they all clear it, not just the tab roots.
+            */
+            paddingBottom: tabBarHeight + Spacing.four,
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         refreshControl={
@@ -68,7 +84,7 @@ export function AdminScreen({
           ) : undefined
         }
       >
-        {showBack && (
+        {showBack && !tabRoot && (
           <Pressable
             onPress={() => (router.canGoBack() ? router.back() : router.replace('/admin'))}
             hitSlop={10}

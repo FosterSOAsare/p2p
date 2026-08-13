@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ChevronRight, Gavel, PackageSearch, Search, Trash2 } from 'lucide-react-native';
+import { ChevronRight, Gavel, PackageSearch, Search, Trash2 } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -90,6 +90,8 @@ export function AdminListingsScreen() {
 
   return (
     <AdminScreen
+      // A tab in the console's bottom bar, not a pushed screen.
+      tabRoot
       title="Listings"
       subtitle="Remove listings that break the rules, and rule on sellers' appeals."
       onRefresh={() => (showAppeals ? appealsQuery.refetch() : listingsQuery.refetch())}

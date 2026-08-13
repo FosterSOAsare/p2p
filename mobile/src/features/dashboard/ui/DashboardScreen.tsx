@@ -6,6 +6,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { usePersona } from '@/hooks/use-persona';
 import { useAuth } from '@/context/AuthContext';
+import { SkeletonList } from '@/features/shared/ui/Skeleton';
 import { BuyerDashboard } from './BuyerDashboard';
 import { SellerDashboard } from './SellerDashboard';
 import { AdminDashboard } from './AdminDashboard';
@@ -38,7 +39,13 @@ export function DashboardScreen() {
           <SellerDashboard user={user} />
         ) : user ? (
           <BuyerDashboard user={user} />
-        ) : null}
+        ) : (
+          /* The route guard means a signed-out account never reaches this
+             screen, so this branch is defensive — but "defensive" used to mean
+             rendering nothing at all, and a blank home screen is the one thing
+             this app should never show. Placeholders instead. */
+          <SkeletonList count={3} />
+        )}
       </ScrollView>
     </SafeAreaView>
   );

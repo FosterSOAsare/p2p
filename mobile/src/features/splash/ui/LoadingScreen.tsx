@@ -10,7 +10,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { Handshake } from 'lucide-react-native';
+import { Handshake } from '@/components/icons';
 
 import { Fonts, Primary } from '@/constants/theme';
 

@@ -1,16 +1,23 @@
 import { useMemo, useState } from 'react';
 import { Image } from 'expo-image';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, ExternalLink, Layers, Package, Star, Tag, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, ExternalLink, Layers, Package, Star, Tag, Trash2 } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
+import { apiErrorMessage } from '@/features/shared/data/api';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
-import { mockProducts, type Product } from '@/constants/mockData';
+import {
+  useDeleteListing,
+  useListing,
+  useUpdateListing,
+  type ListingStatus,
+} from '../data/listingsApi';
 import { CONDITIONS, ListingForm, type ListingFormValues } from './ListingForm';
+import { ListingDisputePanel } from './ListingDisputePanel';
 
 /**
  * Edit a listing — the phone version of `web/src/pages/ListingDetail.tsx`.
@@ -20,9 +27,8 @@ import { CONDITIONS, ListingForm, type ListingFormValues } from './ListingForm';
  * and the shared `ListingForm` prefilled from the listing. Status *is* shown
  * here (`showStatus`), unlike create — the web only exposes it on edit too.
  *
- * Reads `mockProducts`, the same collection `MyListingsScreen` scopes by vendor,
- * so an id that works in the list works here. Saving and deleting are local
- * no-ops for now; both are marked `TODO(api)`.
+ * Reads `GET /api/listings/:id` and writes through `PATCH` and `DELETE` on the
+ * same path — the endpoints the web's edit page uses.
  */
 
 /** The web's `knownCondition` guard — a listing may carry a free-text condition. */
@@ -40,10 +46,10 @@ function formatMoney(amount: number, currency = 'GH₵') {
 }
 
 /** "Out of Stock" from `out_of_stock` — the web capitalises the same way. */
-function statusLabel(status: Product['status']) {
+function statusLabel(status: ListingStatus) {
   return status
     .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 }
 
@@ -53,11 +59,21 @@ export function ListingEditScreen() {
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const [pending, setPending] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleted, setDeleted] = useState(false);
 
-  const listing = useMemo(() => mockProducts.find((p) => p.id === id), [id]);
+  const listingQuery = useListing(id ?? '');
+  const listing = listingQuery.data;
+
+  /**
+   * A removed listing is frozen — the server guard refuses edits to one, so the
+   * form is replaced by an explanation rather than left there to fail. Mirrors
+   * the web's `editingLocked`.
+   */
+  const editingLocked = listing?.status === 'removed';
+  const updateListing = useUpdateListing();
+  const deleteListing = useDeleteListing();
 
   const backToListings = () => {
     if (router.canGoBack()) router.back();
@@ -69,7 +85,7 @@ export function ListingEditScreen() {
    * seller guard: an unknown id, a listing owned by someone else, and one just
    * deleted on this screen.
    */
-  const notMine = listing != null && listing.vendor.username !== user?.username;
+  const notMine = listing != null && listing.seller?.username !== user?.username;
 
   if (!listing || notMine || deleted) {
     return (
@@ -101,19 +117,39 @@ export function ListingEditScreen() {
     );
   }
 
-  const onSubmit = async (_values: ListingFormValues) => {
-    setPending(true);
-    // TODO(api): PATCH /api/listings/:id, then land on /listings as the web does.
-    // Nothing is persisted yet, so edits won't survive leaving this screen.
-    await new Promise((r) => setTimeout(r, 600));
-    setPending(false);
-    router.replace('/listings');
+  const onSubmit = async (values: ListingFormValues) => {
+    try {
+      await updateListing.mutateAsync({
+        id: listing.id,
+        title: values.title,
+        description: values.description || null,
+        price: Number(values.price),
+        category: values.category,
+        condition: values.condition,
+        quantity: Number(values.quantity),
+        location: values.location || null,
+        status: values.status,
+        // Only http(s) URLs survive: the picker yields on-device file paths,
+        // which the server rejects — uploading them is still to do.
+        images: values.images.filter(
+          (i): i is string => typeof i === 'string' && /^https?:\/\//.test(i),
+        ),
+      });
+      router.replace('/listings');
+    } catch (err) {
+      setSaveError(apiErrorMessage(err));
+    }
   };
 
-  const onDelete = () => {
-    // TODO(api): DELETE /api/listings/:id — local only, like the list screen.
-    setConfirmOpen(false);
-    setDeleted(true);
+  const onDelete = async () => {
+    try {
+      await deleteListing.mutateAsync(listing.id);
+      setConfirmOpen(false);
+      setDeleted(true);
+    } catch (err) {
+      setConfirmOpen(false);
+      setSaveError(apiErrorMessage(err));
+    }
   };
 
   const stats: { icon: React.ReactNode; label: string; value: string }[] = [
@@ -125,7 +161,7 @@ export function ListingEditScreen() {
     {
       icon: <Star size={12} color={theme.textTertiary} />,
       label: 'Reviews',
-      value: String(listing.reviews.length),
+      value: String(listing.reviewCount),
     },
     {
       icon: <Tag size={12} color={theme.textTertiary} />,
@@ -218,34 +254,130 @@ export function ListingEditScreen() {
           </View>
         </View>
 
-        {/* Edit form — prefilled from the listing, as on the web. */}
+        {/* Why a save or a delete was refused. `saveError` was being set in
+            three places and rendered in none, so a rejected save looked exactly
+            like a successful one that hadn't navigated. The web shows the same
+            box in the same spot, between the header and the form. */}
+        {saveError ? (
+          <View style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+            <Text style={styles.apiErrorText}>{saveError}</Text>
+          </View>
+        ) : null}
+
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          {/* "Listing", not "Edit Listing", once it's frozen — the web switches
+              the same heading rather than showing a promise it can't keep. */}
           <Text style={[styles.sectionTitle, { color: theme.text, borderBottomColor: theme.border }]}>
-            Edit Listing
+            {editingLocked ? 'Listing' : 'Edit Listing'}
           </Text>
+
+          {/* Takedown notice and the appeal, on a removed listing you own. This
+              is where the "Your listing was removed" notification lands. */}
+          {listing.removal ? (
+            <ListingDisputePanel listingId={listing.id} removal={listing.removal} />
+          ) : null}
+
+          {/**
+           * A removed listing is frozen while it's under moderation — the server
+           * refuses edits to one, so offering the form would only produce a
+           * rejection. It becomes a read-only view instead of disappearing: the
+           * seller still needs to see what was taken down in order to argue
+           * about it, and the appeal sits directly above.
+           */}
+          {editingLocked ? (
+            <View style={styles.lockedWrap}>
+              <View
+                style={[
+                  styles.lockedNotice,
+                  { backgroundColor: theme.inputBackground, borderColor: theme.border },
+                ]}
+              >
+                <Text style={[styles.lockedText, { color: theme.textSecondary }]}>
+                  A removed listing is frozen while it&apos;s under moderation, so it can&apos;t be
+                  edited. Create a new listing if you want to sell the item again.
+                </Text>
+              </View>
+
+              <View style={[styles.readOnly, { borderColor: theme.border }]}>
+                {(
+                  [
+                    ['Title', listing.title],
+                    ['Price', formatMoney(listing.price, listing.currency)],
+                    ['Category', listing.category],
+                    ['Condition', listing.condition ?? '—'],
+                    ['Quantity', String(listing.quantity)],
+                    ['Location', listing.location ?? '—'],
+                  ] as const
+                ).map(([label, value]) => (
+                  <View key={label} style={styles.readOnlyRow}>
+                    <Text style={[styles.readOnlyLabel, { color: theme.textTertiary }]}>
+                      {label}
+                    </Text>
+                    <Text style={[styles.readOnlyValue, { color: theme.text }]}>{value}</Text>
+                  </View>
+                ))}
+
+                {listing.description ? (
+                  <View style={[styles.readOnlyDesc, { borderTopColor: theme.border }]}>
+                    <Text style={[styles.readOnlyLabel, { color: theme.textTertiary }]}>
+                      Description
+                    </Text>
+                    <Text style={[styles.readOnlyBody, { color: theme.textSecondary }]}>
+                      {listing.description}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {listing.images.length > 0 ? (
+                <View style={styles.readOnlyImages}>
+                  {listing.images.map((src) => (
+                    <Image
+                      key={src}
+                      source={src}
+                      style={[styles.readOnlyThumb, { borderColor: theme.border }]}
+                      contentFit="cover"
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : (
           <ListingForm
             initial={{
               title: listing.title,
-              description: listing.description,
+              // The API nulls empty optional text; the form fields want strings.
+              description: listing.description ?? '',
               price: String(listing.price),
               category: listing.category,
-              condition: toKnownCondition(listing.condition),
+              condition: toKnownCondition(listing.condition ?? ''),
               quantity: String(listing.quantity),
-              location: listing.location,
+              location: listing.location ?? '',
               images: listing.images,
-              status: listing.status,
+              // `removed` is an admin takedown, not something a seller can set,
+              // so the form opens such a listing as a draft.
+              status: listing.status === 'removed' ? 'draft' : listing.status,
             }}
             submitLabel="Save Changes"
             pendingLabel="Saving..."
-            isPending={pending}
+            isPending={updateListing.isPending}
             showStatus
             onSubmit={onSubmit}
           />
+          )}
         </View>
       </KeyboardAwareScroll>
 
-      {/* Delete confirmation — same dialog anatomy as MyListingsScreen. */}
-      {confirmOpen ? (
+      {/* Delete confirmation — same dialog anatomy as MyListingsScreen, and a
+          Modal for the same reason: it must sit over the scrolling page and
+          freeze it, not scroll away with it. */}
+      <Modal
+        visible={confirmOpen}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setConfirmOpen(false)}
+      >
         <View style={styles.backdrop}>
           <View style={[styles.dialog, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <Text style={[styles.dialogTitle, { color: theme.text }]}>Delete this listing?</Text>
@@ -266,7 +398,7 @@ export function ListingEditScreen() {
             </View>
           </View>
         </View>
-      ) : null}
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -325,6 +457,28 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: 14, fontFamily: Fonts.sans[700] },
 
+  apiError: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
+
+  lockedWrap: { gap: Spacing.three },
+  lockedNotice: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },
+  lockedText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[400] },
+
+  // The web's <dl>: a label column and a value that wraps rather than clipping.
+  readOnly: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three, gap: Spacing.two },
+  readOnlyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.three },
+  readOnlyLabel: {
+    width: 76,
+    fontSize: 10,
+    fontFamily: Fonts.sans[700],
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  readOnlyValue: { flex: 1, fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600] },
+  readOnlyDesc: { borderTopWidth: 1, paddingTop: Spacing.two, gap: 4 },
+  readOnlyBody: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[400] },
+  readOnlyImages: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  readOnlyThumb: { height: 76, width: 76, borderRadius: Radius.md, borderWidth: 1 },
   sectionTitle: {
     fontSize: 13,
     fontFamily: Fonts.display[700],
@@ -345,19 +499,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    height: 44,
+    minHeight: 44,
     paddingHorizontal: Spacing.five,
+    paddingVertical: Spacing.two,
     borderRadius: Radius.md,
     marginTop: Spacing.two,
   },
-  primaryBtnText: { fontSize: 13, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  primaryBtnText: { flexShrink: 1, fontSize: 13, fontFamily: Fonts.sans[700], color: '#ffffff' },
 
+  // flex:1 inside a Modal — it already owns the screen.
   backdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -375,26 +527,37 @@ const styles = StyleSheet.create({
   dialogBody: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[400] },
   dialogActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
     gap: Spacing.two,
     marginTop: Spacing.two,
   },
+  /**
+   * The two dialog buttons share the width instead of sizing to their labels.
+   *
+   * Right-aligned and intrinsically sized, "Delete listing" plus "Cancel" plus
+   * their padding overran the dialog on a narrow phone — and because the row
+   * couldn't shrink them, the overflow clipped rather than wrapped. `flex: 1`
+   * each makes them halve whatever width the dialog has.
+   */
   cancelBtn: {
-    height: 40,
-    paddingHorizontal: Spacing.four,
+    flex: 1,
+    minHeight: 40,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
     borderWidth: 1,
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cancelText: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
+  cancelText: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[700] },
   deleteBtn: {
-    height: 40,
-    paddingHorizontal: Spacing.four,
+    flex: 1,
+    minHeight: 40,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
     borderRadius: Radius.md,
     backgroundColor: '#e11d48',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  deleteText: { fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  deleteText: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
 });

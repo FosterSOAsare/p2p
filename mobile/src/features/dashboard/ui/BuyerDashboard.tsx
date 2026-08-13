@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Image } from 'expo-image';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   AlertTriangle,
@@ -12,12 +13,16 @@ import {
   ShieldCheck,
   ShoppingBag,
   Truck,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSaved } from '@/context/SavedContext';
-import { mockBuyerStats, mockOrders, type Order, type User } from '@/constants/mockData';
+import { type User } from '@/constants/mockData';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { useDashboard } from '../data/dashboardApi';
+import { useReleaseDeal } from '@/features/escrow/data/dealsApi';
+import { AppBar } from '@/features/shared/ui/AppBar';
 import { StatCard } from './StatCard';
 
 /**
@@ -27,28 +32,34 @@ import { StatCard } from './StatCard';
  * standalone-escrow banner, then recent marketplace orders with the
  * confirm-receipt action.
  *
- * Reads `mockBuyerStats` / `mockOrders` — no API yet, so "Confirm Receipt"
- * has nothing to call. Swap in the dashboard endpoint when the mobile API
- * client lands.
+ * Reads `/api/users/me/dashboard`, the same endpoint the web's dashboard uses,
+ * so the two never disagree about a figure.
  */
 
-const money = (amount: number, currency = 'GH₵') =>
-  `${currency}${amount.toLocaleString('en-GH', { maximumFractionDigits: 2 })}`;
+const money = (amount: number, currency: 'GHS' | 'TRX' = 'GHS') =>
+  currency === 'TRX'
+    ? `${amount.toLocaleString('en-US', { maximumFractionDigits: 6 })} TRX`
+    : `GH₵${amount.toLocaleString('en-GH', { maximumFractionDigits: 2 })}`;
 
-/** "10 Mar 2025" — same format the deals list uses. */
-const orderDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-
-/** Maps an order status onto the web's badge tones. */
-function statusBadge(status: Order['status']) {
+/**
+ * Maps the raw escrow status onto the web's badge tones.
+ *
+ * The buyer block of the dashboard sends the status unmapped — unlike the
+ * seller block, which pre-translates it — so the lifecycle words are handled
+ * here rather than the UI words the mock used to carry.
+ */
+function statusBadge(status: string) {
   switch (status) {
-    case 'released':
+    case 'disbursed':
       return { label: 'COMPLETED', bg: '#dcfce7', text: '#166534' };
-    case 'shipped':
     case 'delivered':
-      return { label: status.toUpperCase(), bg: '#dbeafe', text: '#1e40af' };
+      return { label: 'DELIVERED', bg: '#dbeafe', text: '#1e40af' };
     case 'disputed':
       return { label: 'DISPUTED', bg: '#fee2e2', text: '#991b1b' };
+    case 'cancelled':
+      return { label: 'CANCELLED', bg: '#f3f4f6', text: '#374151' };
+    case 'created':
+      return { label: 'AWAITING PAYMENT', bg: '#fef9c3', text: '#854d0e' };
     default:
       return { label: 'IN ESCROW', bg: '#fef9c3', text: '#854d0e' };
   }
@@ -59,8 +70,19 @@ export function BuyerDashboard({ user }: { user: User }) {
   const router = useRouter();
   const { count: savedCount } = useSaved();
 
-  const stats = mockBuyerStats;
-  const orders = mockOrders;
+  const dashboard = useDashboard();
+  const release = useReleaseDeal();
+  /** Which order's release is in flight — so only that row shows a spinner. */
+  const [releasingId, setReleasingId] = useState<string | null>(null);
+
+  const stats = dashboard.data?.buyer.stats;
+  const orders = dashboard.data?.buyer.recentOrders ?? [];
+
+  const confirmReceipt = (orderId: string) => {
+    if (release.isPending) return;
+    setReleasingId(orderId);
+    release.mutate(orderId, { onSettled: () => setReleasingId(null) });
+  };
 
   const joined = new Date(user.createdAt).toLocaleDateString('en-GB', {
     month: 'short',
@@ -69,6 +91,10 @@ export function BuyerDashboard({ user }: { user: User }) {
 
   return (
     <View style={styles.wrap}>
+      {/* Profile, messages and notifications — the same bar the seller home
+          wears, so the two personas don't diverge. */}
+      <AppBar />
+
       {/* Profile hero */}
       <View style={[styles.hero, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
         <View style={styles.heroTop}>
@@ -132,17 +158,18 @@ export function BuyerDashboard({ user }: { user: User }) {
         </View>
       </View>
 
-      {/* Metrics */}
+      {/* Metrics — "—" until the figures land, never a confident zero. */}
       <View style={styles.grid}>
         <StatCard
           label="Active Orders"
-          value={String(stats.activeOrders)}
+          value={stats ? String(stats.activeOrdersCount) : '—'}
           sub="In escrow or shipped"
           icon={ShoppingBag}
+          onPress={() => router.push('/deals')}
         />
         <StatCard
           label="Escrow Locked"
-          value={money(stats.escrowLocked, stats.currency)}
+          value={stats ? money(stats.escrowLockedBalance) : '—'}
           sub="100% Deposit Protection"
           icon={Lock}
           accent={theme.primary}
@@ -150,14 +177,19 @@ export function BuyerDashboard({ user }: { user: User }) {
         />
         <StatCard
           label="Total Purchases"
-          value={money(stats.totalPurchases, stats.currency)}
+          value={stats ? money(stats.totalSpent) : '—'}
           sub="Across all marketplace deals"
           icon={Package}
           accent="#0284c7"
         />
         <StatCard
           label="Saved Items"
-          // Live count from SavedContext, so the tile agrees with Bookmarks.
+          /*
+            SavedContext, not `stats.savedItemsCount`. The context updates the
+            instant you tap the heart on a listing; the dashboard figure is a
+            cached round trip behind, so preferring the server value would make
+            the tile visibly lag the Bookmarks screen it links to.
+          */
           value={String(savedCount)}
           sub="View my bookmarks →"
           icon={Heart}
@@ -194,7 +226,16 @@ export function BuyerDashboard({ user }: { user: User }) {
         </Pressable>
       </View>
 
-      {orders.length === 0 ? (
+      {dashboard.isLoading ? (
+        <View style={styles.ordersLoading}>
+          <ActivityIndicator color={theme.primary} />
+        </View>
+      ) : dashboard.isError ? (
+        <View style={[styles.apiError, { backgroundColor: '#fee2e2', borderColor: '#fecaca' }]}>
+          <AlertTriangle size={15} color="#991b1b" />
+          <Text style={styles.apiErrorText}>{apiErrorMessage(dashboard.error)}</Text>
+        </View>
+      ) : orders.length === 0 ? (
         <View style={[styles.empty, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
           <ShoppingBag size={28} color={theme.textTertiary} />
           <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
@@ -213,15 +254,18 @@ export function BuyerDashboard({ user }: { user: User }) {
       ) : (
         orders.map((order) => {
           const badge = statusBadge(order.status);
-          const canRelease =
-            order.status === 'escrow_funded' ||
-            order.status === 'shipped' ||
-            order.status === 'delivered';
+          /*
+            Only these two. The server rejects a release from any other state,
+            so offering the button on, say, a disputed or already-disbursed
+            order would just produce an error the buyer can't act on.
+          */
+          const canRelease = order.status === 'funded' || order.status === 'delivered';
+          const isReleasing = releasingId === order.id;
 
           return (
             <Pressable
               key={order.id}
-              onPress={() => router.push(`/escrow/${order.dealId}`)}
+              onPress={() => router.push(`/escrow/${order.id}`)}
               style={({ pressed }) => [
                 styles.order,
                 { backgroundColor: theme.card, borderColor: pressed ? theme.primary : theme.cardBorder },
@@ -232,27 +276,28 @@ export function BuyerDashboard({ user }: { user: User }) {
                   <Text style={[styles.badgeText, { color: badge.text }]}>{badge.label}</Text>
                 </View>
                 <Text style={[styles.orderCode, { color: theme.textTertiary }]} numberOfLines={1}>
-                  {order.id} · {orderDate(order.createdAt)}
+                  {order.code} · {order.orderDate}
                 </Text>
                 <Text style={[styles.orderVendor, { color: theme.textSecondary }]} numberOfLines={1}>
-                  @{order.vendor.username}
+                  @{order.vendorName}
                 </Text>
               </View>
 
               <View style={styles.orderBody}>
-                <Image source={order.listingImage} style={styles.orderImage} contentFit="cover" />
+                <Image source={order.imageUrl} style={styles.orderImage} contentFit="cover" />
                 <View style={styles.orderInfo}>
                   <Text style={[styles.orderTitle, { color: theme.text }]} numberOfLines={1}>
-                    {order.listingTitle}
+                    {order.title}
                   </Text>
                   <Text style={[styles.orderPrice, { color: theme.text }]}>
-                    {order.currency} {order.amount.toLocaleString()}
+                    {money(order.price, order.currency)}
                   </Text>
-                  {order.tracking ? (
+                  {order.trackingCode ? (
                     <View style={styles.trackingRow}>
                       <Truck size={12} color={theme.primary} />
                       <Text style={[styles.tracking, { color: theme.textSecondary }]} numberOfLines={1}>
-                        {order.tracking.carrier}: {order.tracking.code}
+                        {order.shippingCarrier ? `${order.shippingCarrier}: ` : ''}
+                        {order.trackingCode}
                       </Text>
                     </View>
                   ) : null}
@@ -268,22 +313,58 @@ export function BuyerDashboard({ user }: { user: User }) {
                   </Text>
                 </View>
               ) : canRelease ? (
-                <View
-                  style={[styles.releaseBtn, { backgroundColor: theme.primary }]}
-                  // TODO(api): call the release endpoint — mock data has nothing
-                  // to mutate, so this reads as a label until the API lands.
+                <Pressable
+                  onPress={(e) => {
+                    // The whole card navigates to the deal; releasing must not
+                    // also open it, or the confirmation is lost behind a push.
+                    e.stopPropagation();
+                    confirmReceipt(order.id);
+                  }}
+                  disabled={release.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Confirm receipt and release escrow for ${order.title}`}
+                  style={({ pressed }) => [
+                    styles.releaseBtn,
+                    { backgroundColor: theme.primary, opacity: release.isPending ? 0.6 : pressed ? 0.85 : 1 },
+                  ]}
                 >
-                  <CheckCircle2 size={16} color="#ffffff" />
-                  <Text style={styles.releaseText}>Confirm Receipt &amp; Release Escrow</Text>
-                </View>
-              ) : (
+                  {isReleasing ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <>
+                      <CheckCircle2 size={16} color="#ffffff" />
+                      <Text style={styles.releaseText}>Confirm Receipt &amp; Release Escrow</Text>
+                    </>
+                  )}
+                </Pressable>
+              ) : order.status === 'disbursed' ? (
                 <View style={styles.statusNote}>
                   <CheckCircle2 size={15} color={theme.primary} />
                   <Text style={[styles.statusNoteText, { color: theme.primary }]}>
                     Completed &amp; Paid Out
                   </Text>
                 </View>
-              )}
+              ) : order.status === 'created' ? (
+                /*
+                  Unfunded. This used to fall through to "Completed & Paid Out"
+                  along with every other non-releasable state, which told a
+                  buyer their unpaid order was settled. Funding lives on the
+                  deal screen, which the card already opens.
+                */
+                <View style={[styles.statusNote, { backgroundColor: '#fef9c3' }]}>
+                  <Lock size={14} color="#854d0e" />
+                  <Text style={[styles.statusNoteText, { color: '#854d0e' }]}>
+                    Awaiting payment — tap to fund
+                  </Text>
+                </View>
+              ) : order.status === 'cancelled' ? (
+                <View style={styles.statusNote}>
+                  <AlertTriangle size={14} color={theme.textTertiary} />
+                  <Text style={[styles.statusNoteText, { color: theme.textTertiary }]}>
+                    Cancelled and refunded
+                  </Text>
+                </View>
+              ) : null}
             </Pressable>
           );
         })
@@ -293,6 +374,17 @@ export function BuyerDashboard({ user }: { user: User }) {
 }
 
 const styles = StyleSheet.create({
+  ordersLoading: { paddingVertical: Spacing.six, alignItems: 'center' },
+  apiError: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+  },
+  apiErrorText: { flex: 1, fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[500], color: '#991b1b' },
+
   wrap: { gap: Spacing.three },
 
   hero: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four, gap: Spacing.three },

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import {
+  ArrowLeft,
   Bell,
   Camera,
   CheckCircle2,
@@ -18,14 +19,16 @@ import {
   Trash2,
   User as UserIcon,
   XCircle,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { usePersona } from '@/hooks/use-persona';
 import { useAuth } from '@/context/AuthContext';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { useUpdateMe, useUpdateNotificationPrefs } from '@/features/user/data/usersApi';
+import { toPickedAsset, useUploadFile } from '@/features/upload/data/uploadApi';
 
 /**
  * Profile tab — the phone version of `web/src/pages/UserSettings.tsx`.
@@ -85,7 +88,6 @@ function kycNote(status: string) {
 export function ProfileTabScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const tabBarHeight = useTabBarHeight();
   const { user, logout } = useAuth();
 
   const ensureVisible = useEnsureVisible();
@@ -103,15 +105,53 @@ export function ProfileTabScreen() {
   const [smsReleaseAlerts, setSmsReleaseAlerts] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  const updateMe = useUpdateMe();
+  const updatePrefs = useUpdateNotificationPrefs();
+  const uploadFile = useUploadFile();
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  /**
+   * Sends only what the server accepts: `fullName` and `phone`. Username and
+   * email aren't in `updateMe`'s schema — the server refuses to change them —
+   * so editing those fields here would look like it worked and quietly do
+   * nothing. The avatar is left out too: it needs an uploaded URL, and the
+   * picker only gives an on-device path.
+   */
+  const saveProfile = async () => {
+    setSaveError(null);
+    try {
+      await updateMe.mutateAsync({
+        fullName: fullName.trim(),
+        phone: phone.trim() || null,
+      });
+      setSaved(true);
+    } catch (err) {
+      setSaveError(apiErrorMessage(err));
+    }
+  };
+
+  /** Both flags go on every write — the endpoint is a PUT and requires both. */
+  const savePrefs = (next: Partial<{ email: boolean; sms: boolean }>) => {
+    const email = next.email ?? emailShipmentUpdates;
+    const sms = next.sms ?? smsReleaseAlerts;
+    setEmailShipmentUpdates(email);
+    setSmsReleaseAlerts(sms);
+    updatePrefs.mutate(
+      { emailShipmentUpdates: email, smsReleaseAlerts: sms },
+      { onError: (err) => setSaveError(apiErrorMessage(err)) },
+    );
+  };
+
   const kyc = kycPill(user?.kycStatus ?? 'unverified');
   const persona = PERSONA_BADGE[usePersona()];
 
   /**
-   * Opens the gallery and previews the chosen photo.
+   * Opens the gallery, uploads the photo, then saves the returned URL.
    *
-   * TODO(api): the web uploads to Cloudinary and PATCHes the avatar URL. Here
-   * the picked file stays on the device, so the new photo is a local preview
-   * only — it resets when the app reloads.
+   * Both steps happen here rather than waiting for Save Changes: the avatar is
+   * the one field where you expect the new picture to stick as soon as you pick
+   * it, and `PATCH /api/users/me` only accepts a URL — so the upload has to
+   * come first either way.
    */
   const pickAvatar = async () => {
     setPhotoError(null);
@@ -129,9 +169,17 @@ export function ProfileTabScreen() {
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        setAvatarUri(result.assets[0].uri);
-        setSaved(false);
+      if (result.canceled || !result.assets[0]) return;
+
+      try {
+        const uploaded = await uploadFile.mutateAsync(toPickedAsset(result.assets[0].uri));
+        await updateMe.mutateAsync({ avatarUrl: uploaded.url });
+        // Show the hosted image, not the device path — so what's on screen is
+        // what everyone else will see.
+        setAvatarUri(uploaded.url);
+        setSaved(true);
+      } catch (err) {
+        setPhotoError(apiErrorMessage(err));
       }
     } catch {
       setPhotoError("Couldn't open the gallery on this device.");
@@ -206,29 +254,52 @@ export function ProfileTabScreen() {
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
+      {/* Pushed over the tab bar rather than sitting inside it, so it needs no
+          tab-bar clearance — just breathing room at the bottom. */}
       <KeyboardAwareScroll
-        contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + Spacing.four }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: Spacing.eight }]}
       >
-        {/* Heading — Log Out sits on the title row so it's the first thing on
-            screen when the tab opens, no scrolling to find it. */}
-        <View style={[styles.header, { borderBottomColor: theme.border }]}>
-          <View style={styles.titleRow}>
-            <Text style={[styles.title, { color: theme.text }]}>Account Settings</Text>
+        {/* Back — this screen is pushed from the home app bar's avatar, not a
+            tab any more, so it needs its own way out. `canGoBack` guards the
+            case where it was opened directly from a link with no history. */}
+        {/* Back and Log Out share one row — the two ways off this screen, so
+            they sit at the same level rather than Log Out hiding down on the
+            title line. */}
+        <View style={styles.topRow}>
+          <Pressable
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            style={({ pressed }) => [
+              styles.backRow,
+              {
+                backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <ArrowLeft size={20} color={theme.text} />
+            <Text style={[styles.backText, { color: theme.text }]}>Back</Text>
+          </Pressable>
 
-            <Pressable
-              onPress={logout}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Log out"
-              style={({ pressed }) => [
-                styles.logoutBtn,
-                { backgroundColor: pressed ? '#fee2e2' : '#fef2f2' },
-              ]}
-            >
-              <LogOut size={16} color="#e11d48" />
-              <Text style={styles.logoutText}>Log Out</Text>
-            </Pressable>
-          </View>
+          <Pressable
+            onPress={logout}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Log out"
+            style={({ pressed }) => [
+              styles.logoutBtn,
+              { backgroundColor: pressed ? '#fee2e2' : '#fef2f2' },
+            ]}
+          >
+            <LogOut size={16} color="#e11d48" />
+            <Text style={styles.logoutText}>Log Out</Text>
+          </Pressable>
+        </View>
+
+        <View style={[styles.header, { borderBottomColor: theme.border }]}>
+          <Text style={[styles.title, { color: theme.text }]}>Account Settings</Text>
 
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
             Manage your personal details, KYC identity verification, and escrow notification
@@ -387,23 +458,35 @@ export function ProfileTabScreen() {
               })}
               {field('phone', 'Phone', phone, setPhone, '+233 24 000 0000')}
 
+              {saveError ? (
+                <View
+                  style={[styles.savedNote, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}
+                >
+                  <Text style={[styles.savedNoteText, { color: '#b91c1c' }]}>{saveError}</Text>
+                </View>
+              ) : null}
+
               {saved ? (
                 <View style={styles.savedNote}>
                   <CheckCircle2 size={14} color="#166534" />
-                  <Text style={styles.savedNoteText}>
-                    Saved on this device — not sent to the server yet.
-                  </Text>
+                  <Text style={styles.savedNoteText}>Saved.</Text>
                 </View>
               ) : null}
 
               <Pressable
-                onPress={() => setSaved(true)}
+                onPress={saveProfile}
+                disabled={updateMe.isPending}
                 style={({ pressed }) => [
                   styles.primaryBtn,
-                  { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+                  {
+                    backgroundColor: theme.primary,
+                    opacity: updateMe.isPending ? 0.5 : pressed ? 0.85 : 1,
+                  },
                 ]}
               >
-                <Text style={styles.primaryBtnText}>Save Changes</Text>
+                <Text style={styles.primaryBtnText}>
+                  {updateMe.isPending ? 'Saving...' : 'Save Changes'}
+                </Text>
               </Pressable>
             </>
           ) : section === 'security' ? (
@@ -432,12 +515,16 @@ export function ProfileTabScreen() {
               <Text style={[styles.cardTitle, { color: theme.text, borderBottomColor: theme.border }]}>
                 Escrow Notification Preferences
               </Text>
+              {/* Each toggle saves immediately, as the web's does — there's no
+                  separate Save for this section. */}
               {toggleRow(
                 'Receive Email on order shipment & tracking update',
                 emailShipmentUpdates,
-                setEmailShipmentUpdates,
+                (v) => savePrefs({ email: v }),
               )}
-              {toggleRow('Receive SMS when escrow funds are released', smsReleaseAlerts, setSmsReleaseAlerts)}
+              {toggleRow('Receive SMS when escrow funds are released', smsReleaseAlerts, (v) =>
+                savePrefs({ sms: v }),
+              )}
             </>
           )}
         </View>
@@ -459,6 +546,24 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
   },
+
+  // Back on the left, Log Out pushed to the right edge, vertically centred.
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    height: 44,
+    paddingHorizontal: Spacing.four,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
+  backText: { fontSize: 13, fontFamily: Fonts.sans[700] },
 
   header: { borderBottomWidth: 1, paddingBottom: Spacing.three, gap: 4 },
   // Heading uses the web's `font-display`.
@@ -583,18 +688,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   primaryBtnText: { fontSize: 13, fontFamily: Fonts.sans[700], color: '#ffffff' },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-  },
+  /**
+   * Same 44 height and pill radius as `backRow`, so the two read as one row of
+   * controls rather than two unrelated buttons that happen to be side by side.
+   */
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    height: 38,
-    paddingHorizontal: Spacing.three,
+    height: 44,
+    paddingHorizontal: Spacing.four,
     borderWidth: 1,
     borderColor: '#fecaca',
     borderRadius: Radius.full,

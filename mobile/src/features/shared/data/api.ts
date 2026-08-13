@@ -45,6 +45,55 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   return request<T>(path, options, true);
 }
 
+/**
+ * Multipart upload — the same contract as `api()`, but for a file body.
+ *
+ * Separate from `request` for one reason: **Content-Type must not be set**.
+ * `fetch` generates a `multipart/form-data` header including the boundary it
+ * chose, and setting the header by hand overwrites that boundary, leaving the
+ * server unable to split the parts. That failure looks like "no file uploaded"
+ * rather than a header problem, so it's worth being explicit about.
+ */
+export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  return uploadRequest<T>(path, formData, true);
+}
+
+async function uploadRequest<T>(
+  path: string,
+  formData: FormData,
+  allowRefresh: boolean,
+): Promise<T> {
+  const headers: Record<string, string> = {};
+  const access = await tokenStore.getAccess();
+  if (access) headers.Authorization = `Bearer ${access}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: formData });
+  } catch {
+    throw new ApiError(0, `Can't reach the server at ${API_URL}. Check you're on the same network.`);
+  }
+
+  // An upload can easily outlive a short-lived access token, so it gets the
+  // same refresh-and-retry treatment as every other call.
+  if (res.status === 401 && allowRefresh && access) {
+    const refreshed = await refreshTokens();
+    if (refreshed) return uploadRequest<T>(path, formData, false);
+    await tokenStore.clear();
+    onSessionExpired?.();
+  }
+
+  const data = res.status === 204 ? null : await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new ApiError(
+      res.status,
+      (data as { error?: string } | null)?.error ?? res.statusText ?? 'Upload failed',
+      (data as { details?: unknown } | null)?.details,
+    );
+  }
+  return data as T;
+}
+
 async function request<T>(path: string, options: RequestOptions, allowRefresh: boolean): Promise<T> {
   const { method = 'GET', body } = options;
   const headers: Record<string, string> = {};
@@ -83,8 +132,13 @@ async function request<T>(path: string, options: RequestOptions, allowRefresh: b
   return data as T;
 }
 
-/** Rotate the token pair. Returns false when the refresh token is spent. */
-async function refreshTokens(): Promise<boolean> {
+/**
+ * Rotate the token pair. Returns false when the refresh token is spent.
+ *
+ * Exported because the chat socket needs it too: a rejected handshake is the
+ * socket's version of a 401, and it recovers the same way this client does.
+ */
+export async function refreshTokens(): Promise<boolean> {
   const refreshToken = await tokenStore.getRefresh();
   if (!refreshToken) return false;
   try {

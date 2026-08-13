@@ -11,12 +11,14 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowRight, CheckCircle2, Eye, EyeOff, Lock } from 'lucide-react-native';
+import { ArrowRight, CheckCircle2, Eye, EyeOff, Lock } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
+import { apiErrorMessage } from '@/features/shared/data/api';
 import { resetPasswordSchema, type ResetPasswordForm } from '../data/schemas';
+import { useResetPassword } from '../data/authApi';
 import { AuthField } from './AuthField';
 
 /**
@@ -44,8 +46,10 @@ export function ResetPasswordScreen() {
   const [focused, setFocused] = useState<FieldName | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [resetting, setResetting] = useState(false);
   const [done, setDone] = useState(false);
+
+  const resetPassword = useResetPassword();
+  const resetting = resetPassword.isPending;
 
   const {
     control,
@@ -64,11 +68,16 @@ export function ResetPasswordScreen() {
     return () => clearTimeout(timer);
   }, [done, router]);
 
-  const onSubmit = handleSubmit(async () => {
-    setResetting(true);
-    // TODO(api): POST /api/auth/reset-password with { token, newPassword }.
-    await new Promise((r) => setTimeout(r, 700));
-    setResetting(false);
+  const onSubmit = handleSubmit(async (values) => {
+    // The no-token case renders its own panel, so this only runs with one.
+    if (!token) return;
+    try {
+      await resetPassword.mutateAsync({ token, newPassword: values.newPassword });
+    } catch {
+      // Expired, already-used or tampered token — shown below so the user
+      // knows to request a fresh link rather than retyping the password.
+      return;
+    }
     setDone(true);
   });
 
@@ -183,6 +192,16 @@ export function ResetPasswordScreen() {
                 )}
               />
 
+              {/* A dead link fails here, not silently — the user needs to know
+                  to request a fresh one. */}
+              {resetPassword.isError ? (
+                <View
+                  style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}
+                >
+                  <Text style={styles.apiErrorText}>{apiErrorMessage(resetPassword.error)}</Text>
+                </View>
+              ) : null}
+
               <Pressable
                 onPress={onSubmit}
                 disabled={resetting}
@@ -250,6 +269,13 @@ const styles = StyleSheet.create({
   },
   blockLink: { fontSize: 12, fontFamily: Fonts.sans[700], marginTop: Spacing.one },
 
+  /** Server-side rejection, distinct from the per-field validation messages. */
+  apiError: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+  },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
   button: {
     flexDirection: 'row',
     alignItems: 'center',

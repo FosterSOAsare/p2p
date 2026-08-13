@@ -1,24 +1,29 @@
 import { useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
   ArrowUpRight,
+  CreditCard,
+  Smartphone,
   CheckCircle2,
   Clock,
   Lock,
+  Plus,
   ShieldCheck,
   Wallet as WalletIcon,
   X,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { usePersona } from '@/hooks/use-persona';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
-import { mockDeals, mockSellerStats } from '@/constants/mockData';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { useWallet, useWalletTransactions, useWithdraw } from '../data/walletApi';
+import { useTopUp, type PayMethod } from '../data/paymentsApi';
 
 /**
  * Wallet & Payouts — the phone version of `web/src/pages/SellerWallet.tsx`.
@@ -30,9 +35,9 @@ import { mockDeals, mockSellerStats } from '@/constants/mockData';
  * Note the web does NOT wrap `/wallet` in `SellerGuard` — every signed-in
  * account has a wallet server-side — so this screen isn't guarded either.
  *
- * Balances come from `mockSellerStats` so they agree with the seller
- * dashboard; the ledger is derived from released deals. A withdrawal updates
- * local state only — see `submitWithdraw`.
+ * Balances and the ledger are both live (`GET /api/wallet`, `/transactions`);
+ * withdrawing and topping up invalidate them rather than adjusting anything
+ * locally, so what's on screen is always what the server holds.
  */
 
 interface LedgerEntry {
@@ -68,42 +73,50 @@ export function WalletScreen() {
   const amountRow = useRef<View>(null);
   const destRow = useRef<View>(null);
 
-  const currency = mockSellerStats.currency;
+  const walletQuery = useWallet();
+  const txQuery = useWalletTransactions();
+  const withdraw = useWithdraw();
+
+  const currency = walletQuery.data?.currency ?? 'GHS';
   // The web titles this "Seller Payout Wallet" for sellers, "My P2P Wallet"
   // otherwise — the page itself is open to every signed-in account.
   const isSeller = usePersona() === 'seller';
 
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const topUp = useTopUp();
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState('');
+  const [topUpMethod, setTopUpMethod] = useState<PayMethod>('momo');
   const [amount, setAmount] = useState('');
   const [destination, setDestination] = useState(user?.phone ?? '');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Withdrawals made this session come off the available balance locally.
-  const [withdrawn, setWithdrawn] = useState(0);
-  const [extraEntries, setExtraEntries] = useState<LedgerEntry[]>([]);
+  /**
+   * All three figures come from the server. No local bookkeeping after a
+   * withdrawal: the mutation invalidates this query, so the balance that
+   * appears is the one the ledger actually holds.
+   */
+  const available = walletQuery.data?.balance ?? 0;
+  const escrowLocked = walletQuery.data?.escrowLocked ?? 0;
+  const pendingClearance = walletQuery.data?.pendingClearance ?? 0;
 
-  const available = Math.max(0, mockSellerStats.availablePayout - withdrawn);
-  const escrowLocked = mockSellerStats.lockedInEscrow;
-  // The mock has no pending-clearance figure, so nothing is in the 24h window.
-  // Once the API lands this comes from `wallet.pendingClearance`.
-  const pendingClearance = 0;
-
-  /** Released deals read as `escrow_release` credits, as on the web's ledger. */
-  const ledger = useMemo<LedgerEntry[]>(() => {
-    const released = mockDeals
-      .filter((d) => d.status === 'released' && d.counterparty.username === user?.username)
-      .map<LedgerEntry>((d) => ({
-        id: d.id,
-        type: 'escrow_release',
-        reference: d.code,
-        amount: d.amount,
-        at: d.updatedAt,
-      }));
-    return [...extraEntries, ...released].sort(
-      (a, b) => Date.parse(b.at) - Date.parse(a.at),
-    );
-  }, [extraEntries, user?.username]);
+  /**
+   * The real ledger, rather than reconstructing credits from released deals.
+   * Amounts arrive signed — credits positive, debits negative — so the sign
+   * decides how a row reads instead of its type.
+   */
+  const ledger = useMemo<LedgerEntry[]>(
+    () =>
+      (txQuery.data?.transactions ?? []).map((t) => ({
+        id: t.id,
+        type: t.amount < 0 ? 'withdrawal' : 'escrow_release',
+        reference: t.escrow?.code ?? t.note ?? t.type.replace(/_/g, ' '),
+        amount: Math.abs(t.amount),
+        at: t.createdAt,
+      })),
+    [txQuery.data],
+  );
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -111,7 +124,7 @@ export function WalletScreen() {
   };
 
   /** Mirrors the web's validation order and messages exactly. */
-  const submitWithdraw = () => {
+  const submitWithdraw = async () => {
     setError(null);
     setSuccess(null);
 
@@ -129,19 +142,18 @@ export function WalletScreen() {
       return;
     }
 
-    // TODO(api): POST /api/wallet/withdraw. Local-only for now, so the balance
-    // and ledger below reset when the app reloads.
-    setWithdrawn((w) => w + value);
-    setExtraEntries((prev) => [
-      {
-        id: `wd-${prev.length + 1}`,
-        type: 'withdrawal',
-        reference: destination.trim(),
-        amount: -value,
-        at: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
+    try {
+      // The server re-checks the balance and guards against going negative —
+      // the checks above are only there to save a round trip on obvious input
+      // mistakes, not to be the authority.
+      await withdraw.mutateAsync(value);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+      return;
+    }
+
+    // Nothing is adjusted locally: the mutation invalidates the balance and
+    // ledger queries, so both refetch and show what the server actually holds.
     setSuccess(`Successfully paid out ${formatMoney(value, currency)} to ${destination.trim()}!`);
     setAmount('');
     setWithdrawOpen(false);
@@ -186,20 +198,50 @@ export function WalletScreen() {
             deal clearances.
           </Text>
 
-          <Pressable
-            onPress={() => {
-              setError(null);
-              setSuccess(null);
-              setWithdrawOpen(true);
-            }}
-            style={({ pressed }) => [
-              styles.withdrawBtn,
-              { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
-            ]}
-          >
-            <ArrowUpRight size={18} color="#ffffff" />
-            <Text style={styles.withdrawBtnText}>Withdraw Payout</Text>
-          </Pressable>
+          <View style={styles.walletActions}>
+            {/* Top up. The web offers this on the same screen; without it a
+                buyer whose balance won't cover an order had no way to add
+                money except by starting a checkout. */}
+            <Pressable
+              onPress={() => {
+                setError(null);
+                setSuccess(null);
+                setTopUpOpen(true);
+              }}
+              disabled={topUp.isPending}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.withdrawBtn,
+                styles.walletAction,
+                { backgroundColor: theme.primary, opacity: topUp.isPending ? 0.6 : pressed ? 0.85 : 1 },
+              ]}
+            >
+              {topUp.isPending ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Plus size={18} color="#ffffff" />
+              )}
+              <Text style={styles.withdrawBtnText}>Add Funds</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                setError(null);
+                setSuccess(null);
+                setWithdrawOpen(true);
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.withdrawBtn,
+                styles.walletAction,
+                styles.withdrawSecondary,
+                { borderColor: theme.border, opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <ArrowUpRight size={18} color={theme.text} />
+              <Text style={[styles.withdrawBtnText, { color: theme.text }]}>Withdraw</Text>
+            </Pressable>
+          </View>
 
           {/* Balance cards, nested inside the banner as on the web */}
           <View style={[styles.balanceGrid, { borderTopColor: theme.border }]}>
@@ -282,7 +324,16 @@ export function WalletScreen() {
             Transaction History
           </Text>
 
-          {ledger.length === 0 ? (
+          {txQuery.isLoading ? (
+            <Text style={[styles.empty, { color: theme.textSecondary }]}>Loading transactions…</Text>
+          ) : txQuery.isError ? (
+            /* Shown rather than swallowed: "no transactions" is a claim about
+               the account, and this ledger currently fails for a server-side
+               reason. Saying so beats implying the history is empty. */
+            <Text style={[styles.empty, { color: '#b91c1c' }]}>
+              {apiErrorMessage(txQuery.error)}
+            </Text>
+          ) : ledger.length === 0 ? (
             <Text style={[styles.empty, { color: theme.textSecondary }]}>
               No transactions recorded yet
             </Text>
@@ -447,11 +498,158 @@ export function WalletScreen() {
             </KeyboardAwareScroll>
           </SafeAreaView>
         </Modal>
+
+        {/* Top up — mirrors the withdraw modal so the two read as a pair. */}
+        <Modal
+          visible={topUpOpen}
+          animationType="slide"
+          onRequestClose={() => (topUp.isPending ? undefined : setTopUpOpen(false))}
+        >
+          <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]}>
+            <KeyboardAwareScroll contentContainerStyle={styles.scroll}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Add Funds</Text>
+                <Pressable
+                  onPress={() => setTopUpOpen(false)}
+                  disabled={topUp.isPending}
+                  hitSlop={10}
+                  accessibilityLabel="Close"
+                >
+                  <X size={20} color={theme.textSecondary} />
+                </Pressable>
+              </View>
+
+              <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+                Money added here can be spent on any order. It is credited only once the payment
+                actually clears.
+              </Text>
+
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Amount</Text>
+              <TextInput
+                value={topUpAmount}
+                onChangeText={setTopUpAmount}
+                keyboardType="decimal-pad"
+                editable={!topUp.isPending}
+                placeholder="0.00"
+                placeholderTextColor={theme.textTertiary}
+                accessibilityLabel="Amount to add"
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: theme.inputBackground,
+                    borderColor: topUpAmount ? theme.primary : theme.inputBorder,
+                    color: theme.text,
+                  },
+                ]}
+              />
+
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Pay with</Text>
+              <View style={styles.topUpMethods}>
+                {[
+                  { id: 'momo' as const, label: 'Mobile Money', Icon: Smartphone },
+                  { id: 'card' as const, label: 'Card', Icon: CreditCard },
+                ].map((m) => {
+                  const active = topUpMethod === m.id;
+                  return (
+                    <Pressable
+                      key={m.id}
+                      onPress={() => setTopUpMethod(m.id)}
+                      disabled={topUp.isPending}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                      style={[
+                        styles.topUpMethod,
+                        {
+                          borderColor: active ? theme.primary : theme.border,
+                          backgroundColor: active ? theme.primaryLight : 'transparent',
+                        },
+                      ]}
+                    >
+                      <m.Icon size={16} color={active ? theme.primary : theme.textSecondary} />
+                      <Text
+                        style={[styles.topUpMethodText, { color: active ? theme.primary : theme.text }]}
+                      >
+                        {m.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {error ? (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
+
+              <Pressable
+                onPress={async () => {
+                  setError(null);
+                  setSuccess(null);
+                  const value = Number.parseFloat(topUpAmount);
+                  if (!Number.isFinite(value) || value <= 0) {
+                    setError('Please enter a valid positive amount.');
+                    return;
+                  }
+                  const outcome = await topUp.run(value, topUpMethod).catch((err) => {
+                    setError(apiErrorMessage(err));
+                    return null;
+                  });
+                  if (!outcome) return;
+                  if (!outcome.ok) {
+                    setError(
+                      outcome.reason === 'cancelled'
+                        ? 'Payment cancelled — nothing was charged.'
+                        : "We couldn't confirm that payment yet. If you were charged it will appear here shortly.",
+                    );
+                    return;
+                  }
+                  setSuccess(`Added ${formatMoney(value, currency)} to your wallet.`);
+                  setTopUpAmount('');
+                  setTopUpOpen(false);
+                }}
+                disabled={topUp.isPending}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.withdrawBtn,
+                  { backgroundColor: theme.primary, opacity: topUp.isPending ? 0.6 : pressed ? 0.85 : 1 },
+                ]}
+              >
+                {topUp.isPending ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Plus size={18} color="#ffffff" />
+                )}
+                <Text style={styles.withdrawBtnText}>
+                  {topUpAmount
+                    ? `Add ${formatMoney(Number(topUpAmount) || 0, currency)}`
+                    : 'Continue to payment'}
+                </Text>
+              </Pressable>
+            </KeyboardAwareScroll>
+          </SafeAreaView>
+        </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  walletActions: { flexDirection: 'row', gap: Spacing.two },
+  walletAction: { flex: 1 },
+  withdrawSecondary: { backgroundColor: 'transparent', borderWidth: 1 },
+  topUpMethods: { flexDirection: 'row', gap: Spacing.two },
+  topUpMethod: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    paddingVertical: Spacing.three,
+  },
+  topUpMethodText: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
+
   flex: { flex: 1 },
   scroll: {
     padding: Spacing.four,

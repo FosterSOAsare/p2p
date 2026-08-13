@@ -12,13 +12,13 @@ import {
   Star,
   Store,
   UserX,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocked } from '@/context/BlockedContext';
-import { mockProducts } from '@/constants/mockData';
+import { useSellerProfile } from '../data/sellerApi';
 
 /**
  * Public vendor profile — the phone version of `web/src/pages/SellerProfile.tsx`.
@@ -60,19 +60,31 @@ export function SellerProfileScreen() {
   const [blockReason, setBlockReason] = useState('');
   const [blockError, setBlockError] = useState<string | null>(null);
 
-  // Everything this vendor has listed; the first one carries their details.
-  const listings = useMemo(
-    () => mockProducts.filter((p) => p.vendor.username === username && p.status === 'active'),
-    [username],
-  );
+  /**
+   * The storefront comes back whole — identity, stats and live listings in one
+   * response — so there's no reconstructing a "vendor" from their listings the
+   * way the mock had to. Public endpoint: no session required, since a buyer
+   * must be able to see who they'd be buying from.
+   */
+  const profileQuery = useSellerProfile(username);
+
+  const listings = profileQuery.data?.listings ?? [];
   const vendor = useMemo(
-    () => mockProducts.find((p) => p.vendor.username === username)?.vendor,
-    [username],
+    () =>
+      profileQuery.data
+        ? {
+            username: profileQuery.data.username,
+            storeName: profileQuery.data.storeName ?? profileQuery.data.username,
+            verified: profileQuery.data.verified,
+            avatarUrl: profileQuery.data.avatarUrl ?? undefined,
+            rating: profileQuery.data.stats.rating ?? 0,
+          }
+        : undefined,
+    [profileQuery.data],
   );
-  const joinedAt = useMemo(
-    () => mockProducts.find((p) => p.vendor.username === username)?.createdAt,
-    [username],
-  );
+  // Sent by the server rather than inferred from a listing's creation date.
+  const joinedAt = profileQuery.data?.joinedAt;
+  const country = profileQuery.data?.country;
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -126,14 +138,23 @@ export function SellerProfileScreen() {
 
   const displayName = vendor.storeName || `@${vendor.username}`;
   const isOwnProfile = user?.username === vendor.username;
-  const salesCompleted = listings.reduce((sum, l) => sum + l.reviews.length, 0);
+  // A real figure from the server, not a guess from review counts.
+  const salesCompleted = profileQuery.data?.stats.salesCompleted ?? 0;
 
+  /**
+   * `block` now goes to `POST /api/users/:username/block` through
+   * `BlockedContext`, so it survives a reload — it used to write to a Map in
+   * React state and quietly forget on restart.
+   *
+   * The server's own minimum is 3 characters; 5 is kept here because a
+   * three-letter reason is useless to whoever reads it later, and rejecting it
+   * on the phone is kinder than a round trip to be told the same thing.
+   */
   const confirmBlock = () => {
     if (blockReason.trim().length < 5) {
       setBlockError('Give a short reason so we can act on it.');
       return;
     }
-    // TODO(api): POST the block with its reason (web: useBlockVendor).
     setBlockError(null);
     setBlockFormOpen(false);
     block(username, blockReason.trim());
@@ -172,11 +193,13 @@ export function SellerProfileScreen() {
 
               <View style={styles.metaRow}>
                 <Text style={[styles.meta, { color: theme.textTertiary }]}>@{vendor.username}</Text>
-                {listings[0]?.location ? (
+                {/* The server sends the seller's country; the mock had to read
+                    a location off one of their listings. */}
+                {country ? (
                   <View style={styles.metaItem}>
                     <MapPin size={11} color={theme.textTertiary} />
                     <Text style={[styles.meta, { color: theme.textTertiary }]} numberOfLines={1}>
-                      {listings[0].location}
+                      {country}
                     </Text>
                   </View>
                 ) : null}
@@ -350,16 +373,35 @@ export function SellerProfileScreen() {
                     },
                   ]}
                 >
-                  <Image source={listing.images[0]} style={styles.listingImage} contentFit="cover" />
+                  {listing.image ? (
+                    <Image
+                      source={listing.image}
+                      style={styles.listingImage}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.listingImage,
+                        styles.listingImageEmpty,
+                        { backgroundColor: theme.backgroundElement },
+                      ]}
+                    >
+                      <Store size={16} color={theme.textTertiary} />
+                    </View>
+                  )}
                   <View style={styles.listingInfo}>
                     <Text style={[styles.listingTitle, { color: theme.text }]} numberOfLines={1}>
                       {listing.title}
                     </Text>
                     <Text style={[styles.listingMeta, { color: theme.textTertiary }]} numberOfLines={1}>
-                      {listing.category} · {listing.condition}
+                      {listing.category}
+                      {listing.condition ? ` · ${listing.condition}` : ''}
                     </Text>
                     <Text style={[styles.listingPrice, { color: theme.text }]}>
-                      {formatMoney(listing.price, listing.currency)}
+                      {/* Marketplace listings are GHS-only, so the storefront
+                          payload doesn't repeat a currency per row. */}
+                      {formatMoney(listing.price)}
                     </Text>
                   </View>
                 </Pressable>
@@ -546,6 +588,7 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
   },
   listingImage: { height: 60, width: 60, borderRadius: Radius.md },
+  listingImageEmpty: { alignItems: 'center', justifyContent: 'center' },
   listingInfo: { flex: 1, gap: 2 },
   listingTitle: { fontSize: 13, fontFamily: Fonts.sans[700] },
   listingMeta: { fontSize: 10.5, fontFamily: Fonts.sans[400] },

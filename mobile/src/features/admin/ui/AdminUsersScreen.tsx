@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ban, CheckCircle2, Search, Users } from 'lucide-react-native';
+import { Ban, CheckCircle2, Search, Users } from '@/components/icons';
 
 import { useLocalSearchParams } from 'expo-router';
 
@@ -63,6 +63,8 @@ export function AdminUsersScreen() {
 
   return (
     <AdminScreen
+      // A tab in the console's bottom bar, not a pushed screen.
+      tabRoot
       title="Users"
       subtitle="Search accounts, then suspend or reinstate. Suspended users can't sign in."
       onRefresh={() => usersQuery.refetch()}

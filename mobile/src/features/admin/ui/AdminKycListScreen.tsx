@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChevronRight, ClipboardCheck } from 'lucide-react-native';
+import { ChevronRight, ClipboardCheck } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -43,6 +43,8 @@ export function AdminKycListScreen() {
 
   return (
     <AdminScreen
+      // A tab in the console's bottom bar, not a pushed screen.
+      tabRoot
       title="KYC Reviews"
       subtitle="Approve a seller's identity before they can list on the marketplace."
       onRefresh={() => query.refetch()}

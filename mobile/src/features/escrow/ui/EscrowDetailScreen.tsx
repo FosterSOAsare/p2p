@@ -1,23 +1,46 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
+  Ban,
   CheckCircle2,
+  Lock,
   FileText,
   MessageCircle,
   Pencil,
+  RotateCcw,
   ShieldCheck,
   Truck,
-} from 'lucide-react-native';
+} from '@/components/icons';
 
-import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Accent, Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useAuth } from '@/context/AuthContext';
-import { mockDeals, type EscrowDeal } from '@/constants/mockData';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import {
+  useCancelDeal,
+  useFundDeal,
+  useDeal,
+  useDeliverDeal,
+  useDisputeDeal,
+  useReleaseDeal,
+  useUpdateEscrow,
+  type EscrowAction,
+} from '../data/dealsApi';
+import { useWallet } from '@/features/wallet/data/walletApi';
+import { useTopUp, type PayMethod } from '@/features/wallet/data/paymentsApi';
+import { PaymentSheet } from '@/features/wallet/ui/PaymentSheet';
 import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
 
 /**
@@ -28,9 +51,57 @@ import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
  * its dispatch / dispute / edit forms in modals; on a phone they expand inline
  * so there's no nested-scroll trap.
  *
- * Reads `mockDeals` — no API, so the actions don't move any money. Each one is
- * marked `TODO(api)` where the web fires its mutation.
+ * Reads `GET /api/escrows/:id` and writes through the same endpoints the web
+ * uses: deliver, release, cancel, dispute and a terms edit. Which of those are
+ * offered comes from the server's `availableActions`, never from a local guess.
  */
+
+/**
+ * Human copy per audit event.
+ *
+ * The server stores only a machine name (`resolve_release`, `fund`) and no
+ * sentence, so without this the timeline printed raw identifiers at the user —
+ * twice, since the row shows a title and a description.
+ */
+const EVENT_COPY: Record<string, { label: string; text: string }> = {
+  created: { label: 'Created', text: 'Escrow deal created.' },
+  joined: { label: 'Joined', text: 'The counterparty accepted and joined this deal.' },
+  updated: { label: 'Updated', text: 'Deal terms were changed.' },
+  fund: { label: 'Funded', text: 'Payment received and locked in escrow.' },
+  funded: { label: 'Funded', text: 'Payment received and locked in escrow.' },
+  deliver: { label: 'Delivered', text: 'The seller marked this as delivered.' },
+  release: {
+    label: 'Released',
+    text: 'Receipt confirmed — the escrow was released to the seller.',
+  },
+  dispute: {
+    label: 'Disputed',
+    text: 'A dispute was opened. Funds stay frozen until an admin rules.',
+  },
+  resolve_release: {
+    label: 'Dispute Resolved',
+    text: 'An admin ruled for the seller and released the funds.',
+  },
+  resolve_refund: {
+    label: 'Dispute Resolved',
+    text: 'An admin ruled for the buyer and refunded the funds.',
+  },
+  resolve_partial: {
+    label: 'Dispute Resolved',
+    text: 'An admin split the escrow between both parties.',
+  },
+  cancel: { label: 'Cancelled', text: 'The deal was cancelled and the buyer refunded.' },
+};
+
+/** Falls back to a tidied version of the name rather than printing raw snake_case. */
+function eventCopy(event: string) {
+  return (
+    EVENT_COPY[event] ?? {
+      label: event.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      text: '',
+    }
+  );
+}
 
 const DISPUTE_REASONS = [
   { value: 'not_delivered', label: 'Item was never delivered' },
@@ -39,23 +110,6 @@ const DISPUTE_REASONS = [
   { value: 'service_not_done', label: 'Service not completed' },
   { value: 'other', label: 'Other' },
 ];
-
-/**
- * The web reads `fundingTotal` / `sellerPayout` off the deal, computed server
- * side. The mock only carries `amount`, so recompute with the same rule the
- * server and the checkout screen use: fiat 1.5%, min GH₵2, capped at GH₵150,
- * split 50/50 between the parties.
- */
-function dealMoney(amount: number) {
-  let fee = Math.floor(amount * 100 * 0.015) / 100;
-  if (fee < 2) fee = 2;
-  if (fee > 150) fee = 150;
-  const buyerFee = Math.floor((fee / 2) * 100) / 100;
-  return {
-    fundingTotal: amount + buyerFee,
-    sellerPayout: amount - (fee - buyerFee),
-  };
-}
 
 function formatMoney(amount: number, currency: string) {
   return `${currency} ${amount.toLocaleString('en-GH', {
@@ -77,15 +131,111 @@ function formatStamp(iso: string) {
 export function EscrowDetailScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const deal = useMemo(() => mockDeals.find((d) => d.id === id), [id]);
+  const dealQuery = useDeal(id ?? '');
+
+  /**
+   * Adapts the server's deal onto the shape this screen was written against.
+   *
+   * The two differ in three ways worth naming: the server sends `buyer`/`seller`
+   * plus `myRole` rather than the mock's creator/counterparty pair; tracking is
+   * flat (`carrier` + `trackingNumber`); and audit rows use `event`/`actorRole`
+   * where the mock used `type`/`actor` and carried a written description.
+   *
+   * Mapping here keeps the whole render below untouched, and puts every rename
+   * in one place instead of scattering them through the JSX.
+   */
+  const deal = useMemo(() => {
+    const d = dealQuery.data;
+    if (!d) return undefined;
+
+    const other = d.myRole === 'seller' ? d.buyer : d.seller;
+
+    return {
+      id: d.id,
+      code: d.code,
+      title: d.title,
+      description: d.description ?? '',
+      status: d.status,
+      rail: d.rail,
+      currency: d.currency,
+      amount: d.amount,
+      /**
+       * Which side you are, straight from the server. This screen used to work
+       * it out by comparing `creatorUsername` against the signed-in handle,
+       * which only holds while every deal is buyer-created — a seller-created
+       * deal inverted the whole screen, labelling the seller "You (Buyer)" and
+       * offering them the buyer's release button.
+       */
+      myRole: d.myRole,
+      isBuyer: d.myRole === 'buyer',
+      buyerUsername: d.buyer?.username ?? d.creatorUsername,
+      sellerUsername: d.seller?.username ?? '—',
+      counterparty: { username: other?.username ?? '—' },
+      /** Server-computed, fees and all — see the note on `formatMoney` below. */
+      fundingTotal: d.fundingTotal,
+      sellerPayout: d.sellerPayout,
+      availableActions: d.availableActions,
+      /** Distinguishes "cancel and refund" from "cancel, nothing has moved". */
+      fundedAt: d.fundedAt,
+      tracking: d.trackingNumber
+        ? { carrier: d.carrier ?? 'Carrier', code: d.trackingNumber }
+        : undefined,
+      // The server has no free-text release condition; the delivery note is the
+      // nearest equivalent it does send.
+      releaseCondition: d.deliveryNote ?? '',
+      events: d.events.map((e) => {
+        const copy = eventCopy(e.event);
+        return {
+          id: e.id,
+          type: copy.label,
+          description: copy.text,
+          actor: e.actorRole,
+          createdAt: e.createdAt,
+        };
+      }),
+    };
+  }, [dealQuery.data]);
 
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState('not_delivered');
   const [disputeDesc, setDisputeDesc] = useState('');
-  const [notice, setNotice] = useState<string | null>(null);
+
+  // Dispatch form — all three optional, matching the web and the server.
+  const [deliverOpen, setDeliverOpen] = useState(false);
+  const [carrier, setCarrier] = useState('');
+  const [tracking, setTracking] = useState('');
+  const [deliveryNote, setDeliveryNote] = useState('');
+
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+
+  /**
+   * Releasing is irreversible and it is the buyer's money, so it takes a second
+   * tap rather than firing on the first. The web opens a confirm modal here.
+   */
+  const [confirmRelease, setConfirmRelease] = useState(false);
+
+  // Amending terms, allowed only before funding.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editRole, setEditRole] = useState<'buyer' | 'seller'>('buyer');
+
+  const deliverDeal = useDeliverDeal();
+  const releaseDeal = useReleaseDeal();
+  const cancelDeal = useCancelDeal();
+  const fundDeal = useFundDeal();
+  const wallet = useWallet();
+  const topUp = useTopUp();
+  const [fundOpen, setFundOpen] = useState(false);
+  const [fundError, setFundError] = useState<string | null>(null);
+  /** Funding isn't idempotent either — see the same guard in CheckoutScreen. */
+  const funding = useRef(false);
+  const disputeDeal = useDisputeDeal();
+  const updateEscrow = useUpdateEscrow();
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -110,6 +260,24 @@ export function EscrowDetailScreen() {
       <Text style={[styles.backText, { color: theme.text }]}>Back to My Deals</Text>
     </Pressable>
   );
+
+  /**
+   * Must come before the not-found branch: the fetch takes seconds against a
+   * database this far away, and without it a perfectly real deal would show
+   * "Deal not found" for the whole wait before correcting itself.
+   */
+  if (dealQuery.isLoading) {
+    return (
+      <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          {backButton}
+          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <ActivityIndicator color={theme.primary} />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   // The web renders a "Deal not found" card for an id it can't resolve.
   if (!deal) {
@@ -140,17 +308,80 @@ export function EscrowDetailScreen() {
   const badge = statusBadge(deal.status as DealStatus);
   const tone = TONE_COLORS[badge.tone];
 
-  // Mock deals are all buyer-created, so the creator is the buyer side.
-  const isBuyer = deal.creator.username === user?.username;
-  const other = isBuyer ? deal.counterparty : deal.creator;
+  const isBuyer = deal.isBuyer;
+  const other = deal.counterparty;
 
-  // Which actions the state machine allows, mirroring the web's `has(...)`.
-  const money = dealMoney(deal.amount);
-  const inFlight = ['funded', 'shipped', 'delivered'].includes(deal.status);
-  const canRelease = isBuyer && inFlight;
-  const canDispute = inFlight;
-  const canDeliver = !isBuyer && deal.status === 'funded';
-  const isDone = deal.status === 'released';
+  /**
+   * Which buttons to show, mirroring the web's `has(...)`.
+   *
+   * Read off `availableActions` rather than re-derived from `status`, because
+   * only the server knows the whole rule — an already-disputed deal, a deal
+   * whose auto-release window has passed, a party who has already acted. The
+   * old local guess could offer an action the server would then refuse.
+   */
+  const has = (a: EscrowAction) => deal.availableActions.includes(a);
+  const isDone = deal.status === 'disbursed';
+  /** Pre-funding cancels move no money, so the copy must drop the refund claim. */
+  const cancelRefunds = Boolean(deal.fundedAt);
+
+  const busy =
+    deliverDeal.isPending ||
+    releaseDeal.isPending ||
+    cancelDeal.isPending ||
+    disputeDeal.isPending ||
+    fundDeal.isPending ||
+    topUp.isPending;
+
+  const actionError =
+    deliverDeal.error ?? releaseDeal.error ?? cancelDeal.error ?? disputeDeal.error;
+
+  const walletBalance = wallet.data?.balance ?? 0;
+
+  const payFromWallet = async () => {
+    if (funding.current) return;
+    funding.current = true;
+    setFundError(null);
+    try {
+      await fundDeal.mutateAsync(deal.id);
+      setFundOpen(false);
+    } catch (err) {
+      setFundError(apiErrorMessage(err));
+    } finally {
+      funding.current = false;
+    }
+  };
+
+  const payWithProvider = async (_walletAmount: number, method: PayMethod) => {
+    if (funding.current) return;
+    funding.current = true;
+    setFundError(null);
+    try {
+      /*
+        Top up the shortfall first, then fund from the wallet — the same order
+        as checkout, and for the same reason: if the funding call fails after a
+        successful charge, the money is sitting in the buyer's balance rather
+        than lost, and the button can simply be pressed again.
+      */
+      const shortfall =
+        Math.round((deal.fundingTotal - Math.min(walletBalance, deal.fundingTotal)) * 100) / 100;
+      const outcome = await topUp.run(shortfall, method);
+
+      if (!outcome.ok) {
+        setFundError(
+          outcome.reason === 'cancelled'
+            ? 'Payment cancelled — nothing was charged.'
+            : "We couldn't confirm that payment. If you were charged, the amount will appear in your wallet shortly.",
+        );
+        return;
+      }
+      await fundDeal.mutateAsync(deal.id);
+      setFundOpen(false);
+    } catch (err) {
+      setFundError(apiErrorMessage(err));
+    } finally {
+      funding.current = false;
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
@@ -185,7 +416,7 @@ export function EscrowDetailScreen() {
                 {isBuyer ? 'You (Buyer)' : 'Buyer'}
               </Text>
               <Text style={[styles.partyName, { color: theme.text }]} numberOfLines={1}>
-                @{deal.creator.username}
+                @{deal.buyerUsername}
               </Text>
             </View>
             <View style={styles.party}>
@@ -193,7 +424,7 @@ export function EscrowDetailScreen() {
                 {isBuyer ? 'Seller' : 'You (Seller)'}
               </Text>
               <Text style={[styles.partyName, { color: theme.text }]} numberOfLines={1}>
-                @{deal.counterparty.username}
+                @{deal.sellerUsername}
               </Text>
             </View>
           </View>
@@ -233,10 +464,14 @@ export function EscrowDetailScreen() {
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Actions</Text>
 
-          {notice ? (
-            <View style={[styles.notice, { backgroundColor: theme.primaryLight }]}>
-              <AlertCircle size={14} color={theme.primary} />
-              <Text style={[styles.noticeText, { color: theme.primary }]}>{notice}</Text>
+          {/* Why the server refused — insufficient balance on a fund, a deal
+              someone else already moved, a dispute window that has closed.
+              Without this a rejected action just leaves the button sitting
+              there as though nothing happened. */}
+          {actionError ? (
+            <View style={[styles.errorBox, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+              <AlertCircle size={14} color="#b91c1c" />
+              <Text style={styles.errorText}>{apiErrorMessage(actionError)}</Text>
             </View>
           ) : null}
 
@@ -253,16 +488,25 @@ export function EscrowDetailScreen() {
 
           {/* Only while the deal is still `created` — once funded the terms are
               locked, same condition as the web's `deal.status === 'created'`. */}
-          {deal.status === 'created' ? (
+          {deal.status === 'created' && !editOpen ? (
             <Pressable
-              // TODO(api): PATCH /api/escrows/:id — opens the web's edit modal.
-              onPress={() => setNotice('Editing deal terms needs the API — nothing was changed.')}
+              onPress={() => {
+                // Seed from the deal so the form opens on the current terms
+                // rather than empty — the web does this in an effect.
+                setEditTitle(deal.title);
+                setEditAmount(String(deal.amount));
+                setEditDesc(deal.description);
+                setEditRole(deal.myRole === 'seller' ? 'seller' : 'buyer');
+                setEditOpen(true);
+              }}
+              disabled={busy}
               style={({ pressed }) => [
                 styles.primaryBtn,
                 {
                   backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
                   borderWidth: 1,
                   borderColor: theme.border,
+                  opacity: busy ? 0.5 : 1,
                 },
               ]}
             >
@@ -271,14 +515,148 @@ export function EscrowDetailScreen() {
             </Pressable>
           ) : null}
 
-          {canDeliver ? (
+          {deal.status === 'created' && editOpen ? (
+            <View style={[styles.formBox, { borderColor: theme.border }]}>
+              <Text style={[styles.formHead, { color: theme.textSecondary }]}>Edit Deal Terms</Text>
+
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Title</Text>
+              <TextInput
+                value={editTitle}
+                onChangeText={setEditTitle}
+                placeholder="What is this deal for?"
+                placeholderTextColor={theme.textTertiary}
+                style={[
+                  styles.input,
+                  {
+                    color: theme.text,
+                    backgroundColor: theme.inputBackground,
+                    borderColor: theme.inputBorder,
+                  },
+                ]}
+              />
+
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                Amount ({deal.currency})
+              </Text>
+              <TextInput
+                value={editAmount}
+                onChangeText={setEditAmount}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={theme.textTertiary}
+                style={[
+                  styles.input,
+                  {
+                    color: theme.text,
+                    backgroundColor: theme.inputBackground,
+                    borderColor: theme.inputBorder,
+                  },
+                ]}
+              />
+
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Your Side</Text>
+              <View style={styles.roleRow}>
+                {(['buyer', 'seller'] as const).map((role) => {
+                  const on = editRole === role;
+                  return (
+                    <Pressable
+                      key={role}
+                      onPress={() => setEditRole(role)}
+                      style={[
+                        styles.roleBtn,
+                        {
+                          backgroundColor: on ? theme.primaryLight : theme.inputBackground,
+                          borderColor: on ? theme.primary : theme.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.roleText,
+                          { color: on ? theme.primary : theme.textSecondary },
+                        ]}
+                      >
+                        I&apos;m the {role}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Description</Text>
+              <TextInput
+                value={editDesc}
+                onChangeText={setEditDesc}
+                placeholder="Terms, condition, delivery expectations..."
+                placeholderTextColor={theme.textTertiary}
+                multiline
+                textAlignVertical="top"
+                style={[
+                  styles.textarea,
+                  {
+                    color: theme.text,
+                    backgroundColor: theme.inputBackground,
+                    borderColor: theme.inputBorder,
+                    minHeight: 64,
+                  },
+                ]}
+              />
+
+              {updateEscrow.error ? (
+                <Text style={styles.errorText}>{apiErrorMessage(updateEscrow.error)}</Text>
+              ) : null}
+
+              <View style={styles.formActions}>
+                <Pressable
+                  onPress={() => setEditOpen(false)}
+                  style={[styles.cancelBtn, { borderColor: theme.border }]}
+                >
+                  <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    // Same guard as the web: a blank title or a non-positive
+                    // amount is rejected here rather than round-tripped.
+                    const amount = Number(editAmount);
+                    if (!editTitle.trim() || !Number.isFinite(amount) || amount <= 0) return;
+                    updateEscrow.mutate(
+                      {
+                        id: deal.id,
+                        title: editTitle.trim(),
+                        amount,
+                        role: editRole,
+                        description: editDesc.trim() || undefined,
+                      },
+                      { onSuccess: () => setEditOpen(false) },
+                    );
+                  }}
+                  disabled={updateEscrow.isPending}
+                  style={({ pressed }) => [
+                    styles.submitBtn,
+                    {
+                      backgroundColor: theme.primary,
+                      opacity: updateEscrow.isPending ? 0.6 : pressed ? 0.85 : 1,
+                    },
+                  ]}
+                >
+                  {updateEscrow.isPending ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Pencil size={14} color="#ffffff" />
+                  )}
+                  <Text style={styles.submitBtnText}>Save Terms</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
+          {has('DELIVER') && !deliverOpen ? (
             <Pressable
-              // TODO(api): POST the dispatch with carrier + tracking, as the
-              // web's deliver modal does.
-              onPress={() => setNotice('Dispatch needs the API — nothing was sent.')}
+              onPress={() => setDeliverOpen(true)}
+              disabled={busy}
               style={({ pressed }) => [
                 styles.primaryBtn,
-                { backgroundColor: theme.text, opacity: pressed ? 0.85 : 1 },
+                { backgroundColor: theme.text, opacity: busy ? 0.5 : pressed ? 0.85 : 1 },
               ]}
             >
               <Truck size={16} color={theme.background} />
@@ -288,13 +666,154 @@ export function EscrowDetailScreen() {
             </Pressable>
           ) : null}
 
-          {canRelease ? (
+          {has('DELIVER') && deliverOpen ? (
+            <View style={[styles.formBox, { borderColor: theme.border }]}>
+              <Text style={[styles.formHead, { color: theme.textSecondary }]}>
+                Dispatch &amp; Delivery Details
+              </Text>
+
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                Shipping Carrier / Method
+              </Text>
+              <TextInput
+                value={carrier}
+                onChangeText={setCarrier}
+                placeholder="e.g. DHL Express, Local Rider, Online"
+                placeholderTextColor={theme.textTertiary}
+                // Server caps: carrier 40, tracking 60, note 500. Enforced here
+                // so an over-long value is impossible rather than rejected.
+                maxLength={40}
+                style={[
+                  styles.input,
+                  {
+                    color: theme.text,
+                    backgroundColor: theme.inputBackground,
+                    borderColor: theme.inputBorder,
+                  },
+                ]}
+              />
+
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                Tracking Code / Phone Number
+              </Text>
+              <TextInput
+                value={tracking}
+                onChangeText={setTracking}
+                placeholder="e.g. DHL-GH-99201 or courier phone"
+                placeholderTextColor={theme.textTertiary}
+                autoCapitalize="characters"
+                maxLength={60}
+                style={[
+                  styles.input,
+                  {
+                    color: theme.text,
+                    backgroundColor: theme.inputBackground,
+                    borderColor: theme.inputBorder,
+                  },
+                ]}
+              />
+
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
+                Delivery Note (Optional)
+              </Text>
+              <TextInput
+                value={deliveryNote}
+                onChangeText={setDeliveryNote}
+                placeholder="Courier contact, rider phone, or digital item instructions"
+                placeholderTextColor={theme.textTertiary}
+                maxLength={500}
+                multiline
+                textAlignVertical="top"
+                style={[
+                  styles.textarea,
+                  {
+                    color: theme.text,
+                    backgroundColor: theme.inputBackground,
+                    borderColor: theme.inputBorder,
+                    minHeight: 64,
+                  },
+                ]}
+              />
+
+              <View style={styles.formActions}>
+                <Pressable
+                  onPress={() => setDeliverOpen(false)}
+                  style={[styles.cancelBtn, { borderColor: theme.border }]}
+                >
+                  <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    deliverDeal.mutate(
+                      {
+                        id: deal.id,
+                        // Trimmed to undefined rather than sent empty — the
+                        // server stores "" as a carrier otherwise.
+                        carrier: carrier.trim() || undefined,
+                        trackingNumber: tracking.trim() || undefined,
+                        note: deliveryNote.trim() || undefined,
+                      },
+                      { onSuccess: () => setDeliverOpen(false) },
+                    )
+                  }
+                  disabled={deliverDeal.isPending}
+                  style={({ pressed }) => [
+                    styles.submitBtn,
+                    {
+                      backgroundColor: theme.primary,
+                      opacity: deliverDeal.isPending ? 0.6 : pressed ? 0.85 : 1,
+                    },
+                  ]}
+                >
+                  {deliverDeal.isPending ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Truck size={14} color="#ffffff" />
+                  )}
+                  <Text style={styles.submitBtnText}>Confirm Delivery</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
+          {/*
+            Paying for a deal that was created but never funded — a standalone
+            escrow, or one the buyer backed out of at checkout. Same sheet as
+            marketplace checkout, so the wallet-plus-shortfall split behaves
+            identically wherever money is taken.
+          */}
+          {has('FUND') ? (
+            <>
+              <Pressable
+                onPress={() => {
+                  setFundError(null);
+                  setFundOpen(true);
+                }}
+                disabled={busy}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  { backgroundColor: theme.primary, opacity: busy ? 0.5 : pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Lock size={16} color="#ffffff" />
+                <Text style={styles.primaryBtnText}>
+                  Pay {formatMoney(deal.fundingTotal, deal.currency)} &amp; Fund Escrow
+                </Text>
+              </Pressable>
+              {fundError ? (
+                <Text style={[styles.fundError, { color: Accent.error }]}>{fundError}</Text>
+              ) : null}
+            </>
+          ) : null}
+
+          {has('RELEASE') && !confirmRelease ? (
             <Pressable
-              // TODO(api): call the release mutation — this is the money move.
-              onPress={() => setNotice('Release needs the API — no funds moved.')}
+              onPress={() => setConfirmRelease(true)}
+              disabled={busy}
               style={({ pressed }) => [
                 styles.primaryBtn,
-                { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+                { backgroundColor: theme.primary, opacity: busy ? 0.5 : pressed ? 0.85 : 1 },
               ]}
             >
               <CheckCircle2 size={16} color="#ffffff" />
@@ -302,7 +821,150 @@ export function EscrowDetailScreen() {
             </Pressable>
           ) : null}
 
-          {canDispute && !disputeOpen ? (
+          {has('RELEASE') && confirmRelease ? (
+            <View style={[styles.formBox, { borderColor: theme.border }]}>
+              <Text style={[styles.formHead, { color: theme.textSecondary }]}>
+                Release the escrow?
+              </Text>
+              <Text style={[styles.body, { color: theme.textSecondary }]}>
+                {formatMoney(deal.sellerPayout, deal.currency)} goes to @{deal.sellerUsername}.
+                This confirms you received what you paid for and can&apos;t be undone.
+              </Text>
+              <View style={styles.formActions}>
+                <Pressable
+                  onPress={() => setConfirmRelease(false)}
+                  style={[styles.cancelBtn, { borderColor: theme.border }]}
+                >
+                  <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Not yet</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    releaseDeal.mutate(deal.id, { onSettled: () => setConfirmRelease(false) })
+                  }
+                  disabled={releaseDeal.isPending}
+                  style={({ pressed }) => [
+                    styles.submitBtn,
+                    {
+                      backgroundColor: theme.primary,
+                      opacity: releaseDeal.isPending ? 0.6 : pressed ? 0.85 : 1,
+                    },
+                  ]}
+                >
+                  {releaseDeal.isPending ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <CheckCircle2 size={14} color="#ffffff" />
+                  )}
+                  <Text style={styles.submitBtnText}>Release Funds</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
+          {has('CANCEL') && !cancelOpen ? (
+            <Pressable
+              onPress={() => setCancelOpen(true)}
+              disabled={busy}
+              style={({ pressed }) => [
+                styles.outlineBtn,
+                {
+                  backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
+                  borderColor: theme.border,
+                  opacity: busy ? 0.5 : 1,
+                },
+              ]}
+            >
+              <Ban size={15} color={theme.text} />
+              <Text style={[styles.outlineBtnText, { color: theme.text }]}>
+                {cancelRefunds ? 'Cancel Order & Refund Buyer' : 'Cancel Deal'}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {has('CANCEL') && cancelOpen ? (
+            <View style={[styles.formBox, { borderColor: theme.border }]}>
+              <Text style={[styles.formHead, { color: theme.textSecondary }]}>
+                {cancelRefunds ? 'Cancel this order' : 'Cancel this deal'}
+              </Text>
+
+              {/* The consequence in money terms, which differs entirely
+                  depending on whether the buyer has funded yet. */}
+              <View
+                style={[
+                  styles.consequence,
+                  { backgroundColor: theme.inputBackground, borderColor: theme.border },
+                ]}
+              >
+                <RotateCcw size={16} color={theme.textTertiary} />
+                <View style={styles.consequenceText}>
+                  <Text style={[styles.consequenceTitle, { color: theme.text }]}>
+                    {cancelRefunds
+                      ? `${formatMoney(deal.fundingTotal, deal.currency)} goes back to @${deal.buyerUsername}`
+                      : 'Nothing has been funded yet'}
+                  </Text>
+                  <Text style={[styles.consequenceBody, { color: theme.textSecondary }]}>
+                    {cancelRefunds
+                      ? 'A full refund including the platform fee — you earn nothing on this deal. Stock returns to the listing. This can’t be undone.'
+                      : 'No money has moved, so there is nothing to refund. The deal closes for both sides and can’t be reopened.'}
+                  </Text>
+                </View>
+              </View>
+
+              <TextInput
+                value={cancelReason}
+                onChangeText={setCancelReason}
+                maxLength={300}
+                placeholder="Why are you cancelling? (optional — shared with the other party)"
+                placeholderTextColor={theme.textTertiary}
+                multiline
+                textAlignVertical="top"
+                style={[
+                  styles.textarea,
+                  {
+                    color: theme.text,
+                    backgroundColor: theme.inputBackground,
+                    borderColor: theme.inputBorder,
+                    minHeight: 64,
+                  },
+                ]}
+              />
+
+              <View style={styles.formActions}>
+                <Pressable
+                  onPress={() => setCancelOpen(false)}
+                  style={[styles.cancelBtn, { borderColor: theme.border }]}
+                >
+                  <Text style={[styles.cancelText, { color: theme.textSecondary }]}>
+                    {cancelRefunds ? 'Keep Order' : 'Keep Deal'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    cancelDeal.mutate(
+                      { id: deal.id, reason: cancelReason.trim() || undefined },
+                      { onSuccess: () => setCancelOpen(false) },
+                    )
+                  }
+                  disabled={cancelDeal.isPending}
+                  style={({ pressed }) => [
+                    styles.submitBtn,
+                    { backgroundColor: '#e11d48', opacity: cancelDeal.isPending ? 0.6 : pressed ? 0.85 : 1 },
+                  ]}
+                >
+                  {cancelDeal.isPending ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Ban size={14} color="#ffffff" />
+                  )}
+                  <Text style={styles.submitBtnText}>
+                    {cancelRefunds ? 'Cancel & Refund' : 'Cancel Deal'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
+          {has('DISPUTE') && !disputeOpen ? (
             <Pressable
               onPress={() => setDisputeOpen(true)}
               style={({ pressed }) => [
@@ -315,7 +977,7 @@ export function EscrowDetailScreen() {
             </Pressable>
           ) : null}
 
-          {canDispute && disputeOpen ? (
+          {has('DISPUTE') && disputeOpen ? (
             <View style={styles.disputeForm}>
               <Text style={styles.disputeHead}>Open a Formal Dispute</Text>
 
@@ -385,20 +1047,32 @@ export function EscrowDetailScreen() {
                   <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancel</Text>
                 </Pressable>
                 <Pressable
-                  // TODO(api): POST the dispute with reason + description.
-                  onPress={() => {
-                    setDisputeOpen(false);
-                    setNotice('Disputes need the API — nothing was filed.');
-                  }}
-                  style={styles.submitDispute}
+                  onPress={() =>
+                    disputeDeal.mutate(
+                      {
+                        id: deal.id,
+                        reason: disputeReason,
+                        description: disputeDesc.trim(),
+                      },
+                      { onSuccess: () => setDisputeOpen(false) },
+                    )
+                  }
+                  // The server requires at least 10 characters, so a shorter
+                  // description is refused here rather than after a round trip.
+                  disabled={disputeDesc.trim().length < 10 || disputeDeal.isPending}
+                  style={[
+                    styles.submitDispute,
+                    (disputeDesc.trim().length < 10 || disputeDeal.isPending) && { opacity: 0.5 },
+                  ]}
                 >
+                  {disputeDeal.isPending ? <ActivityIndicator size="small" color="#ffffff" /> : null}
                   <Text style={styles.submitDisputeText}>Submit Dispute</Text>
                 </Pressable>
               </View>
             </View>
           ) : null}
 
-          {!canRelease && !canDispute && !canDeliver && !isDone ? (
+          {deal.availableActions.length === 0 && deal.status !== 'created' && !isDone ? (
             <View style={[styles.waitBox, { backgroundColor: theme.inputBackground }]}>
               <ShieldCheck size={15} color={theme.textTertiary} />
               <Text style={[styles.waitText, { color: theme.textSecondary }]}>
@@ -445,7 +1119,7 @@ export function EscrowDetailScreen() {
                 {isBuyer ? 'You Paid' : 'Your Payout'}
               </Text>
               <Text style={[styles.moneyValue, { color: theme.text }]}>
-                {formatMoney(isBuyer ? money.fundingTotal : money.sellerPayout, deal.currency)}
+                {formatMoney(isBuyer ? deal.fundingTotal : deal.sellerPayout, deal.currency)}
               </Text>
             </View>
           </View>
@@ -472,13 +1146,17 @@ export function EscrowDetailScreen() {
                 </View>
                 <View style={styles.eventBody}>
                   <Text style={[styles.eventType, { color: theme.text }]}>
-                    {event.type.replace('_', ' ').toUpperCase()}
+                    {event.type.toUpperCase()}
                   </Text>
-                  <Text style={[styles.eventDesc, { color: theme.textSecondary }]}>
-                    {event.description}
-                  </Text>
+                  {event.description ? (
+                    <Text style={[styles.eventDesc, { color: theme.textSecondary }]}>
+                      {event.description}
+                    </Text>
+                  ) : null}
                   <Text style={[styles.eventMeta, { color: theme.textTertiary }]}>
-                    @{event.actor} · {formatStamp(event.createdAt)}
+                    {/* `actorRole` is a role (buyer/seller/system/admin), not a
+                        handle — an "@" prefix would read as a username. */}
+                    {event.actor} · {formatStamp(event.createdAt)}
                   </Text>
                 </View>
               </View>
@@ -487,11 +1165,27 @@ export function EscrowDetailScreen() {
         </View>
 
       </ScrollView>
+
+      <PaymentSheet
+        open={fundOpen}
+        total={deal.fundingTotal}
+        balance={walletBalance}
+        rail={deal.rail === 'crypto' ? 'crypto' : 'fiat'}
+        currency={deal.currency === 'TRX' ? 'TRX' : 'GHS'}
+        isPending={fundDeal.isPending || topUp.isPending}
+        errorMessage={fundError}
+        onClose={() => {
+          if (!busy) setFundOpen(false);
+        }}
+        onPayFromWallet={payFromWallet}
+        onPayWithProvider={payWithProvider}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  fundError: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[500], textAlign: 'center' },
   flex: { flex: 1 },
   scroll: {
     padding: Spacing.four,
@@ -544,11 +1238,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    height: 44,
+    minHeight: 44,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
     borderWidth: 1,
     borderRadius: Radius.md,
   },
-  messageText: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
+  messageText: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[700] },
 
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sectionTitle: { fontSize: 14, fontFamily: Fonts.display[700] },
@@ -586,14 +1282,82 @@ const styles = StyleSheet.create({
   eventDesc: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[400] },
   eventMeta: { fontSize: 10, fontFamily: Fonts.sans[500] },
 
-  notice: {
+  errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    borderWidth: 1,
     borderRadius: Radius.md,
     padding: Spacing.three,
   },
-  noticeText: { flex: 1, fontSize: 11.5, fontFamily: Fonts.sans[600] },
+  errorText: { flex: 1, fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.sans[600], color: '#b91c1c' },
+
+  // Shared shell for the inline dispatch / cancel / release / edit forms —
+  // where the web opens a modal, a phone expands in place.
+  formBox: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three, gap: Spacing.two },
+  formHead: {
+    fontSize: 11,
+    fontFamily: Fonts.sans[700],
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    height: 44,
+    fontSize: 13,
+    fontFamily: Fonts.sans[400],
+    outlineStyle: 'none',
+  } as never,
+  formActions: { flexDirection: 'row', gap: Spacing.two, marginTop: 2 },
+  submitBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+    borderRadius: Radius.md,
+  },
+  submitBtnText: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
+
+  outlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 46,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
+  outlineBtnText: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[700] },
+
+  consequence: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+  },
+  consequenceText: { flex: 1, gap: 2 },
+  consequenceTitle: { fontSize: 12, fontFamily: Fonts.sans[700] },
+  consequenceBody: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.sans[400] },
+
+  roleRow: { flexDirection: 'row', gap: Spacing.two },
+  roleBtn: {
+    flex: 1,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
+  roleText: { fontSize: 12, fontFamily: Fonts.sans[600] },
 
   doneBox: {
     flexDirection: 'row',
@@ -604,28 +1368,46 @@ const styles = StyleSheet.create({
   },
   doneText: { flex: 1, fontSize: 12.5, fontFamily: Fonts.sans[700] },
 
+  /**
+   * `minHeight`, not `height`, on every button on this screen — and `flexShrink`
+   * on their labels.
+   *
+   * The labels here are sentences, not words ("Cancel Order & Refund Buyer",
+   * "Open Dispute Chat & Submit Evidence"). A fixed height with an unshrinkable
+   * label meant that on a narrow phone the text overflowed the button instead of
+   * wrapping inside it. Now the label wraps and the button grows to fit.
+   */
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.two,
-    height: 50,
+    minHeight: 50,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
     borderRadius: Radius.md,
   },
-  primaryBtnText: { fontSize: 13.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  primaryBtnText: {
+    flexShrink: 1,
+    fontSize: 13.5,
+    fontFamily: Fonts.sans[700],
+    color: '#ffffff',
+  },
 
   disputeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    height: 46,
+    minHeight: 46,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
     borderWidth: 1,
     borderColor: '#fecaca',
     backgroundColor: '#fef2f2',
     borderRadius: Radius.md,
   },
-  disputeBtnText: { fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#b91c1c' },
+  disputeBtnText: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#b91c1c' },
 
   disputeForm: {
     borderWidth: 1,
@@ -685,22 +1467,33 @@ const styles = StyleSheet.create({
   disputeActions: { flexDirection: 'row', gap: Spacing.two, marginTop: 2 },
   cancelBtn: {
     flex: 1,
-    height: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
     borderWidth: 1,
     borderRadius: Radius.md,
   },
-  cancelText: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
+  cancelText: { flexShrink: 1, fontSize: 12.5, fontFamily: Fonts.sans[700] },
   submitDispute: {
     flex: 1,
-    height: 44,
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
     borderRadius: Radius.md,
     backgroundColor: '#e11d48',
   },
-  submitDisputeText: { fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  submitDisputeText: {
+    flexShrink: 1,
+    fontSize: 12.5,
+    fontFamily: Fonts.sans[700],
+    color: '#ffffff',
+  },
 
   waitBox: {
     flexDirection: 'row',

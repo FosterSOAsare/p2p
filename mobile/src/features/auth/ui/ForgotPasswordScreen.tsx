@@ -4,12 +4,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ArrowRight, CheckCircle2, KeyRound, Mail } from 'lucide-react-native';
+import { ArrowLeft, ArrowRight, CheckCircle2, KeyRound, Mail } from '@/components/icons';
 
 import { Fonts, Primary, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
+import { apiErrorMessage } from '@/features/shared/data/api';
 import { forgotPasswordSchema, type ForgotPasswordForm } from '../data/schemas';
+import { useForgotPassword } from '../data/authApi';
 import { AuthField } from './AuthField';
 
 /**
@@ -31,8 +33,12 @@ export function ForgotPasswordScreen() {
   const insets = useSafeAreaInsets();
 
   const [focused, setFocused] = useState(false);
-  const [sending, setSending] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
+
+  const forgotPassword = useForgotPassword();
+  // The mutation owns the in-flight flag now, so there's no second copy of it
+  // in component state to keep in step.
+  const sending = forgotPassword.isPending;
 
   const {
     control,
@@ -45,10 +51,14 @@ export function ForgotPasswordScreen() {
   });
 
   const onSubmit = handleSubmit(async (values) => {
-    setSending(true);
-    // TODO(api): POST /api/auth/forgot-password with the email.
-    await new Promise((r) => setTimeout(r, 700));
-    setSending(false);
+    try {
+      await forgotPassword.mutateAsync(values.email);
+    } catch {
+      // Rendered from `forgotPassword.error` below. Note this only fires when
+      // the request itself failed — an unknown address still succeeds, by
+      // design, so it lands in the confirmation branch like any other.
+      return;
+    }
     setSentTo(values.email);
   });
 
@@ -114,6 +124,16 @@ export function ForgotPasswordScreen() {
                   />
                 )}
               />
+
+              {/* Only a transport failure reaches here — an unknown address is
+                  answered with success on purpose. */}
+              {forgotPassword.isError ? (
+                <View
+                  style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}
+                >
+                  <Text style={styles.apiErrorText}>{apiErrorMessage(forgotPassword.error)}</Text>
+                </View>
+              ) : null}
 
               <Pressable
                 onPress={onSubmit}
@@ -222,6 +242,13 @@ const styles = StyleSheet.create({
     marginTop: Spacing.one,
   },
 
+  /** Server-side rejection, distinct from the per-field validation messages. */
+  apiError: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.three,
+  },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
