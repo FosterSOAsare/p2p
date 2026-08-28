@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Package,
   ShieldCheck,
+  Sparkles,
   Star,
   Store,
   Trash2,
@@ -320,6 +321,20 @@ export function SellerDashboard({ user }: { user: User }) {
           >
             <Store size={16} color="#ffffff" />
             <Text style={[styles.heroBtnText, { color: '#ffffff' }]}>All Listings</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/promotions')}
+            style={({ pressed }) => [
+              styles.heroBtn,
+              {
+                backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
+                borderWidth: 1,
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <Sparkles size={16} color={theme.primary} />
+            <Text style={[styles.heroBtnText, { color: theme.text }]}>Promotions</Text>
           </Pressable>
         </View>
       </View>
@@ -734,9 +749,12 @@ const styles = StyleSheet.create({
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   ratingText: { fontSize: 11.5, fontFamily: Fonts.sans[700], color: '#d97706' },
 
-  heroActions: { flexDirection: 'row', gap: Spacing.two },
+  // Wraps: three actions at this label length don't fit one phone row, and
+  // squeezing them truncates every label rather than just the longest.
+  heroActions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   heroBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '45%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
