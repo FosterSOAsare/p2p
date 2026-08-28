@@ -27,6 +27,7 @@ export { default as ChevronDown } from 'lucide-react-native/icons/chevron-down';
 export { default as ChevronRight } from 'lucide-react-native/icons/chevron-right';
 export { default as ClipboardCheck } from 'lucide-react-native/icons/clipboard-check';
 export { default as Clock } from 'lucide-react-native/icons/clock';
+export { default as Coins } from 'lucide-react-native/icons/coins';
 export { default as Construction } from 'lucide-react-native/icons/construction';
 export { default as CreditCard } from 'lucide-react-native/icons/credit-card';
 export { default as ExternalLink } from 'lucide-react-native/icons/external-link';

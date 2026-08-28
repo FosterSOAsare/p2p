@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowRight, CreditCard, ShieldCheck, Smartphone, Wallet, X } from '@/components/icons';
+import { ArrowRight, Coins, CreditCard, ShieldCheck, Smartphone, Wallet, X } from '@/components/icons';
 
 import { Accent, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -48,6 +48,8 @@ interface PaymentSheetProps {
   onPayFromWallet: (walletAmount: number) => void;
   /** Pay `walletAmount` from balance and the rest on the hosted page. */
   onPayWithProvider: (walletAmount: number, method: PayMethod) => void;
+  /** Open the TRX invoice. Only ever called on the crypto rail. */
+  onPayWithCrypto?: () => void;
 }
 
 /** Round to pesewas so on-screen math always matches what the server charges. */
@@ -74,6 +76,7 @@ export function PaymentSheet({
   onClose,
   onPayFromWallet,
   onPayWithProvider,
+  onPayWithCrypto,
 }: PaymentSheetProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -110,7 +113,10 @@ export function PaymentSheet({
 
   const submit = () => {
     if (isPending) return;
-    if (coveredByWallet) onPayFromWallet(walletAmount);
+    // The server refuses a crypto FUND outright — the deposit is what funds a
+    // TRX deal — so this rail never touches the wallet or a momo/card charge.
+    if (isCrypto) onPayWithCrypto?.();
+    else if (coveredByWallet) onPayFromWallet(walletAmount);
     else onPayWithProvider(walletAmount, method);
   };
 
@@ -157,6 +163,24 @@ export function PaymentSheet({
               <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Total due</Text>
               <Text style={[styles.totalValue, { color: theme.text }]}>{money(total, currency)}</Text>
             </View>
+
+            {/* Crypto rail — no wallet split, no provider. The server refuses a
+                crypto FUND outright, so don't offer a button that can't work. */}
+            {isCrypto ? (
+              <View style={[styles.cryptoCard, { backgroundColor: '#fef3c7', borderColor: '#fcd34d' }]}>
+                <View style={[styles.cryptoIcon, { backgroundColor: '#ffffff' }]}>
+                  <Coins size={17} color="#92400e" />
+                </View>
+                <View style={styles.cryptoBody}>
+                  <Text style={styles.cryptoTitle}>Funded on-chain in TRX</Text>
+                  <Text style={styles.cryptoText}>
+                    This deal settles on the Tron network, so mobile money, card and your GH₵ wallet
+                    don&apos;t apply. You&apos;ll pay {money(total, 'TRX')} on a hosted invoice; the
+                    deal moves to funded once the network confirms the transfer.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
 
             {/* Wallet split */}
             {hasBalance ? (
@@ -236,8 +260,8 @@ export function PaymentSheet({
               </View>
             ) : null}
 
-            {/* Method — only when there's actually a shortfall to charge. */}
-            {!coveredByWallet ? (
+            {/* Method — only when there's actually a fiat shortfall to charge. */}
+            {!coveredByWallet && !isCrypto ? (
               <View style={styles.methods}>
                 <Text style={[styles.methodsLabel, { color: theme.textSecondary }]}>
                   Pay {money(remaining, currency)} with
@@ -303,11 +327,17 @@ export function PaymentSheet({
             ) : (
               <>
                 <Text style={styles.ctaText}>
-                  {coveredByWallet
-                    ? `Pay ${money(total, currency)} from wallet`
-                    : `Continue to pay ${money(remaining, currency)}`}
+                  {isCrypto
+                    ? 'Continue to TRX invoice'
+                    : coveredByWallet
+                      ? `Pay ${money(total, currency)} from wallet`
+                      : `Continue to pay ${money(remaining, currency)}`}
                 </Text>
-                <ArrowRight size={17} color="#ffffff" />
+                {isCrypto ? (
+                  <Coins size={17} color="#ffffff" />
+                ) : (
+                  <ArrowRight size={17} color="#ffffff" />
+                )}
               </>
             )}
           </Pressable>
@@ -318,6 +348,25 @@ export function PaymentSheet({
 }
 
 const styles = StyleSheet.create({
+  cryptoCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
+  },
+  cryptoIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cryptoBody: { flex: 1, gap: 3, minWidth: 0 },
+  cryptoTitle: { fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#78350f' },
+  cryptoText: { fontSize: 11.5, lineHeight: 17, fontFamily: Fonts.sans[400], color: '#78350f' },
+
   backdrop: { flex: 1, justifyContent: 'flex-end' },
   backdropTap: { flex: 1 },
   sheet: {

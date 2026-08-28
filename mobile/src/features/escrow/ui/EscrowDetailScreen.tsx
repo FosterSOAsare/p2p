@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import {
   AlertCircle,
   AlertTriangle,
@@ -38,9 +39,15 @@ import {
   useUpdateEscrow,
   type EscrowAction,
 } from '../data/dealsApi';
+import {
+  useCheckCryptoDeposit,
+  useCryptoDeposit,
+  useStartCryptoDeposit,
+} from '../data/cryptoApi';
 import { useWallet } from '@/features/wallet/data/walletApi';
 import { useTopUp, type PayMethod } from '@/features/wallet/data/paymentsApi';
 import { PaymentSheet } from '@/features/wallet/ui/PaymentSheet';
+import { CryptoDepositPanel } from './CryptoDepositPanel';
 import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
 
 /**
@@ -230,6 +237,18 @@ export function EscrowDetailScreen() {
   const fundDeal = useFundDeal();
   const wallet = useWallet();
   const topUp = useTopUp();
+
+  /*
+    Crypto rail. The deposit query is only meaningful for a TRX deal, so it is
+    gated on the rail rather than fired for every deal and discarded — the same
+    shape the web uses. `dealQuery.data` is read directly here because `deal`
+    (the adapter below) is not in scope yet at hook-declaration time.
+  */
+  const isCryptoDeal = dealQuery.data?.rail === 'crypto';
+  const depositQuery = useCryptoDeposit(id ?? '', Boolean(isCryptoDeal));
+  const startCrypto = useStartCryptoDeposit();
+  const checkCrypto = useCheckCryptoDeposit();
+
   const [fundOpen, setFundOpen] = useState(false);
   const [fundError, setFundError] = useState<string | null>(null);
   /** Funding isn't idempotent either — see the same guard in CheckoutScreen. */
@@ -380,6 +399,32 @@ export function EscrowDetailScreen() {
       setFundError(apiErrorMessage(err));
     } finally {
       funding.current = false;
+    }
+  };
+
+  /**
+   * Open the hosted TRX invoice.
+   *
+   * `openBrowserAsync`, not the `openAuthSessionAsync` the fiat top-up uses: the
+   * provider's success URL points at `WEB_ORIGIN` (see `crypto.service`), so no
+   * redirect ever comes back to the app and there is no return URL to wait on.
+   * That costs nothing here, because arriving back was never what confirmed a
+   * crypto deposit — the chain is. Closing the browser just re-checks, and the
+   * panel below keeps polling either way.
+   */
+  const payWithCrypto = async () => {
+    setFundError(null);
+    try {
+      const deposit = await startCrypto.mutateAsync(deal.id);
+      setFundOpen(false);
+      if (deposit.invoiceUrl) {
+        await WebBrowser.openBrowserAsync(deposit.invoiceUrl);
+        // Back in the app: ask once immediately rather than waiting out a poll
+        // interval, since a buyer who has just paid is watching this screen.
+        checkCrypto.mutate({ escrowId: deal.id });
+      }
+    } catch (err) {
+      setFundError(apiErrorMessage(err));
     }
   };
 
@@ -782,7 +827,32 @@ export function EscrowDetailScreen() {
             marketplace checkout, so the wallet-plus-shortfall split behaves
             identically wherever money is taken.
           */}
-          {has('FUND') ? (
+          {/* Crypto rail: once an invoice exists the panel IS the funding UI —
+              it carries the amount due, the address and the "I've paid" check,
+              so the Fund button below would be a second, worse way in. */}
+          {isCryptoDeal && depositQuery.data?.invoiceUrl ? (
+            <CryptoDepositPanel
+              deposit={depositQuery.data}
+              isChecking={checkCrypto.isPending}
+              isReopening={startCrypto.isPending}
+              errorMessage={
+                fundError ??
+                (checkCrypto.isError
+                  ? apiErrorMessage(checkCrypto.error)
+                  : startCrypto.isError
+                    ? apiErrorMessage(startCrypto.error)
+                    : null)
+              }
+              onCheck={() => checkCrypto.mutate({ escrowId: deal.id })}
+              onReopen={payWithCrypto}
+              onOpenInvoice={() => {
+                const url = depositQuery.data?.invoiceUrl;
+                if (url) void WebBrowser.openBrowserAsync(url);
+              }}
+            />
+          ) : null}
+
+          {has('FUND') && !(isCryptoDeal && depositQuery.data?.invoiceUrl) ? (
             <>
               <Pressable
                 onPress={() => {
@@ -1172,13 +1242,14 @@ export function EscrowDetailScreen() {
         balance={walletBalance}
         rail={deal.rail === 'crypto' ? 'crypto' : 'fiat'}
         currency={deal.currency === 'TRX' ? 'TRX' : 'GHS'}
-        isPending={fundDeal.isPending || topUp.isPending}
+        isPending={fundDeal.isPending || topUp.isPending || startCrypto.isPending}
         errorMessage={fundError}
         onClose={() => {
           if (!busy) setFundOpen(false);
         }}
         onPayFromWallet={payFromWallet}
         onPayWithProvider={payWithProvider}
+        onPayWithCrypto={payWithCrypto}
       />
     </SafeAreaView>
   );

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/features/shared/data/api';
 import type { CheckoutMethod } from '@/features/wallet/data/paymentsApi';
+import type { FeeSplit } from './fees';
 
 /**
  * Escrow deals — `GET /api/escrows` and `GET /api/escrows/:id`.
@@ -267,6 +268,50 @@ export function useDisputeDeal() {
         body: { reason, description },
       }),
     onSuccess: (_r, { id }) => invalidate(id),
+  });
+}
+
+/**
+ * Create a standalone ("off-platform") escrow — the custom deal form.
+ *
+ * `POST /api/escrows`, the twin of the web's `useCreateStandaloneEscrow`.
+ * Two details the server cares about:
+ *
+ * - `counterpartyUsername` is the field it reads; `invitedUsername` is sent
+ *   alongside it because the web sends both and the schema accepts both.
+ * - `rail` is deliberately not sent — the server derives it from `currency`
+ *   (GHS → fiat, TRX → crypto), and sending one would be ignored anyway.
+ *
+ * An empty counterparty is dropped rather than sent as `""`, which is what
+ * makes the deal a public invite link instead of a named one.
+ */
+export function useCreateStandaloneEscrow() {
+  const invalidate = useInvalidateDeals();
+  return useMutation({
+    mutationFn: ({
+      invitedUsername,
+      ...rest
+    }: {
+      title: string;
+      description?: string;
+      amount: number;
+      currency: 'GHS' | 'TRX';
+      role: 'buyer' | 'seller';
+      invitedUsername?: string;
+      feeSplit: FeeSplit;
+    }) => {
+      const counterparty = invitedUsername?.trim();
+      return api<{ deal: Deal }>('/api/escrows', {
+        method: 'POST',
+        body: {
+          ...rest,
+          ...(counterparty
+            ? { counterpartyUsername: counterparty, invitedUsername: counterparty }
+            : {}),
+        },
+      }).then((r) => r.deal);
+    },
+    onSuccess: () => invalidate(),
   });
 }
 

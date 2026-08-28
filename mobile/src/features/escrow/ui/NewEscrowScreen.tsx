@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -14,38 +14,41 @@ import {
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
+import { useCreateStandaloneEscrow } from '../data/dealsApi';
+import { quoteFee, type FeeSplit } from '../data/fees';
+import { apiErrorMessage } from '@/features/shared/data/api';
 
 /**
  * Standalone Off-Platform Contract — the phone version of the web's
  * `web/src/pages/NewEscrow.tsx`, reached from the "Start New Escrow Deal"
  * button on My Deals (the web reaches it at `/escrow/new`).
  *
- * Same fields in the same order, same copy, same 1.5% fee preview. The web uses
+ * Same fields in the same order, same copy, same fee preview. The web uses
  * `<select>` for currency and fee split; a phone gets segmented chips instead,
  * which is the native equivalent.
  *
- * No API yet — like the rest of the mobile app this is UI over mock state, so
- * submitting returns to My Deals without persisting. Wire
- * `useCreateStandaloneEscrow` (web `features/escrow/data/ordersApi`) when the
- * mobile API client lands; the web then routes on to the new deal's detail page.
+ * The fee shown comes from the shared `quoteFee` helper rather than a flat
+ * percentage worked out inline. That matters: the real schedule is 1.5% on GHS
+ * with a GH₵2 minimum and a GH₵150 cap, but 1.0% and uncapped on TRX, so a flat
+ * 1.5% quoted a figure the server would not charge on small, large, or crypto
+ * deals.
  */
 
 type Role = 'buyer' | 'seller';
 type Currency = 'GHS' | 'TRX';
-type FeeSplit = 'BUYER' | 'SELLER' | 'SPLIT';
 
 const CURRENCIES: { key: Currency; label: string }[] = [
   { key: 'GHS', label: 'GH₵ (MoMo / Cards)' },
   { key: 'TRX', label: 'TRX (Tron Crypto)' },
 ];
 
+// Lowercase keys: the server's Joi schema accepts `buyer` / `seller` / `split`
+// and rejects anything else, so these double as the wire values.
 const FEE_SPLITS: { key: FeeSplit; label: string }[] = [
-  { key: 'BUYER', label: 'Buyer Pays Full Fee (1.5%)' },
-  { key: 'SELLER', label: 'Seller Pays Full Fee (1.5%)' },
-  { key: 'SPLIT', label: 'Split Fee (0.75% each)' },
+  { key: 'buyer', label: 'Buyer Pays Full Fee' },
+  { key: 'seller', label: 'Seller Pays Full Fee' },
+  { key: 'split', label: 'Split Fee (50 / 50)' },
 ];
-
-const FEE_RATE = 0.015;
 
 /** "GHS 1,250.00" — same shape as the deals list. */
 function formatMoney(amount: number, currency: string) {
@@ -72,41 +75,55 @@ export function NewEscrowScreen() {
   const [invitedUsername, setInvitedUsername] = useState('');
   const [amount, setAmount] = useState('500');
   const [currency, setCurrency] = useState<Currency>('GHS');
-  const [feeSplit, setFeeSplit] = useState<FeeSplit>('BUYER');
+  // Same default as the web form and the server's schema.
+  const [feeSplit, setFeeSplit] = useState<FeeSplit>('split');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const createEscrow = useCreateStandaloneEscrow();
 
   // The web binds a number input; a phone keyboard hands back a string, so parse
   // once here and treat anything unparseable as 0 for the preview.
   const amountValue = Number.parseFloat(amount) || 0;
-  const estimatedFee = amountValue * FEE_RATE;
-  const buyerTotal =
-    feeSplit === 'BUYER'
-      ? amountValue + estimatedFee
-      : feeSplit === 'SPLIT'
-        ? amountValue + estimatedFee / 2
-        : amountValue;
-  const sellerPayout =
-    feeSplit === 'SELLER'
-      ? amountValue - estimatedFee
-      : feeSplit === 'SPLIT'
-        ? amountValue - estimatedFee / 2
-        : amountValue;
+  const {
+    fee: estimatedFee,
+    buyerTotal,
+    sellerPayout,
+  } = quoteFee(amountValue, currency, feeSplit);
 
-  /** Mirrors the web's guard: a title and a positive amount are required. */
+  /**
+   * Mirrors the web's guard, plus the server's 3-character minimum on the title
+   * — worth catching here so a valid-looking two-letter title doesn't come back
+   * as a 400 after the round trip.
+   */
   const handleSubmit = () => {
     setError(null);
-    if (!title.trim()) {
-      setError('Give the contract a title.');
+    if (title.trim().length < 3) {
+      setError('Give the contract a title of at least 3 characters.');
       return;
     }
     if (amountValue <= 0) {
       setError('Enter a deal amount greater than zero.');
       return;
     }
-    // TODO(api): POST the standalone escrow, then push the new deal's detail
-    // screen the way the web navigates to /escrow/:id.
-    goBack();
+
+    createEscrow.mutate(
+      {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        amount: amountValue,
+        currency,
+        role,
+        invitedUsername: invitedUsername.trim() || undefined,
+        feeSplit,
+      },
+      {
+        // Straight to the new deal, as the web does — that screen carries the
+        // share code and QR the creator needs to invite the other side.
+        onSuccess: (deal) => router.replace(`/escrow/${deal.id}`),
+        onError: (err) => setError(apiErrorMessage(err)),
+      },
+    );
   };
 
   /** Back to My Deals — falls back to the tab when there's nothing to pop. */
@@ -337,7 +354,7 @@ export function NewEscrowScreen() {
           </View>
           <View style={styles.previewRow}>
             <Text style={[styles.previewLabel, { color: theme.textSecondary }]}>
-              Platform Fee (1.5%):
+              Platform Fee ({currency === 'TRX' ? '1.0%' : '1.5%'}):
             </Text>
             <Text style={[styles.previewValue, { color: theme.text }]}>
               {formatMoney(estimatedFee, currency)}
@@ -359,16 +376,29 @@ export function NewEscrowScreen() {
           </View>
         </View>
 
-        {/* Submit */}
+        {/* Submit. Disabled while in flight: the endpoint has no request key to
+            collapse duplicates on, so two taps would create two deals. */}
         <Pressable
           onPress={handleSubmit}
+          disabled={createEscrow.isPending}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: createEscrow.isPending, busy: createEscrow.isPending }}
           style={({ pressed }) => [
             styles.submit,
-            { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+            {
+              backgroundColor: theme.primary,
+              opacity: createEscrow.isPending ? 0.6 : pressed ? 0.85 : 1,
+            },
           ]}
         >
-          <ArrowRight size={16} color="#ffffff" />
-          <Text style={styles.submitText}>Create &amp; Launch Escrow Deal</Text>
+          {createEscrow.isPending ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <ArrowRight size={16} color="#ffffff" />
+          )}
+          <Text style={styles.submitText}>
+            {createEscrow.isPending ? 'Creating…' : 'Create & Launch Escrow Deal'}
+          </Text>
         </Pressable>
       </KeyboardAwareScroll>
     </SafeAreaView>
