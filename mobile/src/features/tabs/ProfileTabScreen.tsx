@@ -131,15 +131,32 @@ export function ProfileTabScreen() {
     }
   };
 
-  /** Both flags go on every write — the endpoint is a PUT and requires both. */
+  /**
+   * Both flags go on every write — the endpoint is a PUT and requires both.
+   *
+   * The switch moves first and the request follows, because a toggle that waits
+   * on a round trip feels stuck and invites a second tap. A refusal puts it
+   * back: without that rollback the switch kept showing the value the server
+   * had just rejected, and only the error text underneath disagreed.
+   */
   const savePrefs = (next: Partial<{ email: boolean; sms: boolean }>) => {
-    const email = next.email ?? emailShipmentUpdates;
-    const sms = next.sms ?? smsReleaseAlerts;
+    const previous = { email: emailShipmentUpdates, sms: smsReleaseAlerts };
+    const email = next.email ?? previous.email;
+    const sms = next.sms ?? previous.sms;
+
+    setSaveError(null);
     setEmailShipmentUpdates(email);
     setSmsReleaseAlerts(sms);
+
     updatePrefs.mutate(
       { emailShipmentUpdates: email, smsReleaseAlerts: sms },
-      { onError: (err) => setSaveError(apiErrorMessage(err)) },
+      {
+        onError: (err) => {
+          setEmailShipmentUpdates(previous.email);
+          setSmsReleaseAlerts(previous.sms);
+          setSaveError(apiErrorMessage(err));
+        },
+      },
     );
   };
 
