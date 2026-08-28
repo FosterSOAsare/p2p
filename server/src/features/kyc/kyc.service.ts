@@ -1,5 +1,6 @@
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
+import { invalidateUser } from "../../shared/lib/auth-cache";
 import type { KycProfile } from "../../generated/prisma/client";
 import type { KycStatusResponse, KycSubmissionInput } from "./kyc.model";
 import { notifyAdmins } from "../notifications/notifications.service";
@@ -30,6 +31,9 @@ export async function submit(userId: string, input: KycSubmissionInput): Promise
     create: { userId, ...data },
     update: { ...data, status: "pending", rejectionReason: null, reviewedById: null, reviewedAt: null },
   });
+  // A resubmission drops a previously verified profile back to `pending`, which
+  // changes what requireSeller decides — so the cached auth row is now wrong.
+  invalidateUser(userId);
 
   // Nothing reached the review queue before this — a submission just sat in
   // `pending` until an admin happened to open /admin/kyc.

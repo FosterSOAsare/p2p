@@ -279,14 +279,20 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
 }
 
 /** GET /me — profile + KYC status + wallets + the dashboard counts the client shows. */
+/**
+ * All four queries in one batch, not the user row and then the three stats.
+ *
+ * They were sequential, but only by habit — the stats key off `userId`, which
+ * the caller already has from the verified token, so none of them ever needed
+ * the user row. Against a database ~450ms away that ordering was costing a
+ * whole extra round trip on the request every signed-in screen makes first.
+ */
 export async function me(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { kyc: { select: { status: true } }, wallets: true },
-  });
-  if (!user) throw ApiError.notFound("User not found");
-
-  const [activeOrdersCount, spent, savedItemsCount] = await Promise.all([
+  const [user, activeOrdersCount, spent, savedItemsCount] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      include: { kyc: { select: { status: true } }, wallets: true },
+    }),
     prisma.escrow.count({
       where: { buyerId: userId, status: { in: ["created", "funded", "delivered"] } },
     }),
@@ -296,6 +302,8 @@ export async function me(userId: string) {
     }),
     prisma.savedListing.count({ where: { userId } }),
   ]);
+
+  if (!user) throw ApiError.notFound("User not found");
 
   return {
     ...publicUser(user),
