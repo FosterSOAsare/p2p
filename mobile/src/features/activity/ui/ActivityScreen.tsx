@@ -1,5 +1,14 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -17,8 +26,8 @@ import {
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
-import { useAuth } from '@/context/AuthContext';
-import { mockDeals, type EscrowEvent } from '@/constants/mockData';
+import { useDeals, type Deal } from '@/features/escrow/data/dealsApi';
+import { apiErrorMessage } from '@/features/shared/data/api';
 import { TONE_COLORS, type BadgeTone } from '@/features/escrow/ui/dealStatus';
 
 /**
@@ -28,17 +37,92 @@ import { TONE_COLORS, type BadgeTone } from '@/features/escrow/ui/dealStatus';
  * The web has no single activity page; it shows the same information as the
  * per-deal "Audit Timeline" in `web/src/pages/EscrowDetail.tsx` (the dotted
  * left rail of `deal.events`). A phone has no sidebar to park that in, so this
- * flattens every deal's events into one stream — the same rows, the same
+ * flattens every deal's history into one stream — the same rows, the same
  * wording, just aggregated and newest first.
  *
  * Events carry no listing photo, so each row is led by an icon chosen from the
  * event type and tinted with the shared badge tones, keeping it consistent with
  * the status pills on My Deals.
  *
- * Reads `mockDeals` — no API yet. There is no `/api/notifications` on the
- * server either; when this is wired it will come from the deals' `events[]`,
- * which the escrow detail response already returns.
+ * Built from `GET /api/escrows` — the same one request My Deals already makes,
+ * so opening this tab costs nothing extra.
+ *
+ * Note it is built from each deal's **timestamps**, not from `events[]`. The
+ * list endpoint omits the audit array (only the detail response carries it), so
+ * reading `events[]` here would mean one request per deal. The six timestamps
+ * the list does send — created, funded, delivered, disbursed, disputed,
+ * cancelled — are the same transitions that array records, so the feed is the
+ * same events without the fan-out. What is lost is the server's written
+ * description of each, which is composed here instead.
  */
+
+/** One synthesised audit row. */
+interface DealEventRow {
+  id: string;
+  type: string;
+  description: string;
+  createdAt: string;
+}
+
+/**
+ * A deal's transitions, in the order they can only have happened. A null
+ * timestamp means that transition hasn't occurred, so it contributes no row.
+ */
+function dealEvents(deal: Deal): DealEventRow[] {
+  const other =
+    (deal.myRole === 'seller' ? deal.buyer?.username : deal.seller?.username) ?? null;
+  const amount = `${deal.currency} ${deal.amount.toLocaleString('en-GH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+  const rows: { at: string | null; type: string; description: string }[] = [
+    {
+      at: deal.createdAt,
+      type: 'created',
+      description: other ? `Deal opened with @${other} · ${amount}` : `Deal opened · ${amount}`,
+    },
+    {
+      at: deal.fundedAt,
+      type: 'funded',
+      description: `${amount} locked in escrow`,
+    },
+    {
+      at: deal.deliveredAt,
+      type: 'delivered',
+      description: deal.trackingNumber
+        ? `Marked delivered · ${deal.carrier ?? 'tracking'} ${deal.trackingNumber}`
+        : 'Marked delivered by the seller',
+    },
+    {
+      at: deal.disbursedAt,
+      type: 'released',
+      description: `${amount} released to the seller`,
+    },
+    {
+      at: deal.disputedAt,
+      type: 'disputed',
+      description: 'Dispute opened — funds frozen pending an admin ruling',
+    },
+    {
+      at: deal.cancelledAt,
+      type: 'cancelled',
+      description: deal.cancelReason
+        ? `Cancelled — ${deal.cancelReason}`
+        : 'Cancelled; any locked funds were returned',
+    },
+  ];
+
+  return rows
+    .filter((r): r is typeof r & { at: string } => Boolean(r.at))
+    .map((r) => ({
+      // Stable and unique without a server id: a deal has at most one of each.
+      id: `${deal.id}:${r.type}`,
+      type: r.type,
+      description: r.description,
+      createdAt: r.at,
+    }));
+}
 
 /** Icon + tone per event type, mirroring the deal status vocabulary. */
 function eventLook(type: string): { Icon: typeof Bell; tone: BadgeTone } {
@@ -94,7 +178,7 @@ function timeAgo(iso: string) {
 }
 
 /** One event, plus the deal it belongs to, so a row can name and open it. */
-interface FeedItem extends EscrowEvent {
+interface FeedItem extends DealEventRow {
   dealId: string;
   dealTitle: string;
   dealCode: string;
@@ -103,25 +187,29 @@ interface FeedItem extends EscrowEvent {
 const FILTERS: { id: string; label: string; types?: string[] }[] = [
   { id: 'all', label: 'All' },
   { id: 'money', label: 'Payments', types: ['funded', 'released'] },
-  { id: 'delivery', label: 'Delivery', types: ['shipped', 'delivered'] },
-  { id: 'issues', label: 'Issues', types: ['disputed'] },
+  { id: 'delivery', label: 'Delivery', types: ['delivered'] },
+  { id: 'issues', label: 'Issues', types: ['disputed', 'cancelled'] },
 ];
 
 export function ActivityScreen() {
   const theme = useTheme();
   const router = useRouter();
   const tabBarHeight = useTabBarHeight();
-  const { user } = useAuth();
   const [filter, setFilter] = useState('all');
 
-  // Only the signed-in user's deals — either side of the deal counts.
-  const feed = useMemo<FeedItem[]>(() => {
-    const mine = mockDeals.filter(
-      (d) => d.creator.username === user?.username || d.counterparty.username === user?.username,
-    );
+  /*
+    The endpoint is already scoped to the signed-in account — it returns the
+    deals you are a party to, either side — so there is no username filtering to
+    do here. The mock version had to compare handles itself, which is what broke
+    as soon as the data stopped being the mock's.
+  */
+  const dealsQuery = useDeals();
 
-    const flat = mine.flatMap((d) =>
-      d.events.map((e) => ({
+  const feed = useMemo<FeedItem[]>(() => {
+    const deals = dealsQuery.data?.deals ?? [];
+
+    const flat = deals.flatMap((d) =>
+      dealEvents(d).map((e) => ({
         ...e,
         dealId: d.id,
         dealTitle: d.title,
@@ -136,7 +224,7 @@ export function ActivityScreen() {
     return scoped.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
-  }, [filter, user?.username]);
+  }, [filter, dealsQuery.data]);
 
   const renderItem = ({ item }: { item: FeedItem }) => {
     const { Icon, tone } = eventLook(item.type);
@@ -244,14 +332,40 @@ export function ActivityScreen() {
             </View>
           </View>
         }
+        refreshControl={
+          <RefreshControl
+            refreshing={dealsQuery.isRefetching}
+            onRefresh={() => dealsQuery.refetch()}
+            tintColor={theme.primary}
+          />
+        }
         ListEmptyComponent={
-          <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
-            <Inbox size={26} color={theme.textTertiary} />
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>Nothing here yet</Text>
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-              Updates on your deals — funding, shipping and release — will show up here.
-            </Text>
-          </View>
+          /* "Nothing here yet" is a claim about the account, so it must not
+             show while the answer is still in flight — nor when the request
+             failed, which is a different thing entirely. */
+          dealsQuery.isLoading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={theme.primary} />
+            </View>
+          ) : dealsQuery.isError ? (
+            <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              <AlertTriangle size={26} color="#e11d48" />
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                Couldn&apos;t load your activity
+              </Text>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                {apiErrorMessage(dealsQuery.error)}
+              </Text>
+            </View>
+          ) : (
+            <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              <Inbox size={26} color={theme.textTertiary} />
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>Nothing here yet</Text>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                Updates on your deals — funding, delivery and release — will show up here.
+              </Text>
+            </View>
+          )
         }
       />
     </SafeAreaView>
@@ -260,6 +374,7 @@ export function ActivityScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  loading: { paddingVertical: Spacing.eight, alignItems: 'center' },
   list: {
     padding: Spacing.four,
     width: '100%',

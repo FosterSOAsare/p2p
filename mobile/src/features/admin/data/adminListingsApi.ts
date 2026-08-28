@@ -33,6 +33,8 @@ export interface AdminListingRow {
   image: string | null
   status: ListingStatus
   createdAt: string
+  /** Unreviewed buyer reports against this listing; drives the queue badge. */
+  openReportCount: number
   seller: { username: string; avatarUrl: string | null }
   removal: {
     reason: RemovalReason | null

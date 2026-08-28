@@ -38,8 +38,9 @@ import { toPickedAsset, useUploadFile } from '@/features/upload/data/uploadApi';
  * keeps in its sidebar. The web lays this out as sidebar + form column; a phone
  * stacks the switch above the active section.
  *
- * The mock AuthContext has no update call, so Save and the notification
- * toggles hold local state only — nothing persists yet.
+ * Save posts to `PATCH /api/users/me`; the notification toggles to
+ * `PUT /api/users/me/notification-prefs`. The avatar picker uploads first and
+ * then saves the returned URL, so a failed upload never leaves a broken link.
  */
 
 type SectionId = 'profile' | 'security' | 'notifications';

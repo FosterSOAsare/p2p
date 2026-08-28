@@ -8,13 +8,12 @@
  * There used to be a mock fallback here — a failed sign-in quietly became a
  * fake `mockCurrentUser` session. It made every authenticated request 401 while
  * the app looked signed in, which reads as broken screens rather than a bad
- * password. Screens still on mock data don't need a session at all, so nothing
- * depended on it.
+ * password.
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { User } from '@/constants/mockData';
+import type { User } from '@/constants/appTypes';
 import { tokenStore } from '@/features/shared/data/tokenStore';
 import { api, setSessionExpiredHandler } from '@/features/shared/data/api';
 import { dashboardKeys, type DashboardResponse } from '@/features/dashboard/data/dashboardApi';
@@ -171,7 +170,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // whoever signs in next.
     runTeardown();
     setState({ user: null, isAuthenticated: false, isLoading: false, isRealSession: false });
-    void tokenStore.clear();
+
+    /*
+      Revoke the session server-side, then drop the tokens locally.
+
+      Clearing the store alone only forgets the refresh token — it stays valid
+      in the `Session` table until it expires, so a copy lifted off the device
+      could still mint access tokens for an account that had signed out. The web
+      has always posted this; mobile never did.
+
+      Deliberately not awaited and deliberately swallowing errors: signing out
+      must not fail or hang because the network is down. The local half below
+      runs regardless, so the worst case is a server session that outlives the
+      sign-out — exactly today's behaviour — rather than a user stuck signed in.
+    */
+    void (async () => {
+      const refreshToken = await tokenStore.getRefresh().catch(() => null);
+      if (refreshToken) {
+        await api('/api/auth/logout', {
+          method: 'POST',
+          body: { refreshToken },
+        }).catch(() => undefined);
+      }
+      await tokenStore.clear();
+    })();
   }, [queryClient]);
 
   // A spent refresh token signs the user out rather than leaving screens

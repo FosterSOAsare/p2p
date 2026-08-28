@@ -23,9 +23,9 @@ import { AuthField } from './AuthField';
  * success. Copy is kept verbatim, including the prototype note about simulated
  * delivery.
  *
- * There's no forgot-password call in the mock AuthContext, so submitting just
- * flips to the sent state after a short delay — the web's own note already says
- * delivery is simulated.
+ * Submitting posts to `/api/auth/forgot-password`. That endpoint answers the
+ * same way whether or not the address is registered, so the confirmation below
+ * is not evidence an account exists — which is the point.
  */
 export function ForgotPasswordScreen() {
   const theme = useTheme();

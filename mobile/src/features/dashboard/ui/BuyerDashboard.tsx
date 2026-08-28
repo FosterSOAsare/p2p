@@ -18,7 +18,7 @@ import {
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSaved } from '@/context/SavedContext';
-import { type User } from '@/constants/mockData';
+import { type User } from '@/constants/appTypes';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { useDashboard } from '../data/dashboardApi';
 import { useReleaseDeal } from '@/features/escrow/data/dealsApi';

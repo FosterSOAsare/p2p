@@ -39,9 +39,15 @@ export function JoinDealScreen() {
   const content = () => {
     if (previewQuery.isLoading) return <AdminLoading />;
 
-    // Confirm in place rather than pushing straight to the deal: the deal
-    // screen still reads mock data, so a real id lands on "deal not found".
-    // Point this at /escrow/[id] once that screen moves onto the API.
+    /*
+      A short confirmation, then straight to the deal — the web navigates there
+      immediately (`JoinDeal.tsx`), and that is where the buyer funds it.
+
+      This used to stop here permanently, because the deal screen still read
+      mock data and a real id landed on "deal not found". It reads the API now,
+      so the dead end is gone; the beat on screen is kept only because joining
+      is the moment worth confirming.
+    */
     if (accept.isSuccess) {
       return (
         <View style={styles.centered}>
@@ -50,10 +56,13 @@ export function JoinDealScreen() {
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>You've joined the deal</Text>
           <Text style={[styles.emptyHint, { color: theme.textSecondary }]}>
-            {deal ? `“${deal.title}” is now between you and @${deal.creator.username}.` : ''} You'll
-            find it under My Deals.
+            {deal ? `“${deal.title}” is now between you and @${deal.creator.username}.` : ''} Opening
+            it now.
           </Text>
-          <AdminButton label="Go to my deals" onPress={() => router.replace('/deals')} />
+          <AdminButton
+            label="Open the deal"
+            onPress={() => router.replace(`/escrow/${accept.data.deal.id}`)}
+          />
         </View>
       );
     }
@@ -177,7 +186,17 @@ export function JoinDealScreen() {
               label={`Join as ${myRole}`}
               icon={Handshake}
               loading={accept.isPending}
-              onPress={() => accept.mutate(deal.code)}
+              onPress={() =>
+                accept.mutate(deal.code, {
+                  // Let the confirmation land, then move on by itself. The
+                  // button on that panel is the manual path for anyone who
+                  // taps it first, and `replace` either way so Back doesn't
+                  // return to a code that has already been redeemed.
+                  onSuccess: ({ deal: joined }) => {
+                    setTimeout(() => router.replace(`/escrow/${joined.id}`), 1200);
+                  },
+                })
+              }
             />
           )}
         </View>

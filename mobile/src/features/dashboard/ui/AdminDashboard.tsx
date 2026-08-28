@@ -3,6 +3,7 @@ import { useRouter, type Href } from 'expo-router';
 import {
   ChevronRight,
   ClipboardCheck,
+  Flag,
   Handshake,
   Package,
   PackageSearch,
@@ -121,6 +122,14 @@ export function AdminDashboard() {
       color: '#0284c7',
       count: openAppeals,
       href: '/admin/listings' as Href,
+    },
+    {
+      label: 'Reports',
+      hint: 'Listings buyers have flagged for review',
+      icon: Flag,
+      color: '#b45309',
+      count: s.openReports,
+      href: '/admin/reports' as Href,
     },
     {
       label: 'Users',

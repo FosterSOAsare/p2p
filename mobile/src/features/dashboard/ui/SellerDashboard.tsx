@@ -23,7 +23,7 @@ import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { useState } from 'react';
-import { type User } from '@/constants/mockData';
+import { type User } from '@/constants/appTypes';
 import { useDeleteListing } from '@/features/listings/data/listingsApi';
 import { useConversations } from '@/features/messages/data/messagesApi';
 import { useUnreadNotifications } from '@/features/notifications/data/notificationsApi';
@@ -34,11 +34,10 @@ import { StatCard } from './StatCard';
  * Seller home — the phone version of `web/src/pages/SellerDashboard.tsx`.
  *
  * Mirrors the merchant portal header (store name, verified badge, rating), the
- * three payout balance cards, and the store inventory list. The web also has a
- * sales/dispatch manager with a tracking-number form; that needs write calls,
- * so it waits for the API.
+ * three payout balance cards, and the store inventory list.
  *
- * Reads `mockSellerStats` plus this vendor's slice of `mockProducts` — no API yet.
+ * One request backs the whole screen: `GET /api/users/me/dashboard` returns the
+ * stats, the sales orders and the listings together.
  */
 
 const money = (amount: number, currency = 'GH₵') =>
