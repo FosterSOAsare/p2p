@@ -158,7 +158,7 @@ export function JoinDeal() {
           <div className="space-y-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
               <p className="mb-0.5 font-bold text-slate-900 dark:text-white">Sign in to join</p>
-              You need a P2P Market account to take a side in an escrow deal. We&apos;ll bring you straight back here.
+              You need a VeriTrust account to take a side in an escrow deal. We&apos;ll bring you straight back here.
             </div>
             <Link
               to={`/login?redirect=${encodeURIComponent(joinUrl)}`}

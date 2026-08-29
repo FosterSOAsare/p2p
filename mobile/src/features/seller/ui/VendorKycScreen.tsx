@@ -144,7 +144,7 @@ export function VendorKycScreen() {
       </View>
       <Text style={[styles.title, { color: theme.text }]}>Become a Verified Vendor</Text>
       <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-        Upgrade your buyer account to start listing physical goods on P2P Trust Market. Identity
+        Upgrade your buyer account to start listing physical goods on VeriTrust. Identity
         verification ensures 100% buyer trust.
       </Text>
     </View>

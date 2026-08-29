@@ -129,6 +129,7 @@ export function LoadingScreen() {
         </Animated.View>
 
         <Animated.View style={[styles.copy, textStyle]}>
+          <Text style={styles.title}>VeriTrust</Text>
           <Text style={styles.subtitle}>Secure escrow for every deal</Text>
         </Animated.View>
       </View>
@@ -158,6 +159,15 @@ const styles = StyleSheet.create({
   copy: {
     marginTop: 24,
     alignItems: 'center',
+  },
+  // The wordmark under the logo. `LogoMark` is the symbol only — it carries no
+  // text — so without this the splash shows the mark and a tagline with the
+  // product's name nowhere on it.
+  title: {
+    fontSize: 22,
+    fontFamily: Fonts.display[700],
+    letterSpacing: -0.5,
+    color: '#ffffff',
   },
   subtitle: {
     fontSize: 14,

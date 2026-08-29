@@ -1,0 +1,41 @@
+<!--
+  Source artwork for the social card. Scrapers cannot read SVG, so this must be
+  exported to public/og-cover.png at 1200x630 — `npm run og:image` does it.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Manrope, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#052e16" />
+      <stop offset="55%" stop-color="#0b3d22" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22c55e" stop-opacity="0.30" />
+      <stop offset="100%" stop-color="#22c55e" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <circle cx="1010" cy="120" r="330" fill="url(#glow)" />
+
+  <!-- Shield mark -->
+  <g transform="translate(90 232)">
+    <path d="M44 0 88 18v34c0 27-18 50-44 58C18 102 0 79 0 52V18z" fill="#16a34a" />
+    <path d="M26 52l13 14 25-29" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+
+  <text x="206" y="298" fill="#ffffff" font-size="86" font-weight="800" letter-spacing="-2.5">VeriTrust</text>
+  <text x="92" y="382" fill="#86efac" font-size="31" font-weight="700" letter-spacing="4">ESCROW-BACKED P2P MARKETPLACE</text>
+  <text x="92" y="452" fill="#cbd5e1" font-size="29" font-weight="500">The payment is held in escrow and released only when</text>
+  <text x="92" y="494" fill="#cbd5e1" font-size="29" font-weight="500">the buyer confirms delivery.</text>
+
+  <g fill="#94a3b8" font-size="24" font-weight="600">
+    <text x="92" y="566">KYC-verified sellers</text>
+    <text x="372" y="566">·</text>
+    <text x="404" y="566">Admin-ruled disputes</text>
+    <text x="704" y="566">·</text>
+    <text x="736" y="566">GH₵ &amp; crypto</text>
+  </g>
+
+  <rect x="0" y="618" width="1200" height="12" fill="#16a34a" />
+</svg>

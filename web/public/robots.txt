@@ -1,0 +1,40 @@
+# VeriTrust — https://veritrust.app
+#
+# The public surface is the marketplace, seller profiles and the legal pages.
+# Everything else is either a signed-in view or a private invite, and none of
+# it belongs in a search index.
+
+User-agent: *
+
+# Signed-in surface — account, money, and deal state.
+Disallow: /dashboard
+Disallow: /deals
+Disallow: /escrow
+Disallow: /checkout
+Disallow: /wallet
+Disallow: /messages
+Disallow: /settings
+Disallow: /bookmarks
+Disallow: /listings
+Disallow: /promotions
+Disallow: /admin
+Disallow: /sell
+Disallow: /vendor
+Disallow: /style-guide
+
+# Share links. The code IS the invite — indexing one publishes a private deal.
+Disallow: /join
+
+# One-time credential links; following them burns the token.
+Disallow: /verify-email
+Disallow: /reset-password
+Disallow: /forgot-password
+Disallow: /change-password
+
+# Filtered/paged views of the catalogue collapse onto the canonical listing.
+Disallow: /*?*sort=
+Disallow: /*?*page=
+
+Allow: /
+
+Sitemap: https://veritrust.app/sitemap.xml

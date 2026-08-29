@@ -81,6 +81,63 @@ web/src/
 - **All server calls** go through `features/shared/libs/api.ts` (`api<T>(path, {method, body})`), which attaches the JWT and transparently refreshes on 401.
 - **Money actions** confirm before firing and surface `apiErrorMessage(err)`; irreversible actions use `ConfirmDialog`.
 
+## SEO & page titles
+
+Metadata lives in two places, and the split matters.
+
+**`index.html`** is the static head. Vite serves this one file for every URL, so
+these tags are what a scraper that does **not** run JavaScript sees for *every*
+page — Facebook, WhatsApp, LinkedIn and Slack all fall in that group. It carries
+the site-level title, description, Open Graph/Twitter card, `theme-color`, the
+manifest link, and the `Organization` + `WebSite` JSON-LD.
+
+**`features/shared/libs/seo.ts`** is the per-route table, applied at runtime by
+`features/shared/ui/Seo.tsx` (mounted once in `AppProviders`, inside the router).
+It rewrites the title, description, canonical, robots and card tags on every
+navigation. Googlebot renders JS and reads these; the social scrapers do not.
+
+> **Consequence:** a link to `/marketplace/<id>` shared into WhatsApp shows the
+> *site* card, not the listing. Fixing that needs prerendering or SSR
+> (`vite-plugin-prerender`, or moving the public routes behind a small
+> pre-render step at deploy). Titles, canonicals and `robots` all work as-is.
+
+### Adding a page
+
+Add a row to `ROUTES` in `seo.ts` — pattern, title, description, and `index`.
+Anything behind a login gets `index: false`; that is the default for an unmatched
+path too, so a new private route is never accidentally indexable.
+
+A page whose title depends on loaded data calls `useSeo()` with its own values
+(see `ProductDetail`, `SellerProfile`). Call it **above** any early return —
+hooks can't be conditional — and pass `null` while loading so the route default
+holds. `useJsonLd(id, data)` does the same for structured data.
+
+### Files that carry the public origin
+
+`VITE_SITE_URL` drives every canonical and absolute `og:` URL at runtime, but
+four files hardcode it and must be changed together when the domain is settled:
+
+- `.env` / `.env.example` — `VITE_SITE_URL`
+- `index.html` — canonical, `og:url`, `og:image`, JSON-LD `@id`s
+- `public/robots.txt` — the `Sitemap:` line
+- `public/sitemap.xml` — every `<loc>`
+
+`public/sitemap.xml` lists **static routes only**. Listings and seller profiles
+are database rows, so a complete sitemap has to be generated at deploy time
+against the API; until then they are discovered by crawling from `/marketplace`.
+
+### The social card image
+
+`public/og-cover.svg` is the source artwork. Scrapers can't read SVG, so it must
+be exported to `public/og-cover.png` at 1200×630:
+
+```bash
+npm run og:image     # npx svgexport — downloads a headless browser on first run
+```
+
+**Until that is run, `og-cover.png` does not exist and shared links show no
+image.** Everything else works without it.
+
 ## Status
 
 Order lifecycle, wallet, dashboards, and the admin console (KYC · disputes · users · deals) are wired to

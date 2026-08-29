@@ -19,10 +19,13 @@ import { transition } from "./escrows.service";
  * applyEffects refuses a buyer-initiated crypto FUND outright.
  */
 
-/** How far below the invoiced amount still counts as paid, as a fraction.
- *  The provider has its own underpayment tolerance and flags anything past it
- *  `partially_paid`; this is the second lock on the same door, so a status that
- *  says "finished" over a materially short transfer still cannot fund a deal. */
+/**
+ * How far below the invoiced amount still counts as paid, as a fraction.
+ *
+ * The provider has its own underpayment tolerance and flags anything past it
+ * `partially_paid`; this is the second lock on the same door, so a status that
+ * says "finished" over a materially short transfer still cannot fund a deal.
+ */
 const UNDERPAY_TOLERANCE = 0.01; // 1%
 
 async function loadForDeposit(escrowId: string) {
@@ -237,6 +240,35 @@ async function applySnapshot(
   row: CryptoEscrow,
   snapshot: nowpayments.PaymentSnapshot,
 ): Promise<CryptoEscrow> {
+  const settled = nowpayments.isSettled(snapshot.status);
+
+  // What to record as received: the provider's own count when it gives one,
+  // otherwise — on a settled status — the amount the invoice asked for.
+  //
+  // The sandbox never gives one. A payment created with an explicit
+  // `case: "success"` still walks to `finished` carrying `actually_paid: 0`
+  // and `payin_hash: null`, because no transfer is ever simulated; checked
+  // against the sandbox directly, and it stays 0 long after settling. So the
+  // amount is not independently verified here — a settled status is taken at
+  // its word, which is the same bet the provider's own contract makes when it
+  // promises a short transfer arrives as `partially_paid`, never `finished`.
+  //
+  // That is sound ONLY because this build is sandbox/testnet by design: real
+  // processing and mainnet crypto are out of scope per the project proposal.
+  // GOING LIVE MEANS RESTORING AN AMOUNT CHECK HERE. Without one, a provider
+  // that ever reported `finished` over a short payment would fund an escrow
+  // the buyer never covered, and the seller would be paid out of it.
+  //
+  // That warning is now enforced rather than remembered. The substitution is
+  // gated on `nowpaymentsTrustStatus()`, which requires both an explicit
+  // `NOWPAYMENTS_TRUST_STATUS=true` and a sandbox base URL — so pointing this
+  // build at live keys restores the amount check by itself, with no edit here
+  // and nothing to forget. Unset it and the guard below bites in the sandbox too.
+  const expected = Number(row.expectedTrx);
+  const sandboxTrust = nowpaymentsTrustStatus();
+  const received =
+    snapshot.actuallyPaid > 0 ? snapshot.actuallyPaid : settled && sandboxTrust ? expected : 0;
+
   const updated = await prisma.cryptoEscrow.update({
     where: { id: row.id },
     data: {
@@ -245,36 +277,39 @@ async function applySnapshot(
       payCurrency: snapshot.payCurrency || row.payCurrency,
       depositAddress: snapshot.payAddress ?? row.depositAddress,
       depositTxid: snapshot.payinHash ?? row.depositTxid,
-      receivedTrx: snapshot.actuallyPaid,
+      receivedTrx: received,
     },
   });
 
-  if (!nowpayments.isSettled(snapshot.status)) return updated;
+  if (!settled) return updated;
 
-  const expected = Number(updated.expectedTrx);
-  const short = snapshot.actuallyPaid < expected * (1 - UNDERPAY_TOLERANCE);
+  /*
+    The guard runs against `received`, not `snapshot.actuallyPaid`.
 
-  if (short && nowpaymentsTrustStatus()) {
-    /*
-      Sandbox only, and deliberately loud.
+    That distinction is the whole reconciliation between two approaches to the
+    same sandbox problem. `received` above already substitutes the invoiced
+    amount when the provider reports a settled payment with `actually_paid: 0`
+    — but only in the sandbox, and only with the flag. So in the sandbox this
+    passes and the deal funds; in production `received` is whatever actually
+    arrived and the check below bites exactly as before.
 
-      NOWPayments' sandbox reports `finished` while leaving `actually_paid` at
-      0, so the check below — which is right, and is what stops a seller being
-      handed an escrow the buyer never covered — makes the rail impossible to
-      demonstrate end to end. This lets the status alone settle it, but only
-      with `NOWPAYMENTS_TRUST_STATUS=true` *and* a sandbox base URL, so it
-      cannot follow a copied `.env` into production (see env.ts).
+    Checking `snapshot.actuallyPaid` here instead would contradict the row we
+    just wrote: the deposit would be recorded as fully received and the deal
+    still refused to fund.
+  */
+  const short = received < expected * (1 - UNDERPAY_TOLERANCE);
 
-      Logged at warn on every single settlement rather than once at boot: if
-      this ever fires somewhere it shouldn't, the evidence should be impossible
-      to miss in the logs.
-    */
+  if (settled && sandboxTrust && snapshot.actuallyPaid <= 0) {
+    // Loud on every settlement it affects, not once at boot: if this ever fires
+    // where it shouldn't, the evidence should be impossible to miss.
     console.warn(
-      `[crypto:${escrow.id}] SANDBOX: funding on provider status "${snapshot.status}" alone — ` +
-        `reported ${snapshot.actuallyPaid} of ${expected} ${updated.payCurrency}. ` +
-        `This bypasses the underpayment guard and must never be enabled against live keys.`,
+      `[crypto:${escrow.id}] SANDBOX: settling on provider status "${snapshot.status}" alone — ` +
+        `the provider reported 0 of ${expected} ${updated.payCurrency}. ` +
+        `The amount is not verified here and this must never run against live keys.`,
     );
-  } else if (short) {
+  }
+
+  if (short) {
     // Settled upstream but short of what the deal is worth. Funding on this
     // would hand the seller an escrow the buyer never covered, so it stops
     // here and stays visible as an underpayment for someone to sort out.

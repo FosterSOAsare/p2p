@@ -1,5 +1,5 @@
 /**
- * Design tokens for the P2P Marketplace mobile app.
+ * Design tokens for the VeriTrust mobile app.
  * Matches the web app's green primary palette and extends
  * with semantic/status colors for the escrow lifecycle.
  */

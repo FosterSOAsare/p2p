@@ -101,7 +101,7 @@ export function VendorKyc() {
           Become a Verified Vendor
         </h1>
         <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-          Upgrade your buyer account to start listing physical goods on P2P Trust Market. Identity verification ensures 100% buyer trust.
+          Upgrade your buyer account to start listing physical goods on VeriTrust. Identity verification ensures 100% buyer trust.
         </p>
       </div>
     </>

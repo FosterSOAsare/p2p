@@ -19,6 +19,8 @@ import { useMe } from '../features/auth/data/authApi'
 import { formatMoney } from '../features/shared/libs/currency'
 import { formatDate } from '../features/shared/libs/date'
 import { apiErrorMessage } from '../features/shared/libs/api'
+import { useSeo } from '../features/shared/ui/Seo'
+import { sellerSeo } from '../features/shared/libs/seo'
 
 export function SellerProfile() {
   const { username = '' } = useParams()
@@ -51,6 +53,10 @@ export function SellerProfile() {
       },
     )
   }
+
+  // Above the early returns — hooks can't be conditional. Falls back to the
+  // route default until the profile resolves.
+  useSeo(sellerSeo(profileQuery.data))
 
   if (profileQuery.isLoading) {
     return (

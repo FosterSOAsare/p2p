@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "P2P Trust Market",
-    "slug": "p2p-M",
+    "name": "VeriTrust",
+    "slug": "veritrust",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "p2pm",
+    "scheme": "veritrust",
     "userInterfaceStyle": "automatic",
     "android": {
       "adaptiveIcon": {
@@ -36,6 +36,7 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "description": "Buy and sell peer-to-peer with the payment held in escrow until delivery is confirmed."
   }
 }

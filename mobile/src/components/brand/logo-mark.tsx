@@ -1,7 +1,7 @@
 import Svg, { Path } from 'react-native-svg';
 
 /**
- * The P2P Trust Market brand mark.
+ * The VeriTrust brand mark.
  *
  * Generated from `web/src/assets/logo.svg` so the phone shows the exact same
  * artwork as the web app — same paths, same fills, no redraw. The source is an

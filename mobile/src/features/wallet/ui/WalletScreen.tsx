@@ -208,7 +208,7 @@ export function WalletScreen() {
           <View style={[styles.railPill, { backgroundColor: theme.card }]}>
             <ShieldCheck size={13} color={theme.primary} />
             <Text style={[styles.railPillText, { color: theme.primary }]}>
-              P2P Escrow Settle Rail • {currency}
+              VeriTrust Escrow Settle Rail • {currency}
             </Text>
           </View>
 

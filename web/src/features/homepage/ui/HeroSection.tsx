@@ -11,7 +11,7 @@ export function HeroSection() {
       {/* Full-Width Edge-to-Edge Background Photography Image */}
       <img
         src="https://images.unsplash.com/photo-1556740758-90de374c12ad?w=1600&auto=format&fit=crop&q=80"
-        alt="P2P Escrow Commerce Hero Background"
+        alt="VeriTrust escrow commerce"
         className="absolute inset-0 h-full w-full object-cover opacity-35 dark:opacity-45 transition-opacity duration-500 pointer-events-none"
       />
 

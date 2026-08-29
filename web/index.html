@@ -2,15 +2,109 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>P2P Trust Market</title>
+
+    <!--
+      The static head. Every URL is served this file, so these tags are what a
+      scraper that does not run JavaScript (Facebook, WhatsApp, LinkedIn, Slack)
+      will see for EVERY page. Per-route titles and descriptions are rewritten
+      at runtime by src/features/shared/ui/Seo.tsx — Googlebot renders JS and
+      picks those up; the others do not. Keep this describing the site as a
+      whole, and see web/README.md before assuming a shared link will show a
+      per-page preview.
+
+      Absolute URLs below must match VITE_SITE_URL.
+    -->
+    <title>VeriTrust — Escrow-Backed P2P Marketplace</title>
+    <meta
+      name="description"
+      content="VeriTrust holds the payment in escrow until the buyer confirms delivery. Shop KYC-verified sellers, or open a standalone escrow deal for any off-platform trade — settled in GH₵ or crypto."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://veritrust.app/" />
+    <meta name="author" content="VeriTrust" />
+    <meta name="application-name" content="VeriTrust" />
+
+    <!-- Browser chrome. Both schemes declared so the bar matches the app. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#16a34a" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#020617" />
+    <meta name="color-scheme" content="light dark" />
+
+    <!-- Icons & install metadata -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="VeriTrust" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+
+    <!-- Open Graph -->
+    <meta property="og:site_name" content="VeriTrust" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_GH" />
+    <meta property="og:title" content="VeriTrust — Escrow-Backed P2P Marketplace" />
+    <meta
+      property="og:description"
+      content="The payment is held in escrow and released only when the buyer confirms delivery. Shop verified sellers, or open a standalone escrow deal for any off-platform trade."
+    />
+    <meta property="og:url" content="https://veritrust.app/" />
+    <meta property="og:image" content="https://veritrust.app/og-cover.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="VeriTrust — escrow-backed peer-to-peer marketplace" />
+
+    <!-- Twitter/X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="VeriTrust — Escrow-Backed P2P Marketplace" />
+    <meta
+      name="twitter:description"
+      content="The payment is held in escrow and released only when the buyer confirms delivery. Shop verified sellers, or open a standalone escrow deal for any off-platform trade."
+    />
+    <meta name="twitter:image" content="https://veritrust.app/og-cover.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
+
+    <!--
+      Static structured data: the organisation and the site itself. Static on
+      purpose — these describe the site, not the route, so a non-rendering
+      crawler should still get them. Per-listing Product data is injected by
+      the listing page (see useJsonLd).
+    -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://veritrust.app/#organization",
+            "name": "VeriTrust",
+            "url": "https://veritrust.app/",
+            "logo": "https://veritrust.app/favicon.svg",
+            "description": "Escrow-backed peer-to-peer marketplace. Payment is held until the buyer confirms delivery, with admin-ruled dispute resolution."
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://veritrust.app/#website",
+            "name": "VeriTrust",
+            "url": "https://veritrust.app/",
+            "publisher": { "@id": "https://veritrust.app/#organization" },
+            "inLanguage": "en",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": {
+                "@type": "EntryPoint",
+                "urlTemplate": "https://veritrust.app/marketplace?search={search_term_string}"
+              },
+              "query-input": "required name=search_term_string"
+            }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

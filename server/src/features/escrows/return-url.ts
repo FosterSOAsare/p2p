@@ -23,8 +23,15 @@ import { ApiError } from "../../shared/lib/errors";
  * is how this kind of bug hides.
  */
 
-/** The mobile app's deep-link scheme — must match `scheme` in mobile/app.json. */
-const APP_SCHEME = "p2pm";
+/**
+ * The mobile app's deep-link scheme — must match `scheme` in mobile/app.json.
+ *
+ * Renamed with the app (`p2pm` → `veritrust`). Worth knowing that a mismatch
+ * here is silent in the worst way: the redirect after paying is simply refused,
+ * so the buyer pays and the deal never settles. If the app's scheme changes
+ * again, this has to change with it.
+ */
+const APP_SCHEME = "veritrust";
 
 function sameOrigin(a: URL, b: URL): boolean {
   return a.protocol === b.protocol && a.host === b.host;

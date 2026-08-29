@@ -34,7 +34,7 @@ function interpolate(template: string, vars: Vars): string {
 /** Render a named template inside layout.html. */
 export function renderTemplate(name: string, vars: Vars): string {
   const base: Vars = {
-    appName: "P2P Market",
+    appName: "VeriTrust",
     webOrigin: env.WEB_ORIGIN,
     year: new Date().getFullYear(),
     ...vars,
@@ -83,10 +83,10 @@ async function sendSmtp(to: string, subject: string, html: string): Promise<void
  */
 export const mailer = {
   verifyAccount: (to: string, name: string, link: string) =>
-    sendMail(to, "Verify your P2P Market account", "verify-account", { name, link }),
+    sendMail(to, "Verify your VeriTrust account", "verify-account", { name, link }),
 
   forgotPassword: (to: string, name: string, link: string) =>
-    sendMail(to, "Reset your P2P Market password", "forgot-password", { name, link }),
+    sendMail(to, "Reset your VeriTrust password", "forgot-password", { name, link }),
 
   loginAlert: (to: string, name: string, when: string, ip: string) =>
     sendMail(to, "New sign-in to your account", "login", { name, when, ip }),
