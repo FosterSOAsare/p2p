@@ -15,12 +15,34 @@ import { api } from '@/features/shared/data/api';
 
 export type KycStatus = 'unverified' | 'pending' | 'verified' | 'rejected';
 
-/** `GET /api/kyc/me` — an account with no profile yet answers `unverified`. */
+/**
+ * `GET /api/kyc/me` — an account with no profile yet answers `unverified`.
+ *
+ * Field for field what `kyc.service.ts`'s `toStatusResponse` sends, including
+ * `submission`: the answers already on file. A rejected seller is asked to
+ * correct their application, not retype it, so the form prefills from this —
+ * exactly as the web does.
+ */
 export interface KycStatusResponse {
   status: KycStatus;
   rejectionReason?: string | null;
   submittedAt?: string;
-  decidedAt?: string | null;
+  reviewedAt?: string | null;
+  submission?: KycSubmissionOnFile;
+}
+
+/**
+ * A submission read back off the profile.
+ *
+ * Same fields as `KycSubmission`, but the three optional ones come back as
+ * `null` rather than absent — they're nullable columns, and the service
+ * forwards them as they are.
+ */
+export interface KycSubmissionOnFile
+  extends Omit<KycSubmission, 'taxId' | 'momoNumber' | 'trxAddress'> {
+  taxId?: string | null;
+  momoNumber?: string | null;
+  trxAddress?: string | null;
 }
 
 /** Exactly the body `kyc.validation.ts` accepts. */

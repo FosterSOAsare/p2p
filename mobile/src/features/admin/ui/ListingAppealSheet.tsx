@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Modal, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ban, Check, X } from '@/components/icons';
 
@@ -83,7 +84,7 @@ export function ListingAppealSheet({
 
             {/* The seller's case */}
             <View style={styles.field}>
-              <Text style={[styles.label, { color: theme.textSecondary }]}>Seller's explanation</Text>
+              <Text style={[styles.label, { color: theme.textSecondary }]}>Seller&apos;s explanation</Text>
               <Text style={[styles.explanation, { color: theme.text }]}>{dispute.explanation}</Text>
             </View>
 

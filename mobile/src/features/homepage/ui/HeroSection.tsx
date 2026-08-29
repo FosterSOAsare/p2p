@@ -58,7 +58,7 @@ export function HeroSection() {
 
         <View style={styles.cardBody}>
           <ThemedText type="smallBold" style={styles.cardTitle}>
-            MacBook Pro 16" M3
+            MacBook Pro 16&quot; M3
           </ThemedText>
           <ThemedText type="small" style={styles.cardDescription}>
             Order #84920 · Seller @kwame_tech · KYC Verified

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronRight, Gavel, PackageSearch, Search, Trash2 } from '@/components/icons';
 

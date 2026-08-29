@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { ImagePlus, Loader2, Trash2 } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { useTheme, useTones } from '@/hooks/use-theme';
 import { useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { SelectField } from '@/features/shared/ui/SelectField';
 import { type ImageRef } from '@/constants/mockData';
@@ -62,6 +63,7 @@ export function ListingForm({
   onSubmit,
 }: ListingFormProps) {
   const theme = useTheme();
+  const tones = useTones();
   const ensureVisible = useEnsureVisible();
   const rows = useRef<Record<string, View | null>>({});
 
@@ -82,18 +84,32 @@ export function ListingForm({
   const uploadFiles = useUploadFiles();
   const categoriesQuery = useCategories();
 
-  /** The web's `listingSchema`, message for message. */
+  /**
+   * The web's `listingSchema`, rule for rule — and `listings.validation.ts`'s
+   * Joi behind it, which is where the ceilings actually come from.
+   *
+   * The length caps on title, description and location are enforced by
+   * `maxLength` on the inputs instead of here: a phone should stop the 121st
+   * character rather than accept it and refuse the save.
+   */
   const validate = (): boolean => {
     const next: Record<string, string> = {};
 
     if (title.trim().length < 3) next.title = 'Title must be at least 3 characters';
+
     const priceValue = Number.parseFloat(price);
     if (!Number.isFinite(priceValue) || priceValue <= 0) next.price = 'Enter a valid GH₵ price';
+    else if (priceValue > 10_000_000) next.price = 'Price must be 10,000,000 or less';
+
     if (!category) next.category = 'Pick a category';
 
-    const qty = Number.parseInt(quantity, 10);
+    // `Number('')` is 0, which would read as a quantity of zero rather than a
+    // blank field, so an empty box is turned into NaN by hand.
+    const qty = quantity.trim() === '' ? Number.NaN : Number(quantity);
     if (!Number.isFinite(qty)) next.quantity = 'Enter a quantity';
+    else if (!Number.isInteger(qty)) next.quantity = 'Whole numbers only';
     else if (qty < 1) next.quantity = 'At least 1 unit';
+    else if (qty > 10_000) next.quantity = 'At most 10,000 units';
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -125,7 +141,7 @@ export function ListingForm({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
-        selectionLimit: 6,
+        selectionLimit: 8,
         quality: 0.8,
       });
       if (result.canceled) return;
@@ -138,10 +154,10 @@ export function ListingForm({
        * here rather than at submit also means the thumbnail you see is the
        * uploaded image, so a failed upload is obvious at once.
        */
-      const assets = result.assets.slice(0, 6).map((a, i) => toPickedAsset(a.uri, i));
+      const assets = result.assets.slice(0, 8).map((a, i) => toPickedAsset(a.uri, i));
       try {
         const uploaded = await uploadFiles.mutateAsync(assets);
-        setImages((prev) => [...prev, ...uploaded.map((u) => u.url)].slice(0, 6));
+        setImages((prev) => [...prev, ...uploaded.map((u) => u.url)].slice(0, 8));
       } catch (err) {
         setPhotoError(apiErrorMessage(err));
       }
@@ -156,7 +172,12 @@ export function ListingForm({
     value: string,
     onChangeText: (v: string) => void,
     placeholder: string,
-    extra?: { hint?: string; multiline?: boolean; keyboardType?: 'decimal-pad' | 'number-pad' },
+    extra?: {
+      hint?: string;
+      multiline?: boolean;
+      keyboardType?: 'decimal-pad' | 'number-pad';
+      maxLength?: number;
+    },
   ) => (
     <View
       ref={(node) => {
@@ -180,6 +201,7 @@ export function ListingForm({
         placeholder={placeholder}
         placeholderTextColor={theme.textTertiary}
         multiline={extra?.multiline}
+        maxLength={extra?.maxLength}
         keyboardType={extra?.keyboardType}
         textAlignVertical={extra?.multiline ? 'top' : 'center'}
         onFocus={() => ensureVisible(rows.current[key])}
@@ -189,17 +211,21 @@ export function ListingForm({
           {
             color: theme.text,
             backgroundColor: theme.inputBackground,
-            borderColor: errors[key] ? '#fca5a5' : theme.inputBorder,
+            borderColor: errors[key] ? tones.danger.border : theme.inputBorder,
           },
         ]}
       />
-      {errors[key] ? <Text style={styles.error}>{errors[key]}</Text> : null}
+      {errors[key] ? (
+        <Text style={[styles.error, { color: tones.danger.text }]}>{errors[key]}</Text>
+      ) : null}
     </View>
   );
 
   return (
     <View style={styles.form}>
-      {field('title', 'Title', title, setTitle, 'Apple MacBook Pro M3 (16-inch)...')}
+      {field('title', 'Title', title, setTitle, 'Apple MacBook Pro M3 (16-inch)...', {
+        maxLength: 120,
+      })}
 
       {field(
         'description',
@@ -207,7 +233,7 @@ export function ListingForm({
         description,
         setDescription,
         "Condition details, what's included, warranty, delivery notes...",
-        { multiline: true },
+        { multiline: true, maxLength: 4000 },
       )}
 
       <View style={styles.row}>
@@ -249,6 +275,7 @@ export function ListingForm({
 
       {field('location', 'Location', location, setLocation, 'Accra • Ships nationwide', {
         hint: '(optional)',
+        maxLength: 120,
       })}
 
       {/* Photos — the web pastes image URLs; a phone picks from the gallery. */}
@@ -270,7 +297,7 @@ export function ListingForm({
             </View>
           ))}
 
-          {images.length < 6 ? (
+          {images.length < 8 ? (
             <Pressable
               onPress={addPhoto}
               disabled={uploadFiles.isPending}
@@ -295,7 +322,7 @@ export function ListingForm({
         </View>
 
         <Text style={[styles.labelHint, { color: theme.textTertiary }]}>
-          First photo is the cover. Up to 6.
+          First photo is the cover. Up to 8.
         </Text>
         {photoError ? <Text style={styles.error}>{photoError}</Text> : null}
       </View>
@@ -350,7 +377,7 @@ const styles = StyleSheet.create({
     outlineStyle: 'none',
   } as never,
   textarea: { height: 100, paddingTop: Spacing.three },
-  error: { fontSize: 11, fontFamily: Fonts.sans[600], color: '#b91c1c' },
+  error: { fontSize: 11, fontFamily: Fonts.sans[600] },
 
   row: { flexDirection: 'row', gap: Spacing.two },
   rowItem: { flex: 1 },

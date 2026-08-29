@@ -1,13 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image } from 'expo-image';
-import {
-  FlatList,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowRight, Inbox, Plus, ShieldCheck, Wallet } from '@/components/icons';

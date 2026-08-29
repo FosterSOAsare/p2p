@@ -11,7 +11,22 @@ import { api } from '@/features/shared/data/api';
  * trip instead of several on a link where each costs real time.
  */
 
-export type NotificationCategory = 'deal' | 'listing' | 'dispute' | 'kyc' | 'wallet' | 'system';
+/**
+ * Must stay in step with the server's `NotificationCategory` — and with the
+ * web's copy of this union, which is the same list.
+ *
+ * `promotion` was missing here while the server was already sending it, so a
+ * spotlight notification arrived as a category the screen had no style for and
+ * crashed the list. See the fallback in `NotificationsScreen`.
+ */
+export type NotificationCategory =
+  | 'deal'
+  | 'listing'
+  | 'dispute'
+  | 'kyc'
+  | 'wallet'
+  | 'promotion'
+  | 'system';
 
 export interface AppNotification {
   id: string;

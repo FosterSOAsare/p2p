@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
@@ -10,11 +9,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowRight, CreditCard, ShieldCheck, Smartphone, Wallet, X } from '@/components/icons';
+import { ArrowRight, Coins, CreditCard, ShieldCheck, Smartphone, Wallet, X } from '@/components/icons';
 
 import { Accent, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useKeyboard } from '@/hooks/use-keyboard';
 import type { PayMethod } from '../data/paymentsApi';
 
 /**
@@ -48,6 +49,8 @@ interface PaymentSheetProps {
   onPayFromWallet: (walletAmount: number) => void;
   /** Pay `walletAmount` from balance and the rest on the hosted page. */
   onPayWithProvider: (walletAmount: number, method: PayMethod) => void;
+  /** Open the TRX invoice. Only ever called on the crypto rail. */
+  onPayWithCrypto?: () => void;
 }
 
 /** Round to pesewas so on-screen math always matches what the server charges. */
@@ -74,9 +77,11 @@ export function PaymentSheet({
   onClose,
   onPayFromWallet,
   onPayWithProvider,
+  onPayWithCrypto,
 }: PaymentSheetProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { keyboardHeight } = useKeyboard();
 
   const isCrypto = rail === 'crypto';
   // The wallet is GHS-only, so a TRX deal can't draw on it whatever the balance.
@@ -110,7 +115,8 @@ export function PaymentSheet({
 
   const submit = () => {
     if (isPending) return;
-    if (coveredByWallet) onPayFromWallet(walletAmount);
+    if (isCrypto) onPayWithCrypto?.();
+    else if (coveredByWallet) onPayFromWallet(walletAmount);
     else onPayWithProvider(walletAmount, method);
   };
 
@@ -121,13 +127,25 @@ export function PaymentSheet({
       <View style={[styles.backdrop, { backgroundColor: theme.overlay }]}>
         <Pressable style={styles.backdropTap} onPress={isPending ? undefined : onClose} />
 
+        {/*
+          The sheet is anchored to the bottom, so the keyboard opens straight
+          over the amount field. Growing its bottom padding by the keyboard's
+          height lifts the content clear of it — the native equivalent of the
+          web dialog, which never has this problem because there's no soft
+          keyboard to cover it.
+
+          Padding rather than KeyboardAvoidingView on purpose: Android does not
+          reliably resize the window inside a React Native `Modal`, so the
+          behaviour prop works on iOS and quietly does nothing on Android. The
+          measured height from `useKeyboard` is right on both.
+        */}
         <View
           style={[
             styles.sheet,
             {
               backgroundColor: theme.background,
               borderColor: theme.border,
-              paddingBottom: insets.bottom + Spacing.four,
+              paddingBottom: insets.bottom + Spacing.four + keyboardHeight,
             },
           ]}
         >
@@ -157,6 +175,24 @@ export function PaymentSheet({
               <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Total due</Text>
               <Text style={[styles.totalValue, { color: theme.text }]}>{money(total, currency)}</Text>
             </View>
+
+            {/* Crypto rail — no wallet split, no provider. The server refuses a
+                crypto FUND outright, so don't offer a button that can't work. */}
+            {isCrypto ? (
+              <View style={styles.cryptoNotice}>
+                <View style={styles.cryptoNoticeIcon}>
+                  <Coins size={17} color="#854d0e" />
+                </View>
+                <View style={styles.cryptoNoticeBody}>
+                  <Text style={styles.cryptoNoticeTitle}>Funded on-chain in TRX</Text>
+                  <Text style={styles.cryptoNoticeText}>
+                    This deal settles on the Tron network, so mobile money, card and your GH₵ wallet
+                    don&apos;t apply. You&apos;ll pay {money(total, 'TRX')} on a hosted invoice; the
+                    deal moves to funded once the network confirms the transfer.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
 
             {/* Wallet split */}
             {hasBalance ? (
@@ -236,8 +272,8 @@ export function PaymentSheet({
               </View>
             ) : null}
 
-            {/* Method — only when there's actually a shortfall to charge. */}
-            {!coveredByWallet ? (
+            {/* Method — only when there's actually a fiat shortfall to charge. */}
+            {!coveredByWallet && !isCrypto ? (
               <View style={styles.methods}>
                 <Text style={[styles.methodsLabel, { color: theme.textSecondary }]}>
                   Pay {money(remaining, currency)} with
@@ -303,11 +339,17 @@ export function PaymentSheet({
             ) : (
               <>
                 <Text style={styles.ctaText}>
-                  {coveredByWallet
-                    ? `Pay ${money(total, currency)} from wallet`
-                    : `Continue to pay ${money(remaining, currency)}`}
+                  {isCrypto
+                    ? 'Continue to TRX invoice'
+                    : coveredByWallet
+                      ? `Pay ${money(total, currency)} from wallet`
+                      : `Continue to pay ${money(remaining, currency)}`}
                 </Text>
-                <ArrowRight size={17} color="#ffffff" />
+                {isCrypto ? (
+                  <Coins size={17} color="#ffffff" />
+                ) : (
+                  <ArrowRight size={17} color="#ffffff" />
+                )}
               </>
             )}
           </Pressable>
@@ -318,6 +360,30 @@ export function PaymentSheet({
 }
 
 const styles = StyleSheet.create({
+  // Amber, not themed — a rail warning that inverts in dark mode stops reading
+  // as a warning. Same call as the error box below.
+  cryptoNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    backgroundColor: '#fef9c3',
+    borderRadius: Radius.lg,
+    padding: Spacing.four,
+  },
+  cryptoNoticeIcon: {
+    height: 36,
+    width: 36,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fde68a',
+  },
+  cryptoNoticeBody: { flex: 1, gap: 2 },
+  cryptoNoticeTitle: { fontSize: 12.5, color: '#854d0e', fontFamily: Fonts.sans[700] },
+  cryptoNoticeText: { fontSize: 11.5, lineHeight: 17, color: '#854d0e', fontFamily: Fonts.sans[400] },
+
   backdrop: { flex: 1, justifyContent: 'flex-end' },
   backdropTap: { flex: 1 },
   sheet: {

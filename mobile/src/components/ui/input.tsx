@@ -6,8 +6,8 @@ import {
   View,
   type StyleProp,
   type ViewStyle,
-  Pressable,
 } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,

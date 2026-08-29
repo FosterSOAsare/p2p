@@ -51,6 +51,46 @@ export const StatusColors = {
 
 export type StatusKey = keyof typeof StatusColors;
 
+/* ── Tonal surfaces (light / dark pairs) ──────────────────────── */
+/**
+ * Semantic surfaces for the full-width notices, callouts and error boxes that
+ * carry a meaning of their own — a takedown panel, a KYC verdict, a failed
+ * request.
+ *
+ * These invert with the scheme, and `StatusColors` above deliberately does not.
+ * The distinction is size, not consistency: a status pill is a small mark on a
+ * themed card and reads as a mark whatever sits behind it, but a panel *is* the
+ * card, and a near-white one on the app's #0a0a0a background reads as a
+ * rendering fault rather than a warning.
+ *
+ * The dark ramp is the web's, step for step — `dark:bg-{tone}-950` surfaces,
+ * `dark:border-{tone}-800`, `dark:bg-{tone}-900` chips, `dark:text-{tone}-300`
+ * copy and `dark:text-{tone}-400` icons, as used across VendorKyc, UserSettings
+ * and the listing dispute panel. Surfaces are rgba so they composite over
+ * whatever sits behind them, the way the web's `/30` alpha does.
+ *
+ * Light stays exactly as each mobile screen already had it, so nothing moves in
+ * light mode.
+ */
+export const Tones = {
+  light: {
+    danger:  { surface: '#fef2f2', border: '#fecaca', chip: '#fee2e2', icon: '#e11d48', text: '#b91c1c', strong: '#7f1d1d' },
+    warning: { surface: '#fffbeb', border: '#fde68a', chip: '#fef3c7', icon: '#f59e0b', text: '#92400e', strong: '#451a03' },
+    success: { surface: '#f0fdf4', border: '#bbf7d0', chip: '#dcfce7', icon: '#059669', text: '#166534', strong: '#052e16' },
+    neutral: { surface: '#f3f4f6', border: '#e5e7eb', chip: '#e5e7eb', icon: '#6b7280', text: '#374151', strong: '#111827' },
+  },
+  // rose / amber / emerald 950→200, matching the web's dark: variants.
+  dark: {
+    danger:  { surface: 'rgba(76, 5, 25, 0.35)',   border: '#9f1239', chip: '#881337', icon: '#fb7185', text: '#fda4af', strong: '#fecdd3' },
+    warning: { surface: 'rgba(69, 26, 3, 0.40)',   border: '#92400e', chip: '#78350f', icon: '#fbbf24', text: '#fcd34d', strong: '#fde68a' },
+    success: { surface: 'rgba(2, 44, 34, 0.45)',   border: '#065f46', chip: '#064e3b', icon: '#34d399', text: '#6ee7b7', strong: '#a7f3d0' },
+    neutral: { surface: '#1a1a1a',                 border: '#262626', chip: '#2a2a2a', icon: '#9ca3af', text: '#d1d5db', strong: '#f9fafb' },
+  },
+} as const;
+
+export type ToneKey = keyof typeof Tones.light;
+export type ToneSet = (typeof Tones)['light'];
+
 /* ── Light / Dark theme colors ────────────────────────────────── */
 export const Colors = {
   light: {
@@ -69,6 +109,20 @@ export const Colors = {
     primary: Primary[600],
     primaryLight: Primary[100],
     primaryDark: Primary[800],
+    /**
+     * The web's second green. Most buttons there are `bg-primary-600`, but a
+     * handful of CTAs are `bg-emerald-600 dark:bg-emerald-500` — the seller
+     * CTA banner, the escrow calculator, Withdraw, View All Listings. Same
+     * hexes as Tailwind's emerald, so those buttons match the web exactly
+     * instead of being approximated with primary (or, as they were, teal).
+     */
+    accent: '#059669',
+    /** Foreground on `accent` — the web's `text-white dark:text-slate-950`. */
+    accentOn: '#ffffff',
+    /** emerald-100 — tinted surface for accent pills (the KYC badge). */
+    accentLight: '#d1fae5',
+    /** emerald-800 — text and icons sitting on `accentLight`. */
+    accentText: '#065f46',
     tabBarBackground: '#ffffff',
     tabBarBorder: '#e5e7eb',
     tabBarActive: Primary[600],
@@ -95,6 +149,16 @@ export const Colors = {
     primary: Primary[500],
     primaryLight: '#052e16',
     primaryDark: Primary[300],
+    /** emerald-500, matching the web's `dark:bg-emerald-500`. */
+    accent: '#10b981',
+    /**
+     * slate-950. The web deliberately flips to dark text in dark mode, because
+     * emerald-500 is light enough that white on it fails contrast.
+     */
+    accentOn: '#020617',
+    /** emerald-950 / emerald-300, the web's dark-mode pair for the pill. */
+    accentLight: '#022c22',
+    accentText: '#6ee7b7',
     tabBarBackground: '#0a0a0a',
     tabBarBorder: '#1f1f1f',
     tabBarActive: Primary[400],

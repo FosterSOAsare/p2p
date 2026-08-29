@@ -15,7 +15,7 @@ import {
 } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { useTheme, useTones } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocked } from '@/context/BlockedContext';
 import { useSellerProfile } from '../data/sellerApi';
@@ -48,14 +48,18 @@ function formatJoined(iso: string) {
 
 export function SellerProfileScreen() {
   const theme = useTheme();
+  const tones = useTones();
   const router = useRouter();
   const { user } = useAuth();
   const { username = '' } = useLocalSearchParams<{ username: string }>();
 
   // Shared, so blocking here actually removes the vendor's listings from the
   // marketplace — as it does on the web.
-  const { isBlocked, block, unblock } = useBlocked();
+  const { blocked: blockedVendors, isBlocked, block, unblock } = useBlocked();
   const blocked = isBlocked(username);
+  // The stored block carries the reason this account gave for it, which the
+  // web echoes back in the banner so you can see why you blocked them.
+  const blockEntry = blockedVendors.get(username);
   const [blockFormOpen, setBlockFormOpen] = useState(false);
   const [blockReason, setBlockReason] = useState('');
   const [blockError, setBlockError] = useState<string | null>(null);
@@ -77,11 +81,20 @@ export function SellerProfileScreen() {
             storeName: profileQuery.data.storeName ?? profileQuery.data.username,
             verified: profileQuery.data.verified,
             avatarUrl: profileQuery.data.avatarUrl ?? undefined,
-            rating: profileQuery.data.stats.rating ?? 0,
           }
         : undefined,
     [profileQuery.data],
   );
+  /**
+   * The storefront's own counters, read straight off the response.
+   *
+   * Not derived from `listings`: that array is what the endpoint chose to
+   * return, so counting it drifts from `activeListings` the moment the server
+   * caps or filters it. And `rating` stays null until the seller has been
+   * reviewed at least once — the web prints an em dash for that, so it must
+   * not be coerced to 0 on the way through.
+   */
+  const stats = profileQuery.data?.stats;
   // Sent by the server rather than inferred from a listing's creation date.
   const joinedAt = profileQuery.data?.joinedAt;
   const country = profileQuery.data?.country;
@@ -146,13 +159,13 @@ export function SellerProfileScreen() {
    * `BlockedContext`, so it survives a reload — it used to write to a Map in
    * React state and quietly forget on restart.
    *
-   * The server's own minimum is 3 characters; 5 is kept here because a
-   * three-letter reason is useless to whoever reads it later, and rejecting it
-   * on the phone is kinder than a round trip to be told the same thing.
+   * The threshold and the message are the web's (`SellerProfile.tsx`), so the
+   * same reason is accepted on either client rather than a phone rejecting
+   * what the browser would have taken.
    */
   const confirmBlock = () => {
-    if (blockReason.trim().length < 5) {
-      setBlockError('Give a short reason so we can act on it.');
+    if (blockReason.trim().length < 3) {
+      setBlockError('Give a short reason for the block');
       return;
     }
     setBlockError(null);
@@ -162,7 +175,13 @@ export function SellerProfileScreen() {
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      {/* `handled` so a tap on a listing while the search box is focused opens
+          it, instead of being swallowed dismissing the keyboard first. */}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {backButton}
 
         {/* Profile header */}
@@ -249,10 +268,16 @@ export function SellerProfileScreen() {
 
         {/* Block form */}
         {blockFormOpen ? (
-          <View style={[styles.card, styles.blockForm, { backgroundColor: theme.card }]}>
+          <View
+            style={[
+              styles.card,
+              styles.blockForm,
+              { backgroundColor: theme.card, borderColor: tones.danger.border },
+            ]}
+          >
             <View style={styles.blockHead}>
-              <View style={styles.blockIcon}>
-                <UserX size={20} color="#e11d48" />
+              <View style={[styles.blockIcon, { backgroundColor: tones.danger.chip }]}>
+                <UserX size={20} color={tones.danger.icon} />
               </View>
               <View style={styles.blockHeadText}>
                 <Text style={[styles.blockTitle, { color: theme.text }]}>Block {displayName}?</Text>
@@ -284,7 +309,9 @@ export function SellerProfileScreen() {
                 },
               ]}
             />
-            {blockError ? <Text style={styles.blockError}>{blockError}</Text> : null}
+            {blockError ? (
+              <Text style={[styles.blockError, { color: tones.danger.text }]}>{blockError}</Text>
+            ) : null}
 
             <View style={styles.blockActions}>
               <Pressable
@@ -305,16 +332,29 @@ export function SellerProfileScreen() {
 
         {/* Blocked notice */}
         {blocked ? (
-          <View style={[styles.blockedNotice, { borderColor: '#fecaca' }]}>
-            <UserX size={18} color="#b91c1c" />
+          <View
+            style={[
+              styles.blockedNotice,
+              { backgroundColor: tones.danger.surface, borderColor: tones.danger.border },
+            ]}
+          >
+            <UserX size={18} color={tones.danger.icon} />
             <View style={styles.blockedText}>
-              <Text style={styles.blockedTitle}>You blocked {displayName}</Text>
-              <Text style={styles.blockedBody}>
+              <Text style={[styles.blockedTitle, { color: tones.danger.text }]}>
+                You blocked {displayName}
+              </Text>
+              <Text style={[styles.blockedBody, { color: tones.danger.text }]}>
                 Their listings are hidden from your feed and contact is disabled.
               </Text>
+              {blockEntry?.reason ? (
+                <Text style={[styles.blockedBody, { color: tones.danger.text }]}>
+                  <Text style={styles.blockedReasonLabel}>Your reason: </Text>
+                  {blockEntry.reason}
+                </Text>
+              ) : null}
             </View>
             <Pressable onPress={() => unblock(username)} hitSlop={6}>
-              <Text style={styles.unblockText}>Unblock</Text>
+              <Text style={[styles.unblockText, { color: tones.danger.text }]}>Unblock</Text>
             </Pressable>
           </View>
         ) : null}
@@ -323,7 +363,9 @@ export function SellerProfileScreen() {
         {!blocked ? (
           <View style={[styles.statsRow, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
             <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: theme.text }]}>{listings.length}</Text>
+              <Text style={[styles.statValue, { color: theme.text }]}>
+                {stats?.activeListings ?? 0}
+              </Text>
               <Text style={[styles.statLabel, { color: theme.textTertiary }]}>Active Listings</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
@@ -336,7 +378,13 @@ export function SellerProfileScreen() {
               <View style={styles.ratingRow}>
                 <Star size={13} color="#f59e0b" fill="#f59e0b" />
                 <Text style={[styles.statValue, { color: theme.text }]}>
-                  {vendor.rating ?? '—'}
+                  {stats?.rating != null ? stats.rating.toFixed(1) : '—'}
+                  {stats && stats.reviewCount > 0 ? (
+                    <Text style={[styles.reviewCount, { color: theme.textTertiary }]}>
+                      {' '}
+                      ({stats.reviewCount})
+                    </Text>
+                  ) : null}
                 </Text>
               </View>
               <Text style={[styles.statLabel, { color: theme.textTertiary }]}>Rating</Text>
@@ -486,13 +534,12 @@ const styles = StyleSheet.create({
   },
   blockText: { fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#e11d48' },
 
-  blockForm: { borderColor: '#fecaca' },
+  blockForm: { borderWidth: 1 },
   blockHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   blockIcon: {
     height: 40,
     width: 40,
     borderRadius: Radius.md,
-    backgroundColor: '#ffe4e6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -514,7 +561,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans[400],
     outlineStyle: 'none',
   } as never,
-  blockError: { fontSize: 11, fontFamily: Fonts.sans[600], color: '#b91c1c' },
+  blockError: { fontSize: 11, fontFamily: Fonts.sans[600] },
   blockActions: { flexDirection: 'row', gap: Spacing.two },
   cancelBtn: {
     flex: 1,
@@ -541,13 +588,13 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     borderWidth: 1,
     borderRadius: Radius.md,
-    backgroundColor: '#fef2f2',
     padding: Spacing.three,
   },
   blockedText: { flex: 1, gap: 2 },
-  blockedTitle: { fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#b91c1c' },
-  blockedBody: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.sans[400], color: '#b91c1c' },
-  unblockText: { fontSize: 12, fontFamily: Fonts.sans[700], color: '#b91c1c' },
+  blockedTitle: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
+  blockedBody: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.sans[400] },
+  blockedReasonLabel: { fontFamily: Fonts.sans[700] },
+  unblockText: { fontSize: 12, fontFamily: Fonts.sans[700] },
 
   statsRow: {
     flexDirection: 'row',
@@ -559,6 +606,8 @@ const styles = StyleSheet.create({
   stat: { flex: 1, alignItems: 'center', gap: 2 },
   statDivider: { width: 1, height: 28 },
   statValue: { fontSize: 17, fontFamily: Fonts.display[700] },
+  // The web hangs the review count off the rating in a lighter, smaller face.
+  reviewCount: { fontSize: 10, fontFamily: Fonts.sans[400] },
   statLabel: {
     fontSize: 9.5,
     fontFamily: Fonts.sans[700],

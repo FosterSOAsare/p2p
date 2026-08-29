@@ -276,6 +276,40 @@ export function useDisputeDeal() {
  * `counterpartyUsername` duplicates `invitedUsername` because the server reads
  * the former — the web sends both for the same reason.
  */
+/**
+ * `POST /api/escrows` — the standalone (off-platform) contract, the phone side
+ * of the web's `useCreateStandaloneEscrow`.
+ *
+ * `role` and `feeSplit` are lowercase on the wire: the server's Joi schema
+ * accepts only `buyer`/`seller` and `buyer`/`seller`/`split`, so the screen's
+ * uppercase chip values have to be folded before they get here.
+ *
+ * `rail` is deliberately absent — the server derives it from the currency.
+ */
+export function useCreateStandaloneEscrow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      invitedUsername,
+      ...rest
+    }: {
+      title: string;
+      description?: string;
+      amount: number;
+      currency: 'GHS' | 'TRX';
+      role: 'buyer' | 'seller';
+      invitedUsername?: string;
+      feeSplit?: 'buyer' | 'seller' | 'split';
+    }) =>
+      api<{ deal: Deal }>('/api/escrows', {
+        method: 'POST',
+        // The server reads either name; the web sends both, so this does too.
+        body: { ...rest, counterpartyUsername: invitedUsername, invitedUsername },
+      }).then((r) => r.deal),
+    onSuccess: () => qc.invalidateQueries({ queryKey: dealKeys.all }),
+  });
+}
+
 export function useUpdateEscrow() {
   const invalidate = useInvalidateDeals();
   return useMutation({

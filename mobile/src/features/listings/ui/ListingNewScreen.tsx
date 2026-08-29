@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, PlusCircle } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { useTheme, useTones } from '@/hooks/use-theme';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { useCreateListing } from '../data/listingsApi';
@@ -22,6 +22,7 @@ import { ListingForm, type ListingFormValues } from './ListingForm';
  */
 export function ListingNewScreen() {
   const theme = useTheme();
+  const tones = useTones();
   const router = useRouter();
   const createListing = useCreateListing();
   const [error, setError] = useState<string | null>(null);
@@ -43,8 +44,10 @@ export function ListingNewScreen() {
         quantity: Number(values.quantity),
         location: values.location || null,
         // Create only accepts draft/active — `out_of_stock` is a state a
-        // listing reaches later, not one you can publish into.
-        status: values.status === 'out_of_stock' ? 'draft' : values.status,
+        // listing reaches later, not one you can publish into. The web falls
+        // back to `active` here, so this does too; unreachable either way while
+        // Status stays hidden on create.
+        status: values.status === 'out_of_stock' ? 'active' : values.status,
         // Already uploaded by the form, so these are hosted URLs. The guard is
         // belt and braces: the server rejects anything that isn't http(s).
         images: values.images.filter(
@@ -94,8 +97,13 @@ export function ListingNewScreen() {
         {/* Why the server refused — a missing field, a bad price, a photo it
             couldn't accept. Without this a rejected publish just does nothing. */}
         {error ? (
-          <View style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
-            <Text style={styles.apiErrorText}>{error}</Text>
+          <View
+            style={[
+              styles.apiError,
+              { backgroundColor: tones.danger.surface, borderColor: tones.danger.border },
+            ]}
+          >
+            <Text style={[styles.apiErrorText, { color: tones.danger.text }]}>{error}</Text>
           </View>
         ) : null}
 
@@ -150,5 +158,5 @@ const styles = StyleSheet.create({
 
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four },
   apiError: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },
-  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600] },
 });

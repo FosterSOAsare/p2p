@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { useRouter, type Href } from 'expo-router';
 import {
   ChevronRight,
@@ -66,7 +67,7 @@ export function AdminDashboard() {
           <View style={styles.noticeBody}>
             <Text style={[styles.noticeTitle, { color: '#854d0e' }]}>Demo session</Text>
             <Text style={[styles.noticeText, { color: '#854d0e' }]}>
-              You're signed in with a demo account. Sign in with a real admin account to load live
+              You&apos;re signed in with a demo account. Sign in with a real admin account to load live
               platform data and take moderation actions.
             </Text>
           </View>
