@@ -256,6 +256,18 @@ Race behaviour re-verified after the change: two simultaneous accepts on one
 empty side give exactly one winner (409 / 200, `joinable` false), accepting
 twice is idempotent, and the creator still can't join their own deal.
 
+> **On all the timings in this document.** They were measured in one sitting
+> against the live Neon database, when a round trip cost a steady ~230ms. Later
+> the same day the same database was running 2–3× slower with spikes — an
+> unchanged `/api/notifications` went 0.23s → 0.73s, `/api/listings` 0.92s →
+> 2.27s, and eight concurrent trivial queries 232ms → 1351ms. Nothing in the
+> code had changed between those two readings.
+>
+> So treat every figure here as a **ratio, not a promise**: the round-trip
+> counts came down by the amounts described, and that holds whatever the link
+> is doing, but the absolute seconds move with the database's mood. Re-measure
+> before quoting these at anyone.
+
 ## 6. Optimistic UI
 
 Nothing in the mobile app used `onMutate`. Every tap waited out a round trip.
