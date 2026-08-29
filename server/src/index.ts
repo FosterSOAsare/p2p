@@ -50,11 +50,44 @@ function warmDatabasePool() {
   );
 }
 
+/**
+ * Keep the database awake.
+ *
+ * Neon scales the compute to zero after a few minutes without queries, and
+ * waking it costs seconds *and* drops every pooled connection, so the requests
+ * after a quiet spell pay a wake plus fresh TLS handshakes. Measured here: a
+ * query after an idle gap returned ETIMEDOUT, then took 10s on retry, then
+ * settled back to ~250ms. That is the whole of "it was fine, then it hung for
+ * thirty seconds" — no amount of query tuning touches it.
+ *
+ * One trivial query every few minutes is enough to count as activity. It costs
+ * a single round trip and nothing else, and it only runs while the server is
+ * up, which is exactly when someone might be about to use it.
+ *
+ * `unref()` so the timer never holds the process open: without it a Ctrl-C
+ * would hang until the interval next fired. Failures are ignored — if the
+ * database is unreachable, the next request will find that out and say so
+ * properly; a keep-alive is not the place to surface it.
+ */
+function startDatabaseKeepAlive() {
+  if (env.DB_KEEPALIVE_MS <= 0) return;
+  const timer = setInterval(() => {
+    void prisma.$queryRaw`SELECT 1`.catch(() => undefined);
+  }, env.DB_KEEPALIVE_MS);
+  timer.unref();
+}
+
 server.listen(env.PORT, () => {
   warmDatabasePool();
+  startDatabaseKeepAlive();
   console.log(`✅ API listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
   console.log(`   WebSocket (Socket.IO) on the same port at /socket.io`);
   console.log(`   Web origin (used in email links): ${env.WEB_ORIGIN}`);
+  console.log(
+    env.DB_KEEPALIVE_MS > 0
+      ? `   DB keep-alive every ${Math.round(env.DB_KEEPALIVE_MS / 1000)}s (DB_KEEPALIVE_MS=0 to disable)`
+      : `   DB keep-alive off`,
+  );
   console.log(`   For phone/other-device testing, run the web app with --host and open the LAN URL above.`);
 });
 
