@@ -44,8 +44,20 @@ export interface AuthTokens {
   refreshToken: string;
 }
 
+/**
+ * What `/api/auth/login` answers with.
+ *
+ * `user` carries the same fields as `/api/auth/me` — identity plus `kycStatus`,
+ * `prefs`, `wallets` and `stats` — so a client can render its signed-in shell
+ * from the login response alone. It used to be the thinner `PublicUser`, which
+ * left out the one field that decides whether someone is a seller, forcing
+ * every client into a second request before it could draw anything.
+ *
+ * Widened rather than pinned to a named type: `me()` composes its result and
+ * this follows it, so the two can't drift apart.
+ */
 export interface AuthResult {
-  user: PublicUser;
+  user: Awaited<ReturnType<typeof import("./auth.service").me>>;
   tokens: AuthTokens;
 }
 

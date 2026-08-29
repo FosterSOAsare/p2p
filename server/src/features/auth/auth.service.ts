@@ -134,9 +134,22 @@ export async function login(input: LoginInput, ctx: RequestContext): Promise<Aut
     });
   }
 
-  const tokens = await startSession(user, ctx);
+  /*
+    Return the same shape `/api/auth/me` does, not the thinner `publicUser`.
+
+    Both clients used to sign in and then immediately ask `/me`, because login
+    withheld the one field that decides what the app looks like — `kycStatus`,
+    which is what makes someone a seller. That second request is a whole extra
+    HTTP round trip on the critical path, and until it landed the web header had
+    no user and rendered Sign up / Log in to someone who had just signed in.
+
+    Gathered concurrently with the session write: `me` is four parallel reads
+    and `startSession` is a write, so neither waits on the other and login costs
+    what it did before.
+  */
+  const [tokens, profile] = await Promise.all([startSession(user, ctx), me(user.id)]);
   void mailer.loginAlert(user.email, user.fullName, new Date().toUTCString(), ctx.ip ?? "unknown");
-  return { user: publicUser(user), tokens };
+  return { user: profile, tokens };
 }
 
 // ---------- Sessions & token rotation ----------
