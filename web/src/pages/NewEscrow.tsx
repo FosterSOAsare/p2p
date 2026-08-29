@@ -173,8 +173,7 @@ export function NewEscrow() {
               </p>
             ) : (
               <p className="text-[11px] text-slate-400">
-                Leave blank to generate a public invite link to share with anyone. Admins can&apos;t
-                be invited.
+                Leave blank to generate a public invite link to share with anyone.
               </p>
             )}
           </div>

@@ -283,7 +283,7 @@ export function NewEscrowScreen() {
           >
             {unresolvedCounterparty
               ? 'Pick an account from the list — or clear the field to invite by link.'
-              : "Leave blank to generate a public invite link to share with anyone. Admins can't be invited."}
+              : 'Leave blank to generate a public invite link to share with anyone.'}
           </Text>
         </View>
 
