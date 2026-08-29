@@ -11,15 +11,14 @@ import { dealKeys } from './dealsApi';
  * buyer paying the provider, so the client only opens the invoice and then
  * watches — the FUND event is the server's to fire when the deposit confirms.
  *
- * One difference from the web worth naming. The web is handed the provider's
- * `NP_id` on its success redirect and passes it to `/crypto/check`, which is how
- * it identifies a payment before any IPN has landed. That redirect goes to
- * `WEB_ORIGIN` (see `crypto.service.startDeposit`), so a phone never sees it —
- * the invoice opens in a browser tab that returns nothing to us. So mobile polls
- * instead and lets the IPN supply the payment id, which is what happens on a
- * reachable server anyway. The consequence is limited and dev-only: against a
- * localhost server no IPN can reach, a mobile deposit will sit on "waiting"
- * where the web's redirect would have resolved it.
+ * Mobile gets the same settlement fallback the web has. NOWPayments only
+ * discloses the payment id once the buyer picks a coin, handing it back as
+ * `NP_id` on the success redirect — and that redirect used to be hard-coded to
+ * `WEB_ORIGIN`, which a phone never sees. Its only route to settlement was then
+ * the IPN webhook, which cannot reach a server on localhost, so a buyer could
+ * pay and watch the deal sit on "waiting" forever. `startDeposit` now takes a
+ * `returnUrl`: the app passes its own deep link, `openAuthSessionAsync` catches
+ * the redirect, and `NP_id` comes back with it.
  */
 
 /** Raw provider status, passed through verbatim by the server. */
@@ -90,23 +89,24 @@ export function useCryptoDeposit(escrowId: string, enabled: boolean) {
 export function useStartCryptoDeposit() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (escrowId: string) =>
+    mutationFn: ({ escrowId, returnUrl }: { escrowId: string; returnUrl: string }) =>
       api<{ deposit: CryptoDeposit }>(`/api/escrows/${escrowId}/crypto/start`, {
         method: 'POST',
+        body: { returnUrl },
       }).then((r) => r.deposit),
-    onSuccess: (deposit, escrowId) => {
+    onSuccess: (deposit, { escrowId }) => {
       queryClient.setQueryData(cryptoKeys.deposit(escrowId), deposit);
     },
   });
 }
 
 /**
- * Ask the provider directly rather than waiting for its callback — what the
- * "I've paid" button does.
+ * Ask the provider directly rather than waiting for its callback.
  *
- * `paymentId` is accepted for parity with the server's contract, but mobile has
- * no redirect to read one from (see the note at the top of this file), so in
- * practice this omits it and the server uses the id already on file.
+ * `paymentId` is read off `NP_id` on the return redirect and is the only way to
+ * identify the payment before an IPN has ever landed — which is what makes this
+ * work against a server the provider cannot reach. Omitted on a plain poll or
+ * the "I've paid" button, where the server falls back to the id on file.
  */
 export function useCheckCryptoDeposit() {
   const queryClient = useQueryClient();

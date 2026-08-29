@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import {
   AlertCircle,
   AlertTriangle,
@@ -403,26 +404,39 @@ export function EscrowDetailScreen() {
   };
 
   /**
-   * Open the hosted TRX invoice.
+   * Open the hosted TRX invoice and come back with the provider's payment id.
    *
-   * `openBrowserAsync`, not the `openAuthSessionAsync` the fiat top-up uses: the
-   * provider's success URL points at `WEB_ORIGIN` (see `crypto.service`), so no
-   * redirect ever comes back to the app and there is no return URL to wait on.
-   * That costs nothing here, because arriving back was never what confirmed a
-   * crypto deposit — the chain is. Closing the browser just re-checks, and the
-   * panel below keeps polling either way.
+   * `openAuthSessionAsync`, the same call the fiat top-up uses, because the
+   * server now honours a `returnUrl` — so the redirect after paying lands back
+   * in the app instead of on the web origin the phone never sees. That matters
+   * more than it looks: `NP_id` on that redirect is the only place NOWPayments
+   * discloses the payment id before an IPN arrives, and without it a deposit
+   * could only ever settle via a webhook, which can't reach a dev server. The
+   * buyer paid and the deal stayed on "waiting".
+   *
+   * A dismissed sheet still checks. The buyer may well have completed the
+   * transfer and then swiped the provider's page away rather than tapping
+   * through it, and the panel keeps polling regardless.
    */
   const payWithCrypto = async () => {
     setFundError(null);
     try {
-      const deposit = await startCrypto.mutateAsync(deal.id);
+      // Resolved rather than hard-coded: a dev client, Expo Go and a store
+      // build all carry different schemes.
+      const returnUrl = Linking.createURL(`/escrow/${deal.id}/crypto/callback`);
+      const deposit = await startCrypto.mutateAsync({ escrowId: deal.id, returnUrl });
       setFundOpen(false);
-      if (deposit.invoiceUrl) {
-        await WebBrowser.openBrowserAsync(deposit.invoiceUrl);
-        // Back in the app: ask once immediately rather than waiting out a poll
-        // interval, since a buyer who has just paid is watching this screen.
-        checkCrypto.mutate({ escrowId: deal.id });
-      }
+      if (!deposit.invoiceUrl) return;
+
+      const result = await WebBrowser.openAuthSessionAsync(deposit.invoiceUrl, returnUrl);
+
+      // `NP_id` identifies the payment even when no IPN has landed yet.
+      const paymentId =
+        result.type === 'success'
+          ? (Linking.parse(result.url).queryParams?.NP_id as string | undefined)
+          : undefined;
+
+      checkCrypto.mutate({ escrowId: deal.id, paymentId });
     } catch (err) {
       setFundError(apiErrorMessage(err));
     }

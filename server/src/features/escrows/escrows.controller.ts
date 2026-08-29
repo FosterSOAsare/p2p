@@ -82,7 +82,13 @@ export const review = asyncHandler(async (req, res) => {
 
 /** Buyer opens (or re-opens) the hosted invoice; responds with the URL to send them to. */
 export const cryptoStart = asyncHandler(async (req, res) => {
-  const deposit = await cryptoService.startDeposit(req.user!.id, req.params.id as string);
+  // `returnUrl` lets a phone bring the buyer back into the app instead of the
+  // web callback; it is allowlisted server-side (see return-url.ts).
+  const deposit = await cryptoService.startDeposit(
+    req.user!.id,
+    req.params.id as string,
+    (req.body?.returnUrl as string) || undefined,
+  );
   res.status(201).json({ deposit });
 });
 

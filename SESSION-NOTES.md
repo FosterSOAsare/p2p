@@ -69,6 +69,28 @@ looked. `PaymentSheet` knew what the crypto rail was but only used it to hide
 the wallet, so a TRX buyer got a momo/card sheet for a `FUND` the server refuses
 outright. **There was no way to fund a TRX deal from the phone at all.**
 
+> ⚠️ **The rail is wired but cannot run yet — `NOWPAYMENTS_API_KEY` is not in
+> `server/.env`.** `POST /api/escrows/:id/crypto/start` returns
+> `501 "Crypto funding is not configured on this server"`. This affects the
+> **web identically** — same endpoint, same guard. Add `NOWPAYMENTS_API_KEY` and
+> `NOWPAYMENTS_IPN_SECRET`; the base URL already defaults to the sandbox.
+
+A second, mobile-only blocker was found and fixed. The invoice's success URL was
+hard-coded to `WEB_ORIGIN`, and `NP_id` on that redirect is the only place
+NOWPayments discloses the payment id before an IPN arrives. A phone never saw
+it, so its only route to settlement was the webhook — which cannot reach a
+server on localhost. The buyer would pay and the deal would sit on `waiting`
+indefinitely, which is worse than a visible error.
+
+`crypto/start` now accepts a `returnUrl`, so the app passes its own deep link
+and `openAuthSessionAsync` catches the redirect with `NP_id` attached — the same
+fallback the web has always had. Because that is a redirect target on a payment
+page, it is allowlisted server-side (`server/src/features/escrows/return-url.ts`)
+rather than trusted: the app scheme, `exp://` in development only, or an exact
+origin match against `WEB_ORIGIN`. Verified refused: other hosts, suffix and
+prefix lookalikes, the `user@host` trick, protocol downgrade, a different port,
+`javascript:` and `data:`.
+
 ---
 
 ## 3. Audit findings
@@ -230,6 +252,19 @@ keep their spinners.
 - **The promotions purchase flow and the reports queue are unexercised.** They
   typecheck and bundle, and their endpoints return correct 403s, but buying a
   spotlight end-to-end needs a KYC-verified seller and an admin account.
+- **The crypto rail has never completed a payment.** It needs
+  `NOWPAYMENTS_API_KEY` in `server/.env` (see section 2); without it
+  `crypto/start` is a 501 on web and mobile alike. What *has* been verified:
+  TRX deals create with the right 1.0% fee, `GET /crypto` returns exactly the
+  shape the panel expects, the `returnUrl` allowlist refuses every attack
+  tried, and legitimate return URLs reach the service. What has **not**: an
+  invoice actually opening, a payment settling, or the IPN. Assume this one is
+  untested until someone runs it with sandbox keys.
+- **Promotions is seller-only and is not a tab.** It's reached from My Listings
+  (header button, and "Promote" on any active row) or the seller dashboard
+  hero. A buyer account sees "Sell Goods" instead of "My Listings" and gets a
+  403 from `/api/promotions/*`, so it is invisible to them by design — same as
+  the web.
 - **Your local Prisma client may be stale.** `server/src/generated` is
   gitignored and predated the crypto schema — `npx tsc --noEmit` in `server/`
   failed with 10 errors until `npx prisma generate` was run. Run it after

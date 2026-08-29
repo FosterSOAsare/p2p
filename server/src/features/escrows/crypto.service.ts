@@ -4,6 +4,7 @@ import { env, nowpaymentsEnabled } from "../../shared/config/env";
 import * as nowpayments from "../../shared/lib/nowpayments";
 import type { CryptoEscrow, Escrow } from "../../generated/prisma/client";
 import { breakdown } from "./money";
+import { resolveReturnUrl } from "./return-url";
 import { transition } from "./escrows.service";
 
 /**
@@ -53,7 +54,7 @@ const expectedFor = (escrow: Escrow) =>
  * replaced, and that replacement takes a fresh `orderRef` so the dead one's
  * callbacks can never be mistaken for the new one's.
  */
-export async function startDeposit(userId: string, escrowId: string) {
+export async function startDeposit(userId: string, escrowId: string, returnUrl?: string) {
   if (!nowpaymentsEnabled()) {
     throw ApiError.notImplemented("Crypto funding is not configured on this server");
   }
@@ -77,12 +78,34 @@ export async function startDeposit(userId: string, escrowId: string) {
   }
 
   const orderRef = nowpayments.newOrderRef(escrow.code);
+
+  /*
+    Where the buyer lands after paying, and it is the client's to choose.
+
+    The web wants its own callback route; the phone wants a deep link back into
+    the app, because that redirect is the only place NOWPayments discloses the
+    payment id before an IPN arrives (see return-url.ts). Hard-coding
+    `WEB_ORIGIN` here is what stranded mobile deposits on "waiting" after the
+    buyer had already paid.
+
+    `resolveReturnUrl` allowlists it — an unvalidated redirect target on a
+    payment page is an open redirect — and falls back to the web callback when
+    the client doesn't ask for anything, which is what the web itself does.
+  */
+  const base = resolveReturnUrl(
+    returnUrl,
+    `${env.WEB_ORIGIN}/escrow/${escrow.id}/crypto/callback`,
+  );
+  const successUrl = `${base}${base.includes("?") ? "&" : "?"}ref=${encodeURIComponent(orderRef)}`;
+
   const invoice = await nowpayments.createInvoice({
     amount: expected,
     orderId: orderRef,
     description: `Escrow ${escrow.code} — ${escrow.title}`,
-    successUrl: `${env.WEB_ORIGIN}/escrow/${escrow.id}/crypto/callback?ref=${encodeURIComponent(orderRef)}`,
-    cancelUrl: `${env.WEB_ORIGIN}/escrow/${escrow.id}`,
+    successUrl,
+    // Cancelling goes back where they came from too, so a phone doesn't strand
+    // the buyer on the web app after they change their mind.
+    cancelUrl: returnUrl ? base : `${env.WEB_ORIGIN}/escrow/${escrow.id}`,
   });
 
   // The row is per-escrow, so a retry rewrites the dead invoice in place rather
