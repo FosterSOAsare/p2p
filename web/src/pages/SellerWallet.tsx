@@ -248,7 +248,7 @@ export function SellerWallet() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 dark:bg-emerald-950 px-3 py-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              <ShieldCheck size={14} /> P2P Escrow Settle Rail • GH₵
+              <ShieldCheck size={14} /> VeriTrust Escrow Settle Rail • GH₵
             </div>
             <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
               {isSeller ? 'Seller Payout Wallet' : 'My P2P Wallet'}

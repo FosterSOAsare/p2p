@@ -217,7 +217,7 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
   if (rawCounterparty) {
     const invited = await prisma.user.findUnique({ where: { username: rawCounterparty } });
     if (!invited) {
-      throw ApiError.badRequest(`User @${rawCounterparty} was not found on P2P Market. Please verify the username and try again.`);
+      throw ApiError.badRequest(`User @${rawCounterparty} was not found on VeriTrust. Please verify the username and try again.`);
     }
     if (invited.id === creatorId) {
       throw ApiError.badRequest("You cannot create an escrow deal with yourself");
@@ -296,7 +296,7 @@ export async function updateDeal(userId: string, escrowId: string, input: Update
   if (rawCounterparty) {
     const invited = await prisma.user.findUnique({ where: { username: rawCounterparty } });
     if (!invited) {
-      throw ApiError.badRequest(`User @${rawCounterparty} was not found on P2P Market. Please verify the username and try again.`);
+      throw ApiError.badRequest(`User @${rawCounterparty} was not found on VeriTrust. Please verify the username and try again.`);
     }
     if (invited.id === userId) {
       throw ApiError.badRequest("You cannot create an escrow deal with yourself");

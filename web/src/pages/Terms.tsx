@@ -36,17 +36,17 @@ export function Terms() {
             Core Escrow Guarantee
           </div>
           <p className="text-emerald-800 dark:text-emerald-300 text-xs leading-normal">
-            Payments deposited into P2P Trust Market are held securely in non-custodial smart contracts (or Stripe hold rails) until the buyer confirms physical item receipt or 14-day auto-release timer expires without dispute.
+            Payments deposited into VeriTrust are held securely in non-custodial smart contracts (or Stripe hold rails) until the buyer confirms physical item receipt or 14-day auto-release timer expires without dispute.
           </p>
         </div>
 
         {/* Section 1 */}
         <div className="space-y-2.5">
           <h2 className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
-            1. P2P Escrow Engine Overview
+            1. Escrow Engine Overview
           </h2>
           <p>
-            P2P Trust Market acts as a decentralized software intermediary facilitating two types of financial protection:
+            VeriTrust acts as a decentralized software intermediary facilitating two types of financial protection:
           </p>
           <ul className="list-disc pl-5 space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
             <li><strong>Marketplace Escrow:</strong> Orders made through listed vendor items auto-lock payment until seller submits valid tracking and buyer confirms receipt.</li>
@@ -70,7 +70,7 @@ export function Terms() {
             3. Dispute Resolution & Arbitration SLA
           </h2>
           <p>
-            If an item is damaged, non-functional, or different from description, either party may raise a formal dispute. P2P Trust Market dispute administrators review carrier proof of delivery, order chat logs, and unboxing video evidence. Final rulings are executed programmatically to refund the buyer or release funds to the seller within 5 business days.
+            If an item is damaged, non-functional, or different from description, either party may raise a formal dispute. VeriTrust dispute administrators review carrier proof of delivery, order chat logs, and unboxing video evidence. Final rulings are executed programmatically to refund the buyer or release funds to the seller within 5 business days.
           </p>
         </div>
 
@@ -86,7 +86,7 @@ export function Terms() {
 
         {/* Footer Contact */}
         <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-          <span>Questions about our terms? Contact legal@p2ptrust.market</span>
+          <span>Questions about our terms? Contact legal@veritrust.app</span>
           <Link to="/privacy" className="font-semibold text-primary-600 dark:text-primary-400 hover:underline">
             View Privacy Policy →
           </Link>

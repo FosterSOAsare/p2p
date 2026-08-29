@@ -129,7 +129,7 @@ export function Layout() {
           <Link to="/" className="flex shrink-0 items-center group">
             <img
               src={logo}
-              alt="P2P Trust Market"
+              alt="VeriTrust"
               className="h-9 w-auto sm:h-10 transition-transform group-hover:scale-105"
             />
           </Link>

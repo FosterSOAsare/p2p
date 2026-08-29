@@ -69,7 +69,7 @@ export const env = {
   // Mail. "simulated" logs `[mail:simulated] To <email>: <subject>` (default);
   // flip to "smtp" + fill SMTP_* and install nodemailer to send for real.
   MAIL_DRIVER: (process.env.MAIL_DRIVER ?? "simulated") as "simulated" | "smtp",
-  MAIL_FROM: process.env.MAIL_FROM ?? "P2P Market <no-reply@p2p.market>",
+  MAIL_FROM: process.env.MAIL_FROM ?? "VeriTrust <no-reply@veritrust.app>",
   SMTP_HOST: process.env.SMTP_HOST ?? "",
   SMTP_PORT: Number(process.env.SMTP_PORT ?? 587),
   SMTP_USER: process.env.SMTP_USER ?? "",

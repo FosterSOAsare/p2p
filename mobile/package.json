@@ -1,5 +1,5 @@
 {
-  "name": "p2p-m",
+  "name": "veritrust-mobile",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {

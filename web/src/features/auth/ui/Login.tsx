@@ -71,7 +71,7 @@ export function Login() {
         <div className="relative hidden lg:flex lg:col-span-5 flex-col justify-between p-10 bg-emerald-50 dark:bg-slate-950 text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-800 overflow-hidden">
           <img
             src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=1000&auto=format&fit=crop&q=80"
-            alt="P2P Marketplace Shopping"
+            alt="Shopping on VeriTrust"
             className="absolute inset-0 h-full w-full object-cover opacity-15 dark:opacity-45 transition-transform duration-700 hover:scale-105"
           />
 

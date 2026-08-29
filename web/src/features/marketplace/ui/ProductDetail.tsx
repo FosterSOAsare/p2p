@@ -27,6 +27,8 @@ import { useSavedListings, useSaveListing, useUnsaveListing, useBlockedVendors }
 import { formatMoney } from '../../shared/libs/currency'
 import { formatDate } from '../../shared/libs/date'
 import { apiErrorMessage } from '../../shared/libs/api'
+import { useSeo, useJsonLd } from '../../shared/ui/Seo'
+import { listingSeo, listingJsonLd } from '../../shared/libs/seo'
 
 export function ProductDetail() {
   const { id = '' } = useParams()
@@ -51,6 +53,14 @@ export function ProductDetail() {
   // per person per listing), so the button's state survives a reload.
   const [reportOpen, setReportOpen] = useState(false)
   const reportListing = useReportListing()
+
+  // Page metadata. Above the early returns because hooks must not be
+  // conditional; both helpers no-op until the listing has actually loaded, so
+  // the route default holds the title in the meantime.
+  const detail = listingQuery.data
+  const removed = detail?.status === 'removed'
+  useSeo(removed ? null : listingSeo(detail))
+  useJsonLd('product', removed ? null : listingJsonLd(detail))
 
   if (listingQuery.isLoading) {
     return (

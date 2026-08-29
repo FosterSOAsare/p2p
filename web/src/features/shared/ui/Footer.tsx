@@ -10,10 +10,10 @@ export function Footer() {
           {/* Brand Column */}
           <div className="md:col-span-4 space-y-4">
             <Link to="/" className="inline-flex w-fit items-center">
-              <img src={logo} alt="P2P Trust Market" className="h-11 w-auto" />
+              <img src={logo} alt="VeriTrust" className="h-11 w-auto" />
             </Link>
             <p className="text-xs text-slate-400 leading-relaxed max-w-sm">
-              The trust-first P2P marketplace and standalone escrow platform. Built on a rail-agnostic ledger supporting both Fiat and self-custody Crypto transactions.
+              The trust-first peer-to-peer marketplace and standalone escrow platform. Built on a rail-agnostic ledger supporting both Fiat and self-custody Crypto transactions.
             </p>
             <div className="flex items-center gap-3 text-xs text-slate-400 font-medium">
               <span className="flex items-center gap-1 text-emerald-400">
@@ -107,7 +107,7 @@ export function Footer() {
 
         {/* Bottom Bar */}
         <div className="mt-12 pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <p>© {new Date().getFullYear()} P2P Trust Market. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} VeriTrust. All rights reserved.</p>
           <div className="flex items-center gap-4">
             <Link to="/privacy" className="hover:text-slate-300 transition-colors">Privacy Policy</Link>
             <span>•</span>

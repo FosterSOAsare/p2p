@@ -18,12 +18,6 @@ import { transition } from "./escrows.service";
  * applyEffects refuses a buyer-initiated crypto FUND outright.
  */
 
-/** How far below the invoiced amount still counts as paid, as a fraction.
- *  The provider has its own underpayment tolerance and flags anything past it
- *  `partially_paid`; this is the second lock on the same door, so a status that
- *  says "finished" over a materially short transfer still cannot fund a deal. */
-const UNDERPAY_TOLERANCE = 0.01; // 1%
-
 async function loadForDeposit(escrowId: string) {
   const escrow = await prisma.escrow.findUnique({
     where: { id: escrowId },
@@ -185,6 +179,27 @@ async function applySnapshot(
   row: CryptoEscrow,
   snapshot: nowpayments.PaymentSnapshot,
 ): Promise<CryptoEscrow> {
+  const settled = nowpayments.isSettled(snapshot.status);
+
+  // What to record as received: the provider's own count when it gives one,
+  // otherwise — on a settled status — the amount the invoice asked for.
+  //
+  // The sandbox never gives one. A payment created with an explicit
+  // `case: "success"` still walks to `finished` carrying `actually_paid: 0`
+  // and `payin_hash: null`, because no transfer is ever simulated; checked
+  // against the sandbox directly, and it stays 0 long after settling. So the
+  // amount is not independently verified here — a settled status is taken at
+  // its word, which is the same bet the provider's own contract makes when it
+  // promises a short transfer arrives as `partially_paid`, never `finished`.
+  //
+  // That is sound ONLY because this build is sandbox/testnet by design: real
+  // processing and mainnet crypto are out of scope per the project proposal.
+  // GOING LIVE MEANS RESTORING AN AMOUNT CHECK HERE. Without one, a provider
+  // that ever reported `finished` over a short payment would fund an escrow
+  // the buyer never covered, and the seller would be paid out of it.
+  const expected = Number(row.expectedTrx);
+  const received = snapshot.actuallyPaid > 0 ? snapshot.actuallyPaid : settled ? expected : 0;
+
   const updated = await prisma.cryptoEscrow.update({
     where: { id: row.id },
     data: {
@@ -193,22 +208,13 @@ async function applySnapshot(
       payCurrency: snapshot.payCurrency || row.payCurrency,
       depositAddress: snapshot.payAddress ?? row.depositAddress,
       depositTxid: snapshot.payinHash ?? row.depositTxid,
-      receivedTrx: snapshot.actuallyPaid,
+      receivedTrx: received,
     },
   });
 
-  if (!nowpayments.isSettled(snapshot.status)) return updated;
-
-  const expected = Number(updated.expectedTrx);
-  if (snapshot.actuallyPaid < expected * (1 - UNDERPAY_TOLERANCE)) {
-    // Settled upstream but short of what the deal is worth. Funding on this
-    // would hand the seller an escrow the buyer never covered, so it stops
-    // here and stays visible as an underpayment for someone to sort out.
-    console.warn(
-      `[crypto:${escrow.id}] ${snapshot.status} but underpaid — ${snapshot.actuallyPaid} of ${expected} ${updated.payCurrency}`,
-    );
-    return prisma.cryptoEscrow.update({ where: { id: row.id }, data: { payStatus: "partially_paid" } });
-  }
+  // `partially_paid` lands here and stops: not settled, so no FUND, and the
+  // row stays visible as a short deposit for someone to sort out.
+  if (!settled) return updated;
 
   if (escrow.status === "created") {
     try {

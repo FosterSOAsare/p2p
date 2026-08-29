@@ -1,5 +1,5 @@
 /**
- * Centralized mock data for the P2P Marketplace mobile app.
+ * Centralized mock data for the VeriTrust mobile app.
  * Used across all screens until backend API is integrated.
  */
 
@@ -844,7 +844,7 @@ export const mockNotifications: AppNotification[] = [
   {
     id: 'n-6',
     category: 'system',
-    title: 'Welcome to P2P Escrow',
+    title: 'Welcome to VeriTrust',
     body: 'Every sale settles through escrow — buyers pay in, you ship, funds release.',
     link: null,
     readAt: '2025-02-20T10:00:00Z',

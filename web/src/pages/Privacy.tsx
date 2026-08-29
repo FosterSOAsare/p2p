@@ -36,7 +36,7 @@ export function Privacy() {
             Zero Data Monetization Guarantee
           </div>
           <p className="text-primary-800 dark:text-primary-300 text-xs leading-normal">
-            P2P Trust Market never sells or shares your personal identity, delivery addresses, or purchase history with third-party advertisers. All transaction data is strictly restricted to deal resolution.
+            VeriTrust never sells or shares your personal identity, delivery addresses, or purchase history with third-party advertisers. All transaction data is strictly restricted to deal resolution.
           </p>
         </div>
 
@@ -87,7 +87,7 @@ export function Privacy() {
 
         {/* Footer Link */}
         <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-          <span>Privacy inquiries: privacy@p2ptrust.market</span>
+          <span>Privacy inquiries: privacy@veritrust.app</span>
           <Link to="/terms" className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">
             View Terms of Service →
           </Link>

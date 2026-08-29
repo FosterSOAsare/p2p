@@ -129,7 +129,7 @@ export function LoadingScreen() {
         </Animated.View>
 
         <Animated.View style={[styles.copy, textStyle]}>
-          <Text style={styles.title}>P2P Trust Market</Text>
+          <Text style={styles.title}>VeriTrust</Text>
           <Text style={styles.subtitle}>Secure escrow for every deal</Text>
         </Animated.View>
       </View>
