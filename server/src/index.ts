@@ -1,5 +1,5 @@
 import http from "node:http";
-import { env } from "./shared/config/env";
+import { env, nowpaymentsTrustStatus } from "./shared/config/env";
 import { createApp } from "./app";
 import { initRealtime } from "./shared/realtime/realtime";
 import { prisma } from "./shared/lib/prisma";
@@ -88,6 +88,14 @@ server.listen(env.PORT, () => {
       ? `   DB keep-alive every ${Math.round(env.DB_KEEPALIVE_MS / 1000)}s (DB_KEEPALIVE_MS=0 to disable)`
       : `   DB keep-alive off`,
   );
+  // Loud on purpose. This one bypasses an underpayment guard, so a server
+  // running with it must never be mistaken for a normal one.
+  if (nowpaymentsTrustStatus()) {
+    console.warn(
+      `   ⚠️  NOWPAYMENTS_TRUST_STATUS is ON — crypto deals fund on provider status alone,\n` +
+        `      ignoring the amount actually received. Sandbox only. Never enable with live keys.`,
+    );
+  }
   console.log(`   For phone/other-device testing, run the web app with --host and open the LAN URL above.`);
 });
 

@@ -1,6 +1,6 @@
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
-import { env, nowpaymentsEnabled } from "../../shared/config/env";
+import { env, nowpaymentsEnabled, nowpaymentsTrustStatus } from "../../shared/config/env";
 import * as nowpayments from "../../shared/lib/nowpayments";
 import type { CryptoEscrow, Escrow } from "../../generated/prisma/client";
 import { breakdown } from "./money";
@@ -252,7 +252,29 @@ async function applySnapshot(
   if (!nowpayments.isSettled(snapshot.status)) return updated;
 
   const expected = Number(updated.expectedTrx);
-  if (snapshot.actuallyPaid < expected * (1 - UNDERPAY_TOLERANCE)) {
+  const short = snapshot.actuallyPaid < expected * (1 - UNDERPAY_TOLERANCE);
+
+  if (short && nowpaymentsTrustStatus()) {
+    /*
+      Sandbox only, and deliberately loud.
+
+      NOWPayments' sandbox reports `finished` while leaving `actually_paid` at
+      0, so the check below — which is right, and is what stops a seller being
+      handed an escrow the buyer never covered — makes the rail impossible to
+      demonstrate end to end. This lets the status alone settle it, but only
+      with `NOWPAYMENTS_TRUST_STATUS=true` *and* a sandbox base URL, so it
+      cannot follow a copied `.env` into production (see env.ts).
+
+      Logged at warn on every single settlement rather than once at boot: if
+      this ever fires somewhere it shouldn't, the evidence should be impossible
+      to miss in the logs.
+    */
+    console.warn(
+      `[crypto:${escrow.id}] SANDBOX: funding on provider status "${snapshot.status}" alone — ` +
+        `reported ${snapshot.actuallyPaid} of ${expected} ${updated.payCurrency}. ` +
+        `This bypasses the underpayment guard and must never be enabled against live keys.`,
+    );
+  } else if (short) {
     // Settled upstream but short of what the deal is worth. Funding on this
     // would hand the seller an escrow the buyer never covered, so it stops
     // here and stays visible as an underpayment for someone to sort out.
