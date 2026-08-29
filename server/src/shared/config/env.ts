@@ -66,6 +66,22 @@ export const env = {
   // it at a tunnel (ngrok/cloudflared) to exercise the webhook path for real.
   SERVER_ORIGIN: process.env.SERVER_ORIGIN ?? `http://localhost:${Number(process.env.PORT ?? 4000)}`,
 
+  /**
+   * How often to send a trivial query so the database doesn't fall asleep.
+   *
+   * Neon scales the compute to zero after a few minutes with no queries (five,
+   * on the plans where it isn't configurable). Waking it costs seconds and
+   * kills every pooled connection, so the next few requests pay TLS handshakes
+   * on top — which is what "the app is fine, then suddenly takes 30 seconds"
+   * actually is.
+   *
+   * Four minutes leaves a margin under that threshold. Set `DB_KEEPALIVE_MS=0`
+   * to switch it off, which is the right setting against a database that
+   * doesn't suspend — there is no point holding one awake that was never going
+   * to sleep.
+   */
+  DB_KEEPALIVE_MS: Number(process.env.DB_KEEPALIVE_MS ?? 4 * 60_000),
+
   // Mail. "simulated" logs `[mail:simulated] To <email>: <subject>` (default);
   // flip to "smtp" + fill SMTP_* and install nodemailer to send for real.
   MAIL_DRIVER: (process.env.MAIL_DRIVER ?? "simulated") as "simulated" | "smtp",

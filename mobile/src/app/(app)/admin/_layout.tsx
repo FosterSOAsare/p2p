@@ -94,6 +94,15 @@ export default function AdminTabsLayout() {
         exists to get away from.
       */}
       <Tabs.Screen name="deals" options={{ href: null }} />
+
+      {/*
+        Reports likewise. The web gives it its own nav entry, but that nav is a
+        sidebar with room to spare; a sixth item here would crowd six labels
+        into a phone's width. It is reached from the console home's open-reports
+        tile and from the Listings screen, which is where an admin is already
+        looking when a flagged listing matters.
+      */}
+      <Tabs.Screen name="reports" options={{ href: null }} />
     </Tabs>
   );
 }

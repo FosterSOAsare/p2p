@@ -29,10 +29,10 @@ import { useSellerProfile } from '../data/sellerApi';
  * active listings. Blocking hides the listings and swaps in the blocked notice,
  * exactly as the web does.
  *
- * The mobile mock has no user directory, so the profile is derived from the
- * vendor attached to their listings. Blocking writes to `BlockedContext`, so a
- * blocked vendor's listings drop out of the marketplace — the web's
- * `useBlockVendor` + marketplace filter, in one place.
+ * The storefront comes from `GET /api/users/:username` — identity, stats and
+ * live listings in one public response. Blocking goes through
+ * `BlockedContext`, so a blocked vendor's listings drop out of the marketplace
+ * too: the web's `useBlockVendor` + marketplace filter, in one place.
  */
 
 function formatMoney(amount: number, currency = 'GH₵') {

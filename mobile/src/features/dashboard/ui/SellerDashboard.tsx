@@ -23,7 +23,7 @@ import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { useRef, useState } from 'react';
-import { type User } from '@/constants/mockData';
+import { type User } from '@/constants/appTypes';
 import { useDeleteListing } from '@/features/listings/data/listingsApi';
 import { useDeliverDeal } from '@/features/escrow/data/dealsApi';
 import { useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';

@@ -83,7 +83,8 @@ export default function RootLayout() {
 
   // Hold the tree back for the one frame it takes to register the families, so
   // no screen paints in the system font and then reflows. The native splash is
-  // still up at this point — `components/animated-icon` hides it later.
+  // still up at this point and hides itself once the root view is ready —
+  // nothing here calls `preventAutoHideAsync`, so nothing has to un-hide it.
   // On a font error we render anyway rather than trapping the user on a blank
   // screen; the system font is a survivable fallback.
   if (!fontsLoaded && !fontError) return null;

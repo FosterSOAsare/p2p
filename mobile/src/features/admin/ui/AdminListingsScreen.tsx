@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Pressable } from '@/components/ui/pressable';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ChevronRight, Gavel, PackageSearch, Search, Trash2 } from '@/components/icons';
+import { ChevronRight, Flag, Gavel, PackageSearch, Search, Trash2 } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -196,6 +196,20 @@ export function AdminListingsScreen() {
                   <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
                     {l.title}
                   </Text>
+                  {/* Buyers have flagged this one — tapping goes to the queue
+                      where it can actually be ruled on, as the web's badge does. */}
+                  {l.openReportCount > 0 ? (
+                    <Pressable
+                      onPress={() => router.push('/admin/reports')}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${l.openReportCount} open reports — review in Reports`}
+                      style={styles.reportBadge}
+                    >
+                      <Flag size={10} color="#92400e" />
+                      <Text style={styles.reportBadgeText}>{l.openReportCount}</Text>
+                    </Pressable>
+                  ) : null}
                   <StatusPill
                     label={STATUS_PILL[l.status].label}
                     bg={STATUS_PILL[l.status].bg}
@@ -283,6 +297,18 @@ const styles = StyleSheet.create({
   thumbImg: { width: '100%', height: '100%' },
   body: { flex: 1, gap: 3 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  reportBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderRadius: Radius.full,
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  reportBadgeText: { fontSize: 9.5, fontFamily: Fonts.sans[700], color: '#92400e' },
   // `flex: 1` (not `flexShrink`) so the title always claims the leftover width
   // and the pill parks on the right edge — short and long titles line up.
   title: { flex: 1, fontSize: 14, fontFamily: Fonts.sans[700] },

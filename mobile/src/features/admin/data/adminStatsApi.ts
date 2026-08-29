@@ -9,6 +9,8 @@ export interface AdminStats {
   activeListings: number
   kycPending: number
   openDisputes: number
+  /** Listings with at least one unreviewed buyer report — the reports queue's badge. */
+  openReports: number
   totalDeals: number
   dealsByStatus: Record<DealStatus, number>
   ghsVolume: number

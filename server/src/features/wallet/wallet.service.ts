@@ -290,14 +290,26 @@ export async function withdraw(userId: string, amount: number, destination: stri
 }
 
 export async function listTransactions(userId: string, page: number, limit: number) {
-  const wallet = await prisma.wallet.upsert({
-    where: { userId_currency: { userId, currency: "GHS" } },
-    create: { userId, currency: "GHS" },
-    update: {},
-  });
-  const where = { walletId: wallet.id };
+  /**
+   * Filtered through the wallet relation rather than by a `walletId` fetched
+   * first.
+   *
+   * This used to upsert the wallet, wait for it, and only then run the two
+   * queries below — three round trips deep on a link where each is ~450ms, to
+   * learn an id that Postgres can just as easily join on. The upsert still has
+   * to happen (a user who has never transacted has no wallet row, and the
+   * balance endpoint expects one), but it no longer blocks the read: it runs
+   * alongside, and the rows come back keyed off the same user and currency.
+   */
+  const where = { wallet: { userId, currency: "GHS" as const } };
+
   // Concurrent, not transactional — see the note in listings.service list().
-  const [total, rows] = await Promise.all([
+  const [, total, rows] = await Promise.all([
+    prisma.wallet.upsert({
+      where: { userId_currency: { userId, currency: "GHS" } },
+      create: { userId, currency: "GHS" },
+      update: {},
+    }),
     prisma.transaction.count({ where }),
     prisma.transaction.findMany({
       where,

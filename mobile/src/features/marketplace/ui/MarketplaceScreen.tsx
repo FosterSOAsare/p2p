@@ -15,7 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useSaved } from '@/context/SavedContext';
 import { useBlocked } from '@/context/BlockedContext';
 import { usePersona } from '@/hooks/use-persona';
-import { type ImageRef } from '@/constants/mockData';
+import { type ImageRef } from '@/constants/appTypes';
 import {
   useCategories,
   useMarketplaceListings,

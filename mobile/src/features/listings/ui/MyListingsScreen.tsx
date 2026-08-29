@@ -257,6 +257,7 @@ export function MyListingsScreen() {
             <Sparkles size={15} color={canPromote ? '#d97706' : theme.textTertiary} />
           </Pressable>
 
+
           <Pressable
             onPress={() => setConfirmTarget(item)}
             accessibilityRole="button"
@@ -311,16 +312,34 @@ export function MyListingsScreen() {
               Manage your marketplace inventory. All sales settle through GH₵ escrow.
             </Text>
 
-            <Pressable
-              onPress={() => router.push('/listings/new')}
-              style={({ pressed }) => [
-                styles.addBtn,
-                { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
-              ]}
-            >
-              <PlusCircle size={16} color="#ffffff" />
-              <Text style={styles.addBtnText}>Add New Listing</Text>
-            </Pressable>
+            <View style={styles.headerActions}>
+              <Pressable
+                onPress={() => router.push('/listings/new')}
+                style={({ pressed }) => [
+                  styles.addBtn,
+                  { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <PlusCircle size={16} color="#ffffff" />
+                <Text style={styles.addBtnText}>Add New Listing</Text>
+              </Pressable>
+
+              {/* The web puts this beside "Add New Listing" too — the hub is
+                  where a seller manages every running spotlight at once. */}
+              <Pressable
+                onPress={() => router.push('/promotions')}
+                style={({ pressed }) => [
+                  styles.promoteBtn,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
+                  },
+                ]}
+              >
+                <Sparkles size={16} color={theme.primary} />
+                <Text style={[styles.promoteBtnText, { color: theme.text }]}>Promotions</Text>
+              </Pressable>
+            </View>
 
             {/* The web's second header link — the promotions hub. */}
             <Pressable
@@ -489,7 +508,9 @@ const styles = StyleSheet.create({
   title: { fontSize: 21, fontFamily: Fonts.display[700], letterSpacing: -0.4, marginTop: -Spacing.two },
   subtitle: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[400] },
 
+  headerActions: { flexDirection: 'row', gap: Spacing.two },
   addBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -499,6 +520,18 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     borderRadius: Radius.md,
   },
+  promoteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    minHeight: 46,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
+  promoteBtnText: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
   // "Create your first listing" is the long one — it wraps inside the button
   // now instead of running past its edge on a narrow screen.
   addBtnText: { flexShrink: 1, fontSize: 13, fontFamily: Fonts.sans[700], color: '#ffffff' },

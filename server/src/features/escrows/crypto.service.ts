@@ -4,6 +4,7 @@ import { env, nowpaymentsEnabled } from "../../shared/config/env";
 import * as nowpayments from "../../shared/lib/nowpayments";
 import type { CryptoEscrow, Escrow } from "../../generated/prisma/client";
 import { breakdown } from "./money";
+import { resolveReturnUrl } from "./return-url";
 import { transition } from "./escrows.service";
 
 /**
@@ -53,7 +54,7 @@ const expectedFor = (escrow: Escrow) =>
  * replaced, and that replacement takes a fresh `orderRef` so the dead one's
  * callbacks can never be mistaken for the new one's.
  */
-export async function startDeposit(userId: string, escrowId: string) {
+export async function startDeposit(userId: string, escrowId: string, returnUrl?: string) {
   if (!nowpaymentsEnabled()) {
     throw ApiError.notImplemented("Crypto funding is not configured on this server");
   }
@@ -66,23 +67,70 @@ export async function startDeposit(userId: string, escrowId: string) {
 
   const expected = expectedFor(escrow);
 
-  // Reuse a live invoice, but only while it still asks for the right amount:
-  // the deal is editable until it is funded, so a price change mid-flow would
-  // otherwise leave the buyer paying yesterday's total. A stale one is replaced
-  // on the same terms as a dead one — new invoice, new orderRef.
+  /*
+    Where this invoice will send the buyer back to — resolved *before* the reuse
+    check below, because it is one of the things that decides whether a live
+    invoice is still the right one.
+
+    Also means a malformed or disallowed `returnUrl` is refused even when an
+    invoice already exists, rather than being quietly ignored because the early
+    return fired first.
+  */
+  const returnBase = resolveReturnUrl(
+    returnUrl,
+    `${env.WEB_ORIGIN}/escrow/${escrow.id}/crypto/callback`,
+  );
+
+  /*
+    Reuse a live invoice, but only while it is still the right one in both
+    respects.
+
+    The amount matters because a deal is editable until it is funded, so a price
+    change mid-flow would leave the buyer paying yesterday's total.
+
+    The destination matters for the same kind of reason, and was missing: the
+    success URL is baked into the invoice at the provider and cannot be re-read
+    or amended, so an invoice opened while `WEB_ORIGIN` was `localhost` kept
+    sending buyers to localhost forever, and one opened on the web and then
+    reused by the phone dropped the buyer into the web app instead of back into
+    the app. Rows created before this was recorded have `returnUrl` null, which
+    reads as "unknown" and therefore stale — so the next attempt replaces them.
+
+    A stale invoice is replaced on the same terms as a dead one: new invoice,
+    new orderRef, so the old one's callbacks can never be mistaken for the new.
+  */
   const existing = escrow.crypto;
-  const stale = existing ? Math.abs(Number(existing.expectedTrx) - expected) > 1e-6 : false;
+  const amountChanged = existing ? Math.abs(Number(existing.expectedTrx) - expected) > 1e-6 : false;
+  const destinationChanged = existing ? existing.returnUrl !== returnBase : false;
+  const stale = amountChanged || destinationChanged;
+
   if (existing?.invoiceUrl && !nowpayments.isDead(existing.payStatus) && !stale) {
     return serialize(escrow, existing);
   }
 
   const orderRef = nowpayments.newOrderRef(escrow.code);
+
+  /*
+    The web wants its own callback route; the phone wants a deep link back into
+    the app, because that redirect is the only place NOWPayments discloses the
+    payment id before an IPN arrives (see return-url.ts). Hard-coding
+    `WEB_ORIGIN` here is what stranded mobile deposits on "waiting" after the
+    buyer had already paid.
+
+    `returnBase` was resolved and allowlisted above — an unvalidated redirect
+    target on a payment page is an open redirect — falling back to the web
+    callback when the client asks for nothing, which is what the web does.
+  */
+  const successUrl = `${returnBase}${returnBase.includes("?") ? "&" : "?"}ref=${encodeURIComponent(orderRef)}`;
+
   const invoice = await nowpayments.createInvoice({
     amount: expected,
     orderId: orderRef,
     description: `Escrow ${escrow.code} — ${escrow.title}`,
-    successUrl: `${env.WEB_ORIGIN}/escrow/${escrow.id}/crypto/callback?ref=${encodeURIComponent(orderRef)}`,
-    cancelUrl: `${env.WEB_ORIGIN}/escrow/${escrow.id}`,
+    successUrl,
+    // Cancelling goes back where they came from too, so a phone doesn't strand
+    // the buyer on the web app after they change their mind.
+    cancelUrl: returnUrl ? returnBase : `${env.WEB_ORIGIN}/escrow/${escrow.id}`,
   });
 
   // The row is per-escrow, so a retry rewrites the dead invoice in place rather
@@ -94,6 +142,9 @@ export async function startDeposit(userId: string, escrowId: string) {
       orderRef,
       invoiceId: invoice.invoiceId,
       invoiceUrl: invoice.invoiceUrl,
+      // Recorded so the next call can tell whether this invoice still points
+      // where the caller wants to come back to.
+      returnUrl: returnBase,
       payCurrency: env.NOWPAYMENTS_PAY_CURRENCY,
       expectedTrx: expected,
     },
@@ -101,6 +152,7 @@ export async function startDeposit(userId: string, escrowId: string) {
       orderRef,
       invoiceId: invoice.invoiceId,
       invoiceUrl: invoice.invoiceUrl,
+      returnUrl: returnBase,
       payStatus: "waiting",
       payCurrency: env.NOWPAYMENTS_PAY_CURRENCY,
       paymentId: null,

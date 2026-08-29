@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/features/shared/data/api';
 
 /**
@@ -49,6 +49,43 @@ export const userKeys = {
   saved: ['users', 'saved'] as const,
   blocked: ['users', 'blocked'] as const,
 };
+
+/* --------------------------------------------------- counterparty search */
+
+export interface CounterpartyMatch {
+  username: string;
+  avatarUrl: string | null;
+  storeName: string | null;
+  verified: boolean;
+}
+
+/**
+ * Who may be invited to a deal, for the counterparty picker on the new-escrow
+ * form.
+ *
+ * The server does the excluding — admins, yourself, suspended accounts — and
+ * applies the same rules when the deal is created, so a suggestion here can
+ * never be one the create call would then refuse.
+ *
+ * Disabled under two characters, matching the server, so an empty field costs
+ * no request. `keepPreviousData` holds the previous list while the next loads:
+ * without it the dropdown empties and re-fills on every keystroke, which on
+ * this connection is a list flickering under the user's thumb.
+ */
+export function useCounterpartySearch(query: string) {
+  const q = query.replace(/^@/, '').trim();
+  return useQuery({
+    queryKey: ['users', 'counterparty-search', q] as const,
+    queryFn: () =>
+      api<{ matches: CounterpartyMatch[] }>(
+        `/api/users/search?q=${encodeURIComponent(q)}`,
+      ).then((r) => r.matches),
+    enabled: q.length >= 2,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
 
 /* ------------------------------------------------------------ saved listings */
 

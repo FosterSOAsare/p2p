@@ -9,7 +9,7 @@ import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme, useTones } from '@/hooks/use-theme';
 import { useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { SelectField } from '@/features/shared/ui/SelectField';
-import { type ImageRef } from '@/constants/mockData';
+import { type ImageRef } from '@/constants/appTypes';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { toPickedAsset, useUploadFiles } from '@/features/upload/data/uploadApi';
 import { useCategories } from '../data/listingsApi';

@@ -8,8 +8,7 @@ import { tokenStore } from './tokenStore';
  * and retry, and normalise failures into ApiError so screens can render
  * `apiErrorMessage(err)` without unwrapping anything.
  *
- * Admin is the first feature on this path; the rest of the app still runs on
- * mock data and can migrate onto it screen by screen.
+ * Every screen goes through here now — admin was simply the first to.
  */
 
 export class ApiError extends Error {
