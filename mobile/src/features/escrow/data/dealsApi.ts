@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/features/shared/data/api';
 import type { CheckoutMethod } from '@/features/wallet/data/paymentsApi';
+import type { FeeSplit } from './fees';
 
 /**
  * Escrow deals — `GET /api/escrows` and `GET /api/escrows/:id`.
@@ -86,6 +87,16 @@ export interface Deal {
   disputedAt: string | null;
   cancelledAt: string | null;
   creatorUsername: string;
+  /**
+   * The invite kit, present only while a side is still empty — which is exactly
+   * when the creator has someone to hand the deal to. `dataUrl` is a base64 PNG
+   * QR of `joinUrl`, and `joinUrl` is built from the server's `WEB_ORIGIN`, so
+   * it points at whatever host the API is configured for rather than anything
+   * baked in here.
+   *
+   * Sent on the **detail** response only, not on list rows.
+   */
+  share: { code: string; joinUrl: string; dataUrl: string } | null;
   events: DealEvent[];
 }
 
@@ -149,9 +160,12 @@ export function useDeal(id: string) {
       const lists = qc.getQueriesData<DealsResponse>({ queryKey: dealKeys.all });
       for (const [, data] of lists) {
         const hit = data?.deals?.find((d) => d.id === id);
-        // The list omits `events`; an empty timeline renders as no rows rather
-        // than as a crash, and is replaced a moment later.
-        if (hit) return { ...hit, events: hit.events ?? [] };
+        // The list omits `events` and `share`; both are filled by the real
+        // fetch a moment later. An empty timeline renders as no rows rather
+        // than as a crash, and a null `share` keeps the invite panel hidden —
+        // showing it from a placeholder would flash a QR with no image behind
+        // it on every open.
+        if (hit) return { ...hit, events: hit.events ?? [], share: hit.share ?? null };
       }
       return undefined;
     },
@@ -270,12 +284,47 @@ export function useDisputeDeal() {
   });
 }
 
+
 /**
  * Amend the terms, allowed only while the deal is still `created`.
  *
  * `counterpartyUsername` duplicates `invitedUsername` because the server reads
  * the former — the web sends both for the same reason.
  */
+/**
+ * `POST /api/escrows` — the standalone (off-platform) contract, the phone side
+ * of the web's `useCreateStandaloneEscrow`.
+ *
+ * `role` and `feeSplit` are lowercase on the wire: the server's Joi schema
+ * accepts only `buyer`/`seller` and `buyer`/`seller`/`split`, so the screen's
+ * uppercase chip values have to be folded before they get here.
+ *
+ * `rail` is deliberately absent — the server derives it from the currency.
+ */
+export function useCreateStandaloneEscrow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      invitedUsername,
+      ...rest
+    }: {
+      title: string;
+      description?: string;
+      amount: number;
+      currency: 'GHS' | 'TRX';
+      role: 'buyer' | 'seller';
+      invitedUsername?: string;
+      feeSplit?: 'buyer' | 'seller' | 'split';
+    }) =>
+      api<{ deal: Deal }>('/api/escrows', {
+        method: 'POST',
+        // The server reads either name; the web sends both, so this does too.
+        body: { ...rest, counterpartyUsername: invitedUsername, invitedUsername },
+      }).then((r) => r.deal),
+    onSuccess: () => qc.invalidateQueries({ queryKey: dealKeys.all }),
+  });
+}
+
 export function useUpdateEscrow() {
   const invalidate = useInvalidateDeals();
   return useMutation({

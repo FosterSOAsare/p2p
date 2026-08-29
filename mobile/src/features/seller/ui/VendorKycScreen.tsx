@@ -1,18 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import {
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Clock,
-  ShieldCheck,
-  Store,
-} from '@/components/icons';
+import { ArrowLeft, ArrowRight, CheckCircle2, Clock, ShieldCheck, Store } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { useTheme, useTones } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { SelectField } from '@/features/shared/ui/SelectField';
@@ -23,26 +16,49 @@ import { useMyKyc, useSubmitKyc, type KycSubmission } from '../data/kycApi';
  * Vendor KYC — the phone version of `web/src/pages/VendorKyc.tsx`, serving both
  * `/sell` and `/vendor/kyc` as the web does.
  *
- * Same four states driven by the account's KYC status: verified (congratulations),
+ * Three states, driven by the account's KYC status: verified (congratulations),
  * pending (under review), and the application form for unverified or rejected.
- * The form keeps the web's three steps — Business & Store Information,
- * Government Identity, Escrow Payout Accounts — with the same labels and the
- * same country / document options.
+ * The web has a fourth — a signed-out prompt — which can't be reached here,
+ * since the route sits inside the authenticated `(app)` group.
  *
- * The web's selects become chip rows, which is the native equivalent. Nothing
- * is submitted yet — see `onSubmit`.
+ * The form keeps the web's three steps — store and legal details, government
+ * identity, escrow payout accounts — with the same country and document
+ * options. Its `<select>`s become `SelectField` sheets, which is the native
+ * equivalent.
+ *
+ * A rejected application prefills from the answers already on file, so
+ * resubmitting is a correction rather than a retype — see the adopt effect.
  */
 
 const COUNTRIES = ['Ghana', 'Nigeria', 'Kenya', 'United States', 'United Kingdom'];
 
+/** `kyc.validation.ts`'s own patterns, so the phone refuses exactly what the server would. */
+const MOMO_PATTERN = /^\+?[0-9\s-]{9,15}$/;
+const TRON_ADDRESS_PATTERN = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
+
+/**
+ * The app's date style (`en-GB`, "23 Jul 2026"), shared with My Listings,
+ * Promotions and the deal screens. The web renders `en-US` here; the phone is
+ * internally consistent instead, since a lone US date on this one panel would
+ * read as a bug next to every other date in the app.
+ */
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 const ID_TYPES = [
-  { value: 'National ID', label: 'National ID Card (Ghana Card)' },
   { value: 'Passport', label: 'International Passport' },
+  { value: 'National ID', label: 'National ID Card (Ghana Card)' },
   { value: 'Drivers License', label: "Driver's License" },
 ];
 
 export function VendorKycScreen() {
   const theme = useTheme();
+  const tones = useTones();
   const router = useRouter();
   const { user } = useAuth();
   const ensureVisible = useEnsureVisible();
@@ -53,7 +69,7 @@ export function VendorKycScreen() {
   const [taxId, setTaxId] = useState('');
   const [country, setCountry] = useState('Ghana');
   const [address, setAddress] = useState('');
-  const [idType, setIdType] = useState('National ID');
+  const [idType, setIdType] = useState('Passport');
   const [idNumber, setIdNumber] = useState('');
   const [momoNumber, setMomoNumber] = useState('');
   const [trxAddress, setTrxAddress] = useState('');
@@ -69,6 +85,30 @@ export function VendorKycScreen() {
    * the screen doesn't flash the blank form at an already-verified seller.
    */
   const status = myKyc.data?.status ?? user?.kycStatus ?? 'unverified';
+
+  /**
+   * Prefill from the answers already on file — the web's `values` prop on
+   * `useForm`, which is what makes rejection a correction rather than a retype.
+   *
+   * Adopted once, keyed off the ref: a refetch (or a screen focus) must not
+   * overwrite edits the seller has since made to the very fields they were
+   * asked to fix.
+   */
+  const submission = myKyc.data?.submission;
+  const adoptedRef = useRef(false);
+  useEffect(() => {
+    if (!submission || adoptedRef.current) return;
+    adoptedRef.current = true;
+    setLegalName(submission.legalName);
+    setStoreName(submission.storeName);
+    setTaxId(submission.taxId ?? '');
+    setCountry(submission.country);
+    setAddress(submission.address);
+    setIdType(submission.idType);
+    setIdNumber(submission.idNumber);
+    setMomoNumber(submission.momoNumber ?? '');
+    setTrxAddress(submission.trxAddress ?? '');
+  }, [submission]);
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -124,7 +164,12 @@ export function VendorKycScreen() {
     value: string,
     onChangeText: (v: string) => void,
     placeholder: string,
-    extra?: { hint?: string; multiline?: boolean; keyboardType?: 'phone-pad' },
+    extra?: {
+      hint?: string;
+      multiline?: boolean;
+      keyboardType?: 'phone-pad';
+      maxLength?: number;
+    },
   ) => (
     <View
       ref={(node) => {
@@ -144,6 +189,7 @@ export function VendorKycScreen() {
         placeholderTextColor={theme.textTertiary}
         autoCorrect={false}
         multiline={extra?.multiline}
+        maxLength={extra?.maxLength}
         keyboardType={extra?.keyboardType}
         textAlignVertical={extra?.multiline ? 'top' : 'center'}
         onFocus={() => ensureVisible(fieldRefs.current[key])}
@@ -160,13 +206,37 @@ export function VendorKycScreen() {
     </View>
   );
 
-  const onSubmit = async () => {
-    if (!legalName.trim() || !storeName.trim() || !address.trim() || !idNumber.trim()) {
-      setError('Fill in your legal name, store name, address and document number.');
-      return;
+  /**
+   * The web's `kycSchema`, message for message — and the Joi behind it in
+   * `kyc.validation.ts`, which is where these rules actually come from.
+   *
+   * Reported one at a time, in field order, because this screen has a single
+   * banner rather than the web's per-field errors. The patterns matter most:
+   * a mistyped TRX address used to cost a round trip to be told the same
+   * thing the server already knew.
+   */
+  const firstProblem = (): string | null => {
+    if (legalName.trim().length < 2) return 'Enter your legal name';
+    if (storeName.trim().length < 2) return 'Enter your store name';
+    if (country.trim().length < 2) return 'Select your country';
+    if (address.trim().length < 5) return 'Enter your business address';
+    if (idNumber.trim().length < 4) return 'Enter your document number';
+    if (momoNumber.trim() && !MOMO_PATTERN.test(momoNumber.trim())) {
+      return 'Enter a valid mobile money number';
+    }
+    if (trxAddress.trim() && !TRON_ADDRESS_PATTERN.test(trxAddress.trim())) {
+      return 'Enter a valid TRX address (starts with T)';
     }
     if (!momoNumber.trim() && !trxAddress.trim()) {
-      setError('Add at least one payout account — mobile money or a TRX address.');
+      return 'Provide at least one payout account (mobile money or TRX address)';
+    }
+    return null;
+  };
+
+  const onSubmit = async () => {
+    const problem = firstProblem();
+    if (problem) {
+      setError(problem);
       return;
     }
     setError(null);
@@ -202,16 +272,28 @@ export function VendorKycScreen() {
           {backButton}
           {header}
 
-          <View style={[styles.stateCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+          <View
+            style={[
+              styles.stateCard,
+              { backgroundColor: tones.success.surface, borderColor: tones.success.border },
+            ]}
+          >
+            {/* Tick in the tile, shield in the pill — the web's pairing. */}
             <View style={[styles.stateIcon, { backgroundColor: theme.primary }]}>
-              <ShieldCheck size={30} color="#ffffff" />
+              <CheckCircle2 size={30} color="#ffffff" />
             </View>
-            <View style={[styles.statePill, { backgroundColor: '#dcfce7' }]}>
-              <ShieldCheck size={13} color="#166534" />
-              <Text style={[styles.statePillText, { color: '#166534' }]}>Verified Seller</Text>
+            <View style={[styles.statePill, { backgroundColor: tones.success.chip }]}>
+              <ShieldCheck size={13} color={tones.success.text} />
+              <Text style={[styles.statePillText, { color: tones.success.text }]}>
+                Verified Seller
+              </Text>
             </View>
-            <Text style={[styles.stateTitle, { color: '#052e16' }]}>Congratulations!</Text>
-            <Text style={[styles.stateBody, { color: '#166534' }]}>
+            {/* The store the seller applied under, so the confirmation names
+                the thing that was actually approved. */}
+            <Text style={[styles.stateTitle, { color: tones.success.strong }]}>
+              Congratulations{submission?.storeName ? `, ${submission.storeName}` : ''}!
+            </Text>
+            <Text style={[styles.stateBody, { color: tones.success.text }]}>
               Your vendor KYC application has been verified. You can now post listings to the
               marketplace, manage inventory, and receive escrow payouts to your payout accounts.
             </Text>
@@ -225,6 +307,22 @@ export function VendorKycScreen() {
             >
               <Text style={styles.primaryBtnText}>Create Your First Listing</Text>
               <ArrowRight size={16} color="#ffffff" />
+            </Pressable>
+
+            {/* The web's second CTA. Its /dashboard is the home tab here. */}
+            <Pressable
+              onPress={() => router.replace('/home')}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                {
+                  backgroundColor: pressed ? theme.backgroundSelected : theme.card,
+                  borderColor: tones.success.border,
+                },
+              ]}
+            >
+              <Text style={[styles.secondaryBtnText, { color: tones.success.strong }]}>
+                Go to Seller Dashboard
+              </Text>
             </Pressable>
           </View>
         </KeyboardAwareScroll>
@@ -240,23 +338,29 @@ export function VendorKycScreen() {
           {backButton}
           {header}
 
-          <View style={[styles.stateCard, { backgroundColor: '#fffbeb', borderColor: '#fde68a' }]}>
+          <View
+            style={[
+              styles.stateCard,
+              { backgroundColor: tones.warning.surface, borderColor: tones.warning.border },
+            ]}
+          >
             <View style={[styles.stateIcon, { backgroundColor: '#f59e0b' }]}>
               <Clock size={30} color="#ffffff" />
             </View>
-            <View style={[styles.statePill, { backgroundColor: '#fef3c7' }]}>
-              <Clock size={13} color="#92400e" />
-              <Text style={[styles.statePillText, { color: '#92400e' }]}>
+            <View style={[styles.statePill, { backgroundColor: tones.warning.chip }]}>
+              <Clock size={13} color={tones.warning.text} />
+              <Text style={[styles.statePillText, { color: tones.warning.text }]}>
                 Application Under Review
               </Text>
             </View>
-            <Text style={[styles.stateTitle, { color: '#451a03' }]}>
+            <Text style={[styles.stateTitle, { color: tones.warning.strong }]}>
               We&apos;re reviewing your application
             </Text>
-            <Text style={[styles.stateBody, { color: '#92400e' }]}>
-              Your KYC submission is with our review team. You&apos;ll be able to list on the
-              marketplace once it&apos;s approved. You can keep buying and using escrow deals in the
-              meantime.
+            <Text style={[styles.stateBody, { color: tones.warning.text }]}>
+              Your KYC submission
+              {myKyc.data?.submittedAt ? ` from ${formatDate(myKyc.data.submittedAt)}` : ''} is with
+              our review team. You&apos;ll be able to list on the marketplace once it&apos;s
+              approved. You can keep buying and using escrow deals in the meantime.
             </Text>
 
             <Pressable
@@ -283,28 +387,57 @@ export function VendorKycScreen() {
         {header}
 
         {status === 'rejected' ? (
-          <View style={styles.rejectedBox}>
-            <Text style={styles.rejectedText}>
-              Your previous submission was rejected. Correct the details below and resubmit.
+          <View
+            style={[
+              styles.rejectedBox,
+              { backgroundColor: tones.danger.chip, borderColor: tones.danger.border },
+            ]}
+          >
+            <Text style={[styles.rejectedText, { color: tones.danger.text }]}>
+              Your previous application was rejected
+            </Text>
+            {/* The reviewer's own words. Without this the seller is told to
+                correct the details but not which ones were wrong. */}
+            <Text style={[styles.rejectedReason, { color: tones.danger.text }]}>
+              {myKyc.data?.rejectionReason ||
+                'No reason was provided. Please review your details and submit again.'}
+            </Text>
+            <Text style={[styles.rejectedHint, { color: tones.danger.text }]}>
+              Your previous answers are prefilled below — correct them and resubmit.
             </Text>
           </View>
         ) : null}
 
         {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+          <View
+            style={[
+              styles.errorBox,
+              { backgroundColor: tones.danger.chip, borderColor: tones.danger.border },
+            ]}
+          >
+            <Text style={[styles.errorText, { color: tones.danger.text }]}>{error}</Text>
           </View>
         ) : null}
 
         {/* Step 1 */}
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
           <Text style={[styles.stepTitle, { color: theme.text, borderBottomColor: theme.border }]}>
-            Business &amp; Store Information
+            Store &amp; Legal Info
           </Text>
-          {field('legalName', 'Legal Full Name', legalName, setLegalName, 'Kwame Asante')}
-          {field('storeName', 'Public Store / Brand Name', storeName, setStoreName, 'Kwame Tech Hub')}
+          {field('legalName', 'Legal Full Name', legalName, setLegalName, 'Kwame Asante', {
+            maxLength: 100,
+          })}
+          {field(
+            'storeName',
+            'Public Store / Brand Name',
+            storeName,
+            setStoreName,
+            'Kwame Tech Hub',
+            { maxLength: 100 },
+          )}
           {field('taxId', 'Tax ID / Business Reg Number', taxId, setTaxId, 'CS1234567890', {
             hint: '(optional)',
+            maxLength: 50,
           })}
 
           <SelectField
@@ -317,6 +450,7 @@ export function VendorKycScreen() {
 
           {field('address', 'Business Street Address', address, setAddress, '12 Oxford Street, Osu, Accra', {
             multiline: true,
+            maxLength: 200,
           })}
         </View>
 
@@ -334,7 +468,9 @@ export function VendorKycScreen() {
             sheetTitle="Select document type"
           />
 
-          {field('idNumber', 'Document Number', idNumber, setIdNumber, 'GHA-000000000-0')}
+          {field('idNumber', 'Document Number', idNumber, setIdNumber, 'GHA-000000000-0', {
+            maxLength: 50,
+          })}
         </View>
 
         {/* Step 3 */}
@@ -343,7 +479,8 @@ export function VendorKycScreen() {
             Escrow Payout Accounts
           </Text>
           <Text style={[styles.stepHint, { color: theme.textTertiary }]}>
-            Add at least one — this is where released escrow funds are paid out.
+            Provide at least one. GH₵ deals pay out to your mobile money; TRX deals pay out to
+            your TRX address.
           </Text>
 
           {field('momo', 'Mobile Money Number', momoNumber, setMomoNumber, '+233 24 000 0000', {
@@ -368,7 +505,11 @@ export function VendorKycScreen() {
         >
           <ShieldCheck size={16} color="#ffffff" />
           <Text style={styles.primaryBtnText}>
-            {submitKyc.isPending ? 'Submitting...' : 'Submit Vendor KYC Application'}
+            {submitKyc.isPending
+              ? 'Submitting KYC Application...'
+              : status === 'rejected'
+                ? 'Resubmit Vendor KYC Application'
+                : 'Submit Vendor KYC Application'}
           </Text>
         </Pressable>
 
@@ -480,21 +621,20 @@ const styles = StyleSheet.create({
 
   rejectedBox: {
     borderRadius: Radius.md,
-    backgroundColor: '#fee2e2',
     borderWidth: 1,
-    borderColor: '#fecaca',
     padding: Spacing.three,
+    gap: Spacing.two,
   },
-  rejectedText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
+  rejectedText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[700] },
+  rejectedReason: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[400] },
+  rejectedHint: { fontSize: 10.5, lineHeight: 15, fontFamily: Fonts.sans[400], opacity: 0.8 },
 
   errorBox: {
     borderRadius: Radius.md,
-    backgroundColor: '#fee2e2',
     borderWidth: 1,
-    borderColor: '#fecaca',
     padding: Spacing.three,
   },
-  errorText: { fontSize: 12, fontFamily: Fonts.sans[600], color: '#b91c1c' },
+  errorText: { fontSize: 12, fontFamily: Fonts.sans[600] },
 
   primaryBtn: {
     flexDirection: 'row',
@@ -506,5 +646,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   primaryBtnText: { fontSize: 13.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
+  // The web's outlined companion to the primary CTA on the verified panel.
+  secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 46,
+    paddingHorizontal: Spacing.five,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
+  secondaryBtnText: { fontSize: 13, fontFamily: Fonts.sans[700] },
   footNote: { fontSize: 10.5, lineHeight: 15, textAlign: 'center', fontFamily: Fonts.sans[400] },
 });

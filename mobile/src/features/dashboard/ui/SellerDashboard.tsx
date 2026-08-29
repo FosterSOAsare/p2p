@@ -1,29 +1,32 @@
 import { Image } from 'expo-image';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { useRouter } from 'expo-router';
 import {
   AlertTriangle,
   Bell,
   CheckCircle2,
+  ExternalLink,
   MessageSquare,
   Package,
+  RotateCcw,
   ShieldCheck,
+  Sparkles,
   Star,
   Store,
   Trash2,
   Truck,
-  User as UserIcon,
   Wallet,
 } from '@/components/icons';
-
-import { ActivityIndicator } from 'react-native';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { apiErrorMessage } from '@/features/shared/data/api';
-import { useState } from 'react';
-import { type User } from '@/constants/mockData';
+import { useRef, useState } from 'react';
+import { type User } from '@/constants/appTypes';
 import { useDeleteListing } from '@/features/listings/data/listingsApi';
+import { useDeliverDeal } from '@/features/escrow/data/dealsApi';
+import { useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { useConversations } from '@/features/messages/data/messagesApi';
 import { useUnreadNotifications } from '@/features/notifications/data/notificationsApi';
 import { useDashboard, type SellerSaleOrder } from '../data/dashboardApi';
@@ -43,9 +46,9 @@ import { StatCard } from './StatCard';
 const money = (amount: number, currency = 'GH₵') =>
   `${currency}${amount.toLocaleString('en-GH', { maximumFractionDigits: 2 })}`;
 
-/** "10 Mar 2025" — same format the deals list uses. */
-const orderDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+/* `orderDate` used to live here. The server sends `date` already formatted, so
+   re-parsing it only risked a locale mismatch — the rows read `order.date`
+   directly and this had no callers left. */
 
 /** Status badge tones, mirroring the web's <Badge tone={...}> mapping. */
 function statusBadge(status: SellerSaleOrder['status']) {
@@ -86,7 +89,14 @@ export function SellerDashboard({ user }: { user: User }) {
    * at 6 (`displayedListings`); sales get a shorter preview because each row is
    * much taller on a phone. "View all" below keeps the remainder reachable.
    */
-  const previewSales = sales.slice(0, 3);
+  /*
+    "View all" expands this section in place rather than sending the seller to
+    My Deals — the rows are already in hand from the dashboard request, and the
+    deals tab is a different list with different filters, so bouncing there was
+    answering a question nobody asked.
+  */
+  const [showAllSales, setShowAllSales] = useState(false);
+  const previewSales = showAllSales ? sales : sales.slice(0, 3);
   const previewListings = listings.slice(0, 6);
 
   /**
@@ -132,6 +142,43 @@ export function SellerDashboard({ user }: { user: User }) {
    */
   const deleteListing = useDeleteListing();
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+
+  /*
+    Dispatch, done here rather than by sending the seller to the deal screen —
+    the web marks an order shipped straight from the dashboard, and the row's
+    "Enter Tracking" control was a plain View, so it looked like a button and
+    did nothing at all when pressed.
+  */
+  const deliverDeal = useDeliverDeal();
+  const [shippingOrderId, setShippingOrderId] = useState<string | null>(null);
+  const [carrierInput, setCarrierInput] = useState('');
+  const [trackingInput, setTrackingInput] = useState('');
+  const [noteInput, setNoteInput] = useState('');
+  // The form expands on a card partway down the list, so a focused field has
+  // to ask the surrounding scroll view to lift it above the keyboard.
+  const ensureVisible = useEnsureVisible();
+  const dispatchRow = useRef<View>(null);
+
+  const closeDispatch = () => {
+    setShippingOrderId(null);
+    setCarrierInput('');
+    setTrackingInput('');
+    setNoteInput('');
+  };
+
+  /** All three fields are optional, exactly as on the web and on the server. */
+  const submitDispatch = () => {
+    if (!shippingOrderId) return;
+    deliverDeal.mutate(
+      {
+        id: shippingOrderId,
+        carrier: carrierInput || undefined,
+        trackingNumber: trackingInput || undefined,
+        note: noteInput || undefined,
+      },
+      { onSuccess: closeDispatch },
+    );
+  };
   /**
    * Resolved by id rather than storing the row, so the dialog can't go on
    * naming a listing that has already been deleted underneath it.
@@ -322,6 +369,28 @@ export function SellerDashboard({ user }: { user: User }) {
             <Text style={[styles.heroBtnText, { color: '#ffffff' }]}>All Listings</Text>
           </Pressable>
         </View>
+
+        {/*
+          The web's third hero action, alongside Payout Wallet and View All
+          Listings. On its own row rather than a third of one: at three across,
+          a 44pt-tall button is about 93pt wide here and "Payout Wallet" no
+          longer fits its label.
+        */}
+        <Pressable
+          onPress={() => router.push('/promotions')}
+          accessibilityRole="button"
+          accessibilityLabel="Open the promotions studio"
+          style={({ pressed }) => [
+            styles.heroBtnWide,
+            {
+              borderColor: theme.border,
+              backgroundColor: pressed ? theme.backgroundSelected : theme.card,
+            },
+          ]}
+        >
+          <Sparkles size={16} color="#d97706" />
+          <Text style={[styles.heroBtnText, { color: theme.text }]}>Promotions</Text>
+        </Pressable>
       </View>
 
       {/* Payout breakdown */}
@@ -367,7 +436,7 @@ export function SellerDashboard({ user }: { user: User }) {
         </View>
         <View style={[styles.countPill, { backgroundColor: theme.backgroundElement }]}>
           <Text style={[styles.countPillText, { color: theme.textSecondary }]}>
-            {actionRequired} to ship
+            {actionRequired} Action Required
           </Text>
         </View>
       </View>
@@ -399,10 +468,21 @@ export function SellerDashboard({ user }: { user: User }) {
                 <View style={[styles.badge, { backgroundColor: badge.bg }]}>
                   <Text style={[styles.badgeText, { color: badge.text }]}>{badge.label}</Text>
                 </View>
+                {/* The deal code is a link on the web, so it is one here. */}
+                <Pressable
+                  onPress={() => router.push(`/escrow/${order.id}`)}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open deal ${order.code}`}
+                >
+                  <Text style={[styles.saleCode, { color: theme.textSecondary }]}>
+                    {order.code || order.id.slice(0, 8)}
+                  </Text>
+                </Pressable>
                 <Text style={[styles.saleMeta, { color: theme.textTertiary }]} numberOfLines={1}>
                   {/* `date` is already formatted server-side — parsing it again
                       would only risk a locale mismatch. */}
-                  @{order.buyerUsername} · {order.date}
+                  · @{order.buyerUsername} · {order.date}
                 </Text>
               </View>
 
@@ -421,6 +501,25 @@ export function SellerDashboard({ user }: { user: User }) {
                 </Text>
               </Pressable>
 
+              {/* Courier line — the web's, shown once dispatch details exist. */}
+              {order.trackingNumber ? (
+                <View style={styles.trackingRow}>
+                  <Truck size={14} color={theme.primary} />
+                  <Text style={[styles.trackingText, { color: theme.textSecondary }]} numberOfLines={1}>
+                    Courier: {order.carrier ?? '—'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.trackingCode,
+                      { backgroundColor: theme.backgroundElement, color: theme.text },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {order.trackingNumber}
+                  </Text>
+                </View>
+              ) : null}
+
               <View style={[styles.saleFooter, { borderTopColor: theme.border }]}>
                 <View>
                   <Text style={[styles.escrowLabel, { color: theme.textTertiary }]}>Escrow Value</Text>
@@ -429,52 +528,208 @@ export function SellerDashboard({ user }: { user: User }) {
                   </Text>
                 </View>
 
-                {/* Status-dependent action, as on the web. The dispatch form
-                    needs a write call, so for now this opens the deal. */}
-                {order.status === 'disputed' ? (
-                  <View style={[styles.actionNote, { backgroundColor: '#fef3c7' }]}>
-                    <AlertTriangle size={13} color="#92400e" />
-                    <Text style={[styles.actionNoteText, { color: '#92400e' }]}>Under Review</Text>
-                  </View>
-                ) : order.status === 'escrow_funded' ? (
-                  <View style={[styles.dispatchBtn, { backgroundColor: theme.text }]}>
-                    <Truck size={14} color={theme.background} />
-                    <Text style={[styles.dispatchText, { color: theme.background }]}>
-                      Enter Tracking
-                    </Text>
-                  </View>
-                ) : order.status === 'released' ? (
-                  <View style={[styles.actionNote, { backgroundColor: '#dcfce7' }]}>
-                    <CheckCircle2 size={13} color="#166534" />
-                    <Text style={[styles.actionNoteText, { color: '#166534' }]}>Payout Released</Text>
-                  </View>
-                ) : (
-                  <View style={[styles.actionNote, { backgroundColor: '#dbeafe' }]}>
-                    <Text style={[styles.actionNoteText, { color: '#1e40af' }]}>
-                      Awaiting Confirmation
-                    </Text>
-                  </View>
-                )}
+                {/*
+                  Status-dependent action then the View Escrow Deal button —
+                  the web's exact five branches and the same trailing link, so
+                  every row has a way through to its deal whatever its state.
+                */}
+                <View style={styles.saleActions}>
+                  {order.status === 'disputed' || order.rawStatus === 'disputed' ? (
+                    <View style={[styles.actionNote, { backgroundColor: '#fef3c7' }]}>
+                      <AlertTriangle size={13} color="#92400e" />
+                      <Text style={[styles.actionNoteText, { color: '#92400e' }]}>
+                        Under Dispute Review
+                      </Text>
+                    </View>
+                  ) : order.status === 'refunded' ||
+                    order.rawStatus === 'refunded' ||
+                    order.status === 'cancelled' ? (
+                    <View style={[styles.actionNote, { backgroundColor: '#fee2e2' }]}>
+                      <RotateCcw size={13} color="#991b1b" />
+                      <Text style={[styles.actionNoteText, { color: '#991b1b' }]}>
+                        Refunded to Buyer
+                      </Text>
+                    </View>
+                  ) : order.status === 'escrow_funded' ||
+                    order.status === 'awaiting_shipment' ||
+                    order.rawStatus === 'funded' ? (
+                    <Pressable
+                      onPress={() =>
+                        setShippingOrderId((open) => (open === order.id ? null : order.id))
+                      }
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: shippingOrderId === order.id }}
+                      accessibilityLabel={`Enter tracking and dispatch ${order.code}`}
+                      style={[styles.dispatchBtn, { backgroundColor: theme.text }]}
+                    >
+                      <Truck size={14} color={theme.background} />
+                      <Text style={[styles.dispatchText, { color: theme.background }]}>
+                        Enter Tracking &amp; Dispatch
+                      </Text>
+                    </Pressable>
+                  ) : order.status === 'shipped' || order.rawStatus === 'delivered' ? (
+                    <View style={[styles.actionNote, { backgroundColor: '#dbeafe' }]}>
+                      <Text style={[styles.actionNoteText, { color: '#1e40af' }]}>
+                        Awaiting Confirmation
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.actionNote, { backgroundColor: '#dcfce7' }]}>
+                      <CheckCircle2 size={13} color="#166534" />
+                      <Text style={[styles.actionNoteText, { color: '#166534' }]}>
+                        Payout Released
+                      </Text>
+                    </View>
+                  )}
+
+                  <Pressable
+                    onPress={() => router.push(`/escrow/${order.id}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel="View escrow deal"
+                    style={({ pressed }) => [
+                      styles.viewDealBtn,
+                      {
+                        borderColor: theme.border,
+                        backgroundColor: pressed ? theme.backgroundSelected : 'transparent',
+                      },
+                    ]}
+                  >
+                    <ExternalLink size={15} color={theme.textSecondary} />
+                  </Pressable>
+                </View>
               </View>
+
+              {/*
+                Dispatch & Delivery Details — expands inside the card the button
+                belongs to, rather than opening over the screen. Three optional
+                fields and "Confirm Delivery", the web's copy; the phone just
+                doesn't need a dialog for a form this short.
+              */}
+              {shippingOrderId === order.id ? (
+                <View style={[styles.dispatchForm, { borderTopColor: theme.border }]}>
+                  <Text style={[styles.dispatchLabel, { color: theme.textSecondary }]}>
+                    SHIPPING CARRIER / METHOD
+                  </Text>
+                  <TextInput
+                    value={carrierInput}
+                    onChangeText={setCarrierInput}
+                    onFocus={() => ensureVisible(dispatchRow.current)}
+                    editable={!deliverDeal.isPending}
+                    placeholder="e.g. DHL Express, FedEx, Local Rider, Online"
+                    placeholderTextColor={theme.textTertiary}
+                    style={[
+                      styles.dispatchInput,
+                      {
+                        backgroundColor: theme.inputBackground,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
+                  />
+
+                  <Text style={[styles.dispatchLabel, { color: theme.textSecondary }]}>
+                    TRACKING CODE / PHONE NUMBER
+                  </Text>
+                  <TextInput
+                    value={trackingInput}
+                    onChangeText={setTrackingInput}
+                    onFocus={() => ensureVisible(dispatchRow.current)}
+                    editable={!deliverDeal.isPending}
+                    autoCapitalize="characters"
+                    placeholder="e.g. DHL-GH-99201 or Courier Phone"
+                    placeholderTextColor={theme.textTertiary}
+                    style={[
+                      styles.dispatchInput,
+                      styles.dispatchMono,
+                      {
+                        backgroundColor: theme.inputBackground,
+                        borderColor: theme.inputBorder,
+                        color: theme.text,
+                      },
+                    ]}
+                  />
+
+                  <Text style={[styles.dispatchLabel, { color: theme.textSecondary }]}>
+                    DELIVERY NOTE &amp; INSTRUCTIONS (OPTIONAL)
+                  </Text>
+                  <View ref={dispatchRow} collapsable={false}>
+                    <TextInput
+                      value={noteInput}
+                      onChangeText={setNoteInput}
+                      onFocus={() => ensureVisible(dispatchRow.current)}
+                      editable={!deliverDeal.isPending}
+                      multiline
+                      textAlignVertical="top"
+                      placeholder="e.g. Courier contact name, rider phone number, or digital item instructions"
+                      placeholderTextColor={theme.textTertiary}
+                      style={[
+                        styles.dispatchInput,
+                        styles.dispatchMultiline,
+                        {
+                          backgroundColor: theme.inputBackground,
+                          borderColor: theme.inputBorder,
+                          color: theme.text,
+                        },
+                      ]}
+                    />
+                  </View>
+
+                  {deliverDeal.isError ? (
+                    <Text style={styles.dialogError}>{apiErrorMessage(deliverDeal.error)}</Text>
+                  ) : null}
+
+                  <View style={styles.dispatchActions}>
+                    <Pressable
+                      onPress={submitDispatch}
+                      disabled={deliverDeal.isPending}
+                      accessibilityRole="button"
+                      style={[
+                        styles.dispatchConfirm,
+                        { backgroundColor: theme.primary, opacity: deliverDeal.isPending ? 0.6 : 1 },
+                      ]}
+                    >
+                      {deliverDeal.isPending ? (
+                        <ActivityIndicator size="small" color="#ffffff" />
+                      ) : (
+                        <Truck size={14} color="#ffffff" />
+                      )}
+                      <Text style={styles.dialogDeleteText}>
+                        {deliverDeal.isPending ? 'Sending…' : 'Confirm Delivery'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={closeDispatch}
+                      disabled={deliverDeal.isPending}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [
+                        styles.dispatchCancel,
+                        {
+                          borderColor: theme.border,
+                          backgroundColor: pressed ? theme.backgroundSelected : 'transparent',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.dialogCancelText, { color: theme.text }]}>Cancel</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
             </View>
           );
         })
       )}
 
-      {/* Everything past the preview lives on the My Deals tab. */}
-      {sales.length > previewSales.length ? (
+      {/* Plain text link — expands the list above rather than leaving. */}
+      {sales.length > 3 ? (
         <Pressable
-          onPress={() => router.push('/deals')}
-          style={({ pressed }) => [
-            styles.viewAllRow,
-            {
-              borderColor: theme.cardBorder,
-              backgroundColor: pressed ? theme.backgroundSelected : 'transparent',
-            },
-          ]}
+          onPress={() => setShowAllSales((open) => !open)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showAllSales }}
+          style={styles.viewAllRow}
         >
           <Text style={[styles.sectionLink, { color: theme.primary }]}>
-            View all {sales.length} sales →
+            {showAllSales ? 'Show fewer' : `View all ${sales.length} sales →`}
           </Text>
         </Pressable>
       ) : null}
@@ -493,6 +748,22 @@ export function SellerDashboard({ user }: { user: User }) {
           <Text style={[styles.sectionLink, { color: theme.primary }]}>View All →</Text>
         </Pressable>
       </View>
+
+      {/* The web's "No active products listed." — without it a seller with an
+          empty catalogue got the heading and then nothing at all, which reads
+          as the section having failed to load rather than being empty. */}
+      {loading ? (
+        <View style={[styles.empty, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <ActivityIndicator color={theme.primary} />
+        </View>
+      ) : listings.length === 0 ? (
+        <View style={[styles.empty, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <Package size={26} color={theme.textTertiary} />
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+            No active products listed.
+          </Text>
+        </View>
+      ) : null}
 
       {/* Inventory cards are not links — the web renders each as a plain div,
           with editing done from My Listings. "View All" above is the way
@@ -745,6 +1016,15 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   heroBtnText: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
+  heroBtnWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 44,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
 
@@ -783,28 +1063,53 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.sm },
   badgeText: { fontSize: 9, fontFamily: Fonts.sans[700], letterSpacing: 0.3 },
   saleMeta: { flexShrink: 1, fontSize: 10.5, fontFamily: Fonts.sans[500] },
+  saleCode: { fontSize: 11, fontFamily: Fonts.sans[700] },
   saleTitle: { fontSize: 13.5, fontFamily: Fonts.sans[700] },
   trackingRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  tracking: { flex: 1, fontSize: 10.5, fontFamily: Fonts.sans[500] },
+  trackingText: { flexShrink: 1, fontSize: 10.5, fontFamily: Fonts.sans[500] },
+  trackingCode: {
+    fontSize: 10.5,
+    fontFamily: Fonts.mono,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.xs,
+  },
   saleFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    // Wraps: "Enter Tracking & Dispatch" plus the View Escrow Deal button is
+    // wider than what's left beside the escrow value on a phone, so the action
+    // pair drops to its own line rather than overflowing the card.
+    flexWrap: 'wrap',
     gap: Spacing.two,
     borderTopWidth: 1,
     paddingTop: Spacing.two,
   },
+  saleActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  viewDealBtn: {
+    height: 44,
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
   escrowLabel: { fontSize: 9.5, fontFamily: Fonts.sans[600] },
   escrowValue: { fontSize: 15, fontFamily: Fonts.display[700] },
   dispatchBtn: {
+    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    height: 38,
+    // 44, not 38 — the minimum touch target, same call as the row buttons on
+    // My Listings.
+    height: 44,
     paddingHorizontal: Spacing.three,
     borderRadius: Radius.md,
   },
-  dispatchText: { fontSize: 12, fontFamily: Fonts.sans[700] },
+  dispatchText: { flexShrink: 1, fontSize: 12, fontFamily: Fonts.sans[700] },
   actionNote: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -825,12 +1130,16 @@ const styles = StyleSheet.create({
   },
   listingImage: { height: 52, width: 52, borderRadius: Radius.sm },
   listingImageEmpty: { alignItems: 'center', justifyContent: 'center' },
+  /*
+    Text only — no border or pill. It sits under the sales list, tucked to the
+    right, as a trailing link off the end of the section. Still 44pt tall for
+    the touch target, with the height coming from padding rather than a box.
+  */
   viewAllRow: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
+    alignSelf: 'flex-end',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
   },
 
   centreState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 96, gap: Spacing.three },
@@ -913,5 +1222,40 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontFamily: Fonts.sans[700],
     color: '#ffffff',
+  },
+
+  /* Dispatch & Delivery Details modal */
+  dispatchForm: { gap: Spacing.one, borderTopWidth: 1, paddingTop: Spacing.three },
+  dispatchActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginTop: Spacing.two },
+  dispatchCancel: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.four,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
+  dispatchLabel: { fontSize: 10, letterSpacing: 0.4, fontFamily: Fonts.sans[700] },
+  dispatchInput: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    fontSize: 13,
+    fontFamily: Fonts.sans[400],
+  },
+  dispatchMono: { fontFamily: Fonts.mono },
+  dispatchMultiline: { minHeight: 68, textAlignVertical: 'top' },
+  dispatchConfirm: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.md,
   },
 });

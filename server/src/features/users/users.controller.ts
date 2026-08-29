@@ -6,6 +6,11 @@ export const getPublicProfile = asyncHandler(async (req, res) => {
   res.json(profile);
 });
 
+export const searchCounterparties = asyncHandler(async (req, res) => {
+  const matches = await usersService.searchCounterparties(req.user!.id, String(req.query.q ?? ""));
+  res.json({ matches });
+});
+
 export const updateMe = asyncHandler(async (req, res) => {
   const user = await usersService.updateMe(req.user!.id, req.body);
   res.json({ user });

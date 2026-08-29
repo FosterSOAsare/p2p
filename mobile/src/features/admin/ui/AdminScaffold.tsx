@@ -2,13 +2,13 @@ import type { ComponentType, ReactNode } from 'react';
 import {
   ActivityIndicator,
   Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, ShieldCheck, TriangleAlert } from '@/components/icons';
@@ -16,6 +16,7 @@ import { ArrowLeft, ShieldCheck, TriangleAlert } from '@/components/icons';
 import { Accent, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
+import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
 
 /**
  * Shared furniture for the admin console screens.
@@ -64,7 +65,14 @@ export function AdminScreen({
 
   return (
     <View style={[styles.flex, { backgroundColor: theme.background }]}>
-      <ScrollView
+      {/*
+        Keyboard-aware rather than a plain ScrollView: several console screens
+        take typed input well down the page — the dispute payout amount and its
+        note, the KYC rejection reason — and the keyboard sat straight over
+        them. Delegating means those screens get the lift, the tap-through and
+        the bottom padding without each re-solving it.
+      */}
+      <KeyboardAwareScroll
         contentContainerStyle={[
           styles.scroll,
           {
@@ -77,7 +85,6 @@ export function AdminScreen({
             paddingBottom: tabBarHeight + Spacing.four,
           },
         ]}
-        keyboardShouldPersistTaps="handled"
         refreshControl={
           onRefresh ? (
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
@@ -107,7 +114,7 @@ export function AdminScreen({
         </View>
 
         {children}
-      </ScrollView>
+      </KeyboardAwareScroll>
 
       {footer}
     </View>

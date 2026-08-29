@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 
 import { Ban, CheckCircle2, Clock, Gavel } from '@/components/icons';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { useTheme, useTones } from '@/hooks/use-theme';
 import { apiErrorMessage } from '@/features/shared/data/api';
+import { useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { useSubmitListingDispute, type ListingRemoval } from '../data/listingsApi';
 
 /**
@@ -17,6 +19,9 @@ import { useSubmitListingDispute, type ListingRemoval } from '../data/listingsAp
  *
  * The appeal is an argument, not a resubmission — a removed listing is frozen,
  * so the admin rules on exactly what they took down.
+ *
+ * The panel's rose surfaces come from `Tones`, so they invert with the scheme
+ * rather than dropping a near-white card onto the dark app background.
  */
 export function ListingDisputePanel({
   listingId,
@@ -26,7 +31,11 @@ export function ListingDisputePanel({
   removal: ListingRemoval;
 }) {
   const theme = useTheme();
+  const tones = useTones();
+  const rose = tones.danger;
   const submit = useSubmitListingDispute();
+  const ensureVisible = useEnsureVisible();
+  const fieldRow = useRef<View>(null);
   const [explanation, setExplanation] = useState('');
 
   const dispute = removal.dispute;
@@ -35,14 +44,14 @@ export function ListingDisputePanel({
   const canSubmit = explanation.trim().length >= 10;
 
   return (
-    <View style={styles.panel}>
+    <View style={[styles.panel, { backgroundColor: rose.surface, borderColor: rose.border }]}>
       <View style={styles.head}>
-        <View style={styles.headIcon}>
-          <Ban size={18} color="#e11d48" />
+        <View style={[styles.headIcon, { backgroundColor: rose.chip }]}>
+          <Ban size={18} color={rose.icon} />
         </View>
         <View style={styles.headText}>
           <Text style={[styles.title, { color: theme.text }]}>Removed by an administrator</Text>
-          <Text style={styles.reason}>{removal.reasonText}</Text>
+          <Text style={[styles.reason, { color: rose.text }]}>{removal.reasonText}</Text>
         </View>
       </View>
 
@@ -53,9 +62,9 @@ export function ListingDisputePanel({
         >
           <View style={styles.statusRow}>
             {dispute.status === 'open' ? (
-              <Clock size={14} color="#b45309" />
+              <Clock size={14} color={tones.warning.icon} />
             ) : dispute.status === 'approved' ? (
-              <CheckCircle2 size={14} color="#059669" />
+              <CheckCircle2 size={14} color={tones.success.icon} />
             ) : (
               <Ban size={14} color={theme.textTertiary} />
             )}
@@ -87,9 +96,17 @@ export function ListingDisputePanel({
           <Text style={[styles.label, { color: theme.textSecondary }]}>
             Why should this listing be reinstated?
           </Text>
+          {/* The panel sits near the bottom of a long edit screen, so the
+              keyboard opens straight over this box. `ListingEditScreen`
+              already wraps everything in a KeyboardAwareScroll — this just
+              asks it to lift the field. `collapsable={false}` keeps the View
+              measurable on Android, where a layout-only View is optimised away
+              and `measureInWindow` then reports nothing. */}
+          <View ref={fieldRow} collapsable={false}>
           <TextInput
             value={explanation}
             onChangeText={setExplanation}
+            onFocus={() => ensureVisible(fieldRow.current)}
             editable={!submit.isPending}
             multiline
             textAlignVertical="top"
@@ -106,6 +123,7 @@ export function ListingDisputePanel({
               },
             ]}
           />
+          </View>
 
           {/* Counts up to the minimum, then stops nagging — without it a
               disabled button gives no clue what it's waiting for. */}
@@ -116,8 +134,15 @@ export function ListingDisputePanel({
           ) : null}
 
           {submit.isError ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{apiErrorMessage(submit.error)}</Text>
+            <View
+              style={[
+                styles.errorBox,
+                { backgroundColor: rose.chip, borderColor: rose.border },
+              ]}
+            >
+              <Text style={[styles.errorText, { color: rose.text }]}>
+                {apiErrorMessage(submit.error)}
+              </Text>
             </View>
           ) : null}
 
@@ -152,8 +177,6 @@ export function ListingDisputePanel({
 const styles = StyleSheet.create({
   panel: {
     borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fef2f2',
     borderRadius: Radius.lg,
     padding: Spacing.four,
     gap: Spacing.three,
@@ -164,13 +187,12 @@ const styles = StyleSheet.create({
     height: 40,
     width: 40,
     borderRadius: Radius.md,
-    backgroundColor: '#fee2e2',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headText: { flex: 1, gap: 2 },
   title: { fontSize: 13.5, fontFamily: Fonts.display[700] },
-  reason: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[400], color: '#b91c1c' },
+  reason: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[400] },
 
   statusBox: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three, gap: 6 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -198,12 +220,10 @@ const styles = StyleSheet.create({
 
   errorBox: {
     borderWidth: 1,
-    borderColor: '#fecaca',
-    backgroundColor: '#fee2e2',
     borderRadius: Radius.md,
     padding: Spacing.three,
   },
-  errorText: { fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.sans[600], color: '#b91c1c' },
+  errorText: { fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.sans[600] },
 
   submit: {
     flexDirection: 'row',

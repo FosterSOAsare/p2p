@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowRight,

@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -7,6 +7,7 @@ import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { usePersona } from '@/hooks/use-persona';
 import { useAuth } from '@/context/AuthContext';
 import { SkeletonList } from '@/features/shared/ui/Skeleton';
+import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
 import { BuyerDashboard } from './BuyerDashboard';
 import { SellerDashboard } from './SellerDashboard';
 import { AdminDashboard } from './AdminDashboard';
@@ -29,9 +30,11 @@ export function DashboardScreen() {
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView
+      {/* Keyboard-aware: the seller's dispatch form expands inline on a sales
+          card partway down this list, so a focused field has to be lifted clear
+          of the keyboard rather than sat under it. */}
+      <KeyboardAwareScroll
         contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + Spacing.four }]}
-        showsVerticalScrollIndicator={false}
       >
         {persona === 'admin' ? (
           <AdminDashboard />
@@ -46,7 +49,7 @@ export function DashboardScreen() {
              this app should never show. Placeholders instead. */
           <SkeletonList count={3} />
         )}
-      </ScrollView>
+      </KeyboardAwareScroll>
     </SafeAreaView>
   );
 }

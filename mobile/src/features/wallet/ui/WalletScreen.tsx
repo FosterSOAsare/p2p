@@ -1,14 +1,17 @@
 import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
+  ArrowDownLeft,
   ArrowLeft,
   ArrowUpRight,
   CreditCard,
   Smartphone,
   CheckCircle2,
   Clock,
+  ExternalLink,
   Lock,
   Plus,
   ShieldCheck,
@@ -22,7 +25,12 @@ import { useAuth } from '@/context/AuthContext';
 import { usePersona } from '@/hooks/use-persona';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { apiErrorMessage } from '@/features/shared/data/api';
-import { useWallet, useWalletTransactions, useWithdraw } from '../data/walletApi';
+import {
+  useWallet,
+  useWalletTransactions,
+  useWithdraw,
+  type WalletTransaction,
+} from '../data/walletApi';
 import { useTopUp, type PayMethod } from '../data/paymentsApi';
 
 /**
@@ -40,29 +48,38 @@ import { useTopUp, type PayMethod } from '../data/paymentsApi';
  * locally, so what's on screen is always what the server holds.
  */
 
-interface LedgerEntry {
-  id: string;
-  type: 'escrow_release' | 'withdrawal';
-  reference: string;
-  amount: number;
-  at: string;
+/**
+ * Everything a ledger row needs, derived once — the web's `txView`, ported.
+ *
+ * This replaces a local `LedgerEntry` that squashed the server's six
+ * transaction types into two by looking at the sign of the amount, so a
+ * `deposit` rendered as "Escrow Release" and a `fee` as "Withdrawal". The type
+ * is the server's to state, not ours to infer.
+ */
+function txView(tx: WalletTransaction) {
+  const createdAt = new Date(tx.createdAt);
+  const ageInHours = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
+  return {
+    isCredit: tx.amount > 0,
+    // A payout is spendable a day after release; until then it's on the clock.
+    isRelease: tx.type === 'escrow_release',
+    isPendingClearance: tx.type === 'escrow_release' && ageInHours < 24,
+    hoursRemaining: Math.max(1, Math.ceil(24 - ageInHours)),
+    label: tx.type.replace('_', ' ').toUpperCase(),
+    // The note repeats the deal code, which gets its own line.
+    note: tx.note ? tx.note.replace(/\s*\([A-Z0-9-]+\)/gi, '') : 'Wallet activity',
+    when: createdAt.toLocaleString(),
+  };
 }
+
+/** How many ledger rows show before "View all" is tapped. */
+const TX_PREVIEW_COUNT = 5;
 
 function formatMoney(amount: number, currency = 'GH₵') {
   return `${currency}${amount.toLocaleString('en-GH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
-}
-
-function formatStamp(iso: string) {
-  return new Date(iso).toLocaleString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
 }
 
 export function WalletScreen() {
@@ -106,17 +123,16 @@ export function WalletScreen() {
    * Amounts arrive signed — credits positive, debits negative — so the sign
    * decides how a row reads instead of its type.
    */
-  const ledger = useMemo<LedgerEntry[]>(
-    () =>
-      (txQuery.data?.transactions ?? []).map((t) => ({
-        id: t.id,
-        type: t.amount < 0 ? 'withdrawal' : 'escrow_release',
-        reference: t.escrow?.code ?? t.note ?? t.type.replace(/_/g, ' '),
-        amount: Math.abs(t.amount),
-        at: t.createdAt,
-      })),
-    [txQuery.data],
-  );
+  const ledger = useMemo(() => txQuery.data?.transactions ?? [], [txQuery.data]);
+
+  /*
+    A full ledger is a lot of scrolling past on the way to anything below it,
+    so only the most recent few show until asked. The request already returns
+    the whole page (limit=50), so expanding costs nothing — it is a render
+    decision, not another round trip.
+  */
+  const [showAllTx, setShowAllTx] = useState(false);
+  const visibleLedger = showAllTx ? ledger : ledger.slice(0, TX_PREVIEW_COUNT);
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -125,6 +141,9 @@ export function WalletScreen() {
 
   /** Mirrors the web's validation order and messages exactly. */
   const submitWithdraw = async () => {
+    // Reachable from the field's `onSubmitEditing` as well as the button, so
+    // the guard lives here rather than only on the button's `disabled`.
+    if (withdraw.isPending) return;
     setError(null);
     setSuccess(null);
 
@@ -146,7 +165,7 @@ export function WalletScreen() {
       // The server re-checks the balance and guards against going negative —
       // the checks above are only there to save a round trip on obvious input
       // mistakes, not to be the authority.
-      await withdraw.mutateAsync(value);
+      await withdraw.mutateAsync({ amount: value, destination: destination.trim() });
     } catch (err) {
       setError(apiErrorMessage(err));
       return;
@@ -156,6 +175,9 @@ export function WalletScreen() {
     // ledger queries, so both refetch and show what the server actually holds.
     setSuccess(`Successfully paid out ${formatMoney(value, currency)} to ${destination.trim()}!`);
     setAmount('');
+    // The web clears the destination too, so a second payout doesn't silently
+    // reuse the last number.
+    setDestination('');
     setWithdrawOpen(false);
   };
 
@@ -213,15 +235,15 @@ export function WalletScreen() {
               style={({ pressed }) => [
                 styles.withdrawBtn,
                 styles.walletAction,
-                { backgroundColor: theme.primary, opacity: topUp.isPending ? 0.6 : pressed ? 0.85 : 1 },
+                { backgroundColor: theme.text, opacity: topUp.isPending ? 0.6 : pressed ? 0.85 : 1 },
               ]}
             >
               {topUp.isPending ? (
-                <ActivityIndicator size="small" color="#ffffff" />
+                <ActivityIndicator size="small" color={theme.background} />
               ) : (
-                <Plus size={18} color="#ffffff" />
+                <Plus size={18} color={theme.background} />
               )}
-              <Text style={styles.withdrawBtnText}>Add Funds</Text>
+              <Text style={[styles.withdrawBtnText, { color: theme.background }]}>Add Funds</Text>
             </Pressable>
 
             <Pressable
@@ -234,12 +256,13 @@ export function WalletScreen() {
               style={({ pressed }) => [
                 styles.withdrawBtn,
                 styles.walletAction,
-                styles.withdrawSecondary,
-                { borderColor: theme.border, opacity: pressed ? 0.85 : 1 },
+                // The web's Withdraw is `bg-emerald-600 dark:bg-emerald-500`,
+                // not primary — hence `theme.accent`.
+                { backgroundColor: theme.accent, opacity: pressed ? 0.85 : 1 },
               ]}
             >
-              <ArrowUpRight size={18} color={theme.text} />
-              <Text style={[styles.withdrawBtnText, { color: theme.text }]}>Withdraw</Text>
+              <ArrowUpRight size={18} color={theme.accentOn} />
+              <Text style={[styles.withdrawBtnText, { color: theme.accentOn }]}>Withdraw</Text>
             </Pressable>
           </View>
 
@@ -338,36 +361,104 @@ export function WalletScreen() {
               No transactions recorded yet
             </Text>
           ) : (
-            ledger.map((entry) => {
-              const isCredit = entry.amount >= 0;
+            visibleLedger.map((tx) => {
+              const v = txView(tx);
               return (
                 <View
-                  key={entry.id}
-                  style={[styles.ledgerRow, { borderTopColor: theme.border }]}
+                  key={tx.id}
+                  style={[styles.txCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
                 >
-                  <View style={styles.ledgerInfo}>
-                    <Text style={[styles.ledgerType, { color: theme.text }]}>
-                      {entry.type === 'escrow_release' ? 'Escrow Release' : 'Withdrawal'}
-                    </Text>
-                    <Text style={[styles.ledgerRef, { color: theme.textTertiary }]} numberOfLines={1}>
-                      {entry.reference} · {formatStamp(entry.at)}
+                  {/* Type chip + amount */}
+                  <View style={styles.txTop}>
+                    <View
+                      style={[
+                        styles.typeChip,
+                        { backgroundColor: v.isCredit ? '#dcfce7' : '#ffe4e6' },
+                      ]}
+                    >
+                      {v.isCredit ? (
+                        <ArrowDownLeft size={11} color="#166534" />
+                      ) : (
+                        <ArrowUpRight size={11} color="#9f1239" />
+                      )}
+                      <Text
+                        style={[styles.typeChipText, { color: v.isCredit ? '#166534' : '#9f1239' }]}
+                      >
+                        {v.label}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[styles.txAmount, { color: v.isCredit ? '#16a34a' : theme.text }]}
+                    >
+                      {v.isCredit ? '+' : ''}
+                      {formatMoney(tx.amount, currency)}
                     </Text>
                   </View>
-                  <View style={styles.ledgerRight}>
-                    <Text
-                      style={[styles.ledgerAmount, { color: isCredit ? theme.primary : '#e11d48' }]}
-                    >
-                      {isCredit ? '+' : '−'}
-                      {formatMoney(Math.abs(entry.amount), currency)}
-                    </Text>
-                    {entry.type === 'escrow_release' ? (
-                      <Text style={[styles.settled, { color: theme.textTertiary }]}>Settled</Text>
+
+                  <Text style={[styles.txNote, { color: theme.textSecondary }]} numberOfLines={2}>
+                    {v.note}
+                  </Text>
+
+                  {/* Clearance · deal code · when */}
+                  <View style={styles.txFoot}>
+                    {!v.isRelease ? (
+                      <Text style={[styles.txSettled, { color: theme.textTertiary }]}>Settled</Text>
+                    ) : v.isPendingClearance ? (
+                      <View style={[styles.clearChip, { backgroundColor: '#fef3c7' }]}>
+                        <Clock size={10} color="#92400e" />
+                        <Text style={[styles.clearChipText, { color: '#92400e' }]}>
+                          Clears in ~{v.hoursRemaining}h
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.clearChip, { backgroundColor: '#dcfce7' }]}>
+                        <CheckCircle2 size={10} color="#166534" />
+                        <Text style={[styles.clearChipText, { color: '#166534' }]}>Cleared</Text>
+                      </View>
+                    )}
+
+                    {tx.escrow ? (
+                      <Pressable
+                        onPress={() => router.push(`/escrow/${tx.escrow!.id}`)}
+                        hitSlop={6}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open deal ${tx.escrow.code}`}
+                        style={styles.txDealLink}
+                      >
+                        <Text style={[styles.txDealCode, { color: theme.primary }]}>
+                          {tx.escrow.code || tx.escrow.id.slice(0, 8)}
+                        </Text>
+                        <ExternalLink size={10} color={theme.primary} />
+                      </Pressable>
                     ) : null}
+
+                    <Text style={[styles.txWhen, { color: theme.textTertiary }]}>{v.when}</Text>
                   </View>
                 </View>
               );
             })
           )}
+
+          {/* Expands in place — the rows are already fetched. */}
+          {ledger.length > TX_PREVIEW_COUNT ? (
+            <Pressable
+              onPress={() => setShowAllTx((v) => !v)}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.txViewAll,
+                {
+                  borderColor: theme.cardBorder,
+                  backgroundColor: pressed ? theme.backgroundSelected : 'transparent',
+                },
+              ]}
+            >
+              <Text style={[styles.txViewAllText, { color: theme.primary }]}>
+                {showAllTx
+                  ? 'Show fewer'
+                  : `View all ${ledger.length} transactions →`}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </KeyboardAwareScroll>
 
@@ -381,17 +472,21 @@ export function WalletScreen() {
           visible={withdrawOpen}
           animationType="slide"
           presentationStyle="pageSheet"
-          onRequestClose={() => setWithdrawOpen(false)}
+          // Not dismissable mid-payout, the same guard the top-up modal uses —
+          // closing over an in-flight request leaves the seller unsure whether
+          // the money moved.
+          onRequestClose={() => (withdraw.isPending ? undefined : setWithdrawOpen(false))}
         >
           <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
             {/* Fixed header, so Close is always reachable */}
             <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
               <Pressable
                 onPress={() => setWithdrawOpen(false)}
+                disabled={withdraw.isPending}
                 hitSlop={10}
                 accessibilityRole="button"
                 accessibilityLabel="Close"
-                style={styles.closeBtn}
+                style={[styles.closeBtn, { opacity: withdraw.isPending ? 0.4 : 1 }]}
               >
                 <X size={22} color={theme.text} />
               </Pressable>
@@ -483,16 +578,34 @@ export function WalletScreen() {
                 </Text>
               </View>
 
+              {/*
+                A payout is a slow round trip, and this button used to show
+                nothing at all while it ran — no spinner, not even disabled —
+                so it read as an unresponsive button and invited a second tap
+                on a request that moves money. The web swaps the icon for a
+                spinner and disables it; so does this.
+              */}
               <Pressable
                 onPress={submitWithdraw}
-                style={({ pressed }) => [
+                disabled={withdraw.isPending}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: withdraw.isPending, busy: withdraw.isPending }}
+                style={[
                   styles.confirmBtn,
-                  { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+                  { backgroundColor: theme.primary, opacity: withdraw.isPending ? 0.5 : 1 },
                 ]}
               >
-                <ArrowUpRight size={17} color="#ffffff" />
+                {withdraw.isPending ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <ArrowUpRight size={17} color="#ffffff" />
+                )}
                 <Text style={styles.withdrawBtnText}>
-                  {amount ? `Withdraw ${formatMoney(Number(amount) || 0, currency)}` : 'Confirm Payout'}
+                  {withdraw.isPending
+                    ? 'Processing…'
+                    : amount
+                      ? `Withdraw ${formatMoney(Number(amount) || 0, currency)}`
+                      : 'Confirm Payout'}
                 </Text>
               </Pressable>
             </KeyboardAwareScroll>
@@ -636,7 +749,6 @@ export function WalletScreen() {
 const styles = StyleSheet.create({
   walletActions: { flexDirection: 'row', gap: Spacing.two },
   walletAction: { flex: 1 },
-  withdrawSecondary: { backgroundColor: 'transparent', borderWidth: 1 },
   topUpMethods: { flexDirection: 'row', gap: Spacing.two },
   topUpMethod: {
     flex: 1,
@@ -852,18 +964,48 @@ const styles = StyleSheet.create({
   },
   errorText: { fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.sans[600], color: '#b91c1c' },
 
-  ledgerRow: {
+  /* Ledger card — the web's TransactionCard. */
+  txCard: {
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
+  },
+  txTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.two },
+  typeChip: {
+    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-    borderTopWidth: 1,
-    paddingTop: Spacing.three,
+    gap: 4,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  ledgerInfo: { flex: 1, gap: 2 },
-  ledgerType: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
-  ledgerRef: { fontSize: 10.5, fontFamily: Fonts.sans[400] },
-  ledgerRight: { alignItems: 'flex-end', gap: 2 },
-  ledgerAmount: { fontSize: 13.5, fontFamily: Fonts.display[700] },
-  settled: { fontSize: 9.5, fontFamily: Fonts.sans[600] },
+  typeChipText: { fontSize: 9.5, letterSpacing: 0.3, fontFamily: Fonts.sans[700] },
+  txAmount: { flexShrink: 0, fontSize: 13.5, fontFamily: Fonts.display[700] },
+  txNote: { fontSize: 11, lineHeight: 16, fontFamily: Fonts.sans[400] },
+  txFoot: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: Spacing.two },
+  clearChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  clearChipText: { fontSize: 9.5, fontFamily: Fonts.sans[700] },
+  txSettled: { fontSize: 9.5, fontFamily: Fonts.sans[600] },
+  txDealLink: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  txDealCode: { fontSize: 9.5, fontFamily: Fonts.sans[700] },
+  // `marginLeft: auto` is the web's `ml-auto` — the timestamp sits far right.
+  txWhen: { marginLeft: 'auto', fontSize: 9.5, fontFamily: Fonts.sans[400] },
+  txViewAll: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: Radius.md,
+  },
+  txViewAllText: { fontSize: 12, fontFamily: Fonts.sans[700] },
 });

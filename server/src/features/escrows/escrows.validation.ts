@@ -92,6 +92,16 @@ export const review: RequestSchema = {
   }),
 };
 
+export const cryptoStart: RequestSchema = {
+  params: Joi.object({ id: Joi.string().guid().required() }),
+  body: Joi.object({
+    // Where to send the buyer back to after the hosted invoice. Optional — the
+    // web omits it and gets its own callback route. The *value* is checked
+    // against an allowlist in return-url.ts; this only bounds its shape.
+    returnUrl: Joi.string().uri({ scheme: [/https?/, "p2pm", "exp"] }).max(512).allow("", null),
+  }),
+};
+
 export const cryptoCheck: RequestSchema = {
   params: Joi.object({ id: Joi.string().guid().required() }),
   body: Joi.object({

@@ -66,6 +66,22 @@ export const env = {
   // it at a tunnel (ngrok/cloudflared) to exercise the webhook path for real.
   SERVER_ORIGIN: process.env.SERVER_ORIGIN ?? `http://localhost:${Number(process.env.PORT ?? 4000)}`,
 
+  /**
+   * How often to send a trivial query so the database doesn't fall asleep.
+   *
+   * Neon scales the compute to zero after a few minutes with no queries (five,
+   * on the plans where it isn't configurable). Waking it costs seconds and
+   * kills every pooled connection, so the next few requests pay TLS handshakes
+   * on top — which is what "the app is fine, then suddenly takes 30 seconds"
+   * actually is.
+   *
+   * Four minutes leaves a margin under that threshold. Set `DB_KEEPALIVE_MS=0`
+   * to switch it off, which is the right setting against a database that
+   * doesn't suspend — there is no point holding one awake that was never going
+   * to sleep.
+   */
+  DB_KEEPALIVE_MS: Number(process.env.DB_KEEPALIVE_MS ?? 4 * 60_000),
+
   // Mail. "simulated" logs `[mail:simulated] To <email>: <subject>` (default);
   // flip to "smtp" + fill SMTP_* and install nodemailer to send for real.
   MAIL_DRIVER: (process.env.MAIL_DRIVER ?? "simulated") as "simulated" | "smtp",
@@ -96,3 +112,27 @@ export const paystackEnabled = () => env.PAYSTACK_SECRET_KEY.startsWith("sk_test
 
 /** True once a NOWPayments API key is configured — see shared/lib/nowpayments.ts. */
 export const nowpaymentsEnabled = () => env.NOWPAYMENTS_API_KEY.length > 0;
+
+/**
+ * Fund a crypto deal on the provider's *status* alone, ignoring the amount it
+ * says was received.
+ *
+ * Only ever for the sandbox. NOWPayments' sandbox marks a payment `finished`
+ * while still reporting `actually_paid: 0`, so the underpayment guard in
+ * crypto.service — correctly — refuses to fund and the deal sits at
+ * `partially_paid` forever. That makes the rail impossible to demonstrate end
+ * to end without weakening the guard against real money, which is not a trade
+ * worth making.
+ *
+ * So it is gated twice, and both gates must be open:
+ *
+ *  1. `NOWPAYMENTS_TRUST_STATUS=true` — off unless someone deliberately sets it
+ *  2. the base URL is a sandbox one — so copying a production `.env` that still
+ *     carries the flag cannot switch it on
+ *
+ * The second gate is the one that matters. A flag alone would be one careless
+ * `.env` copy away from funding real deals on unpaid invoices.
+ */
+export const nowpaymentsTrustStatus = () =>
+  (process.env.NOWPAYMENTS_TRUST_STATUS ?? "").toLowerCase() === "true" &&
+  /sandbox/i.test(env.NOWPAYMENTS_BASE_URL);

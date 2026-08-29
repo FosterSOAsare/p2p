@@ -39,6 +39,6 @@ escrowsRouter.post("/:id/review", validate(escrowsValidation.review), escrowsCon
 
 // Crypto rail — funding a TRX deal is a deposit to the provider, not a FUND
 // event we accept from the buyer, so it sits outside the transitions above.
-escrowsRouter.post("/:id/crypto/start", validate(escrowsValidation.idParam), escrowsController.cryptoStart);
+escrowsRouter.post("/:id/crypto/start", validate(escrowsValidation.cryptoStart), escrowsController.cryptoStart);
 escrowsRouter.get("/:id/crypto", validate(escrowsValidation.idParam), escrowsController.cryptoStatus);
 escrowsRouter.post("/:id/crypto/check", validate(escrowsValidation.cryptoCheck), escrowsController.cryptoCheck);

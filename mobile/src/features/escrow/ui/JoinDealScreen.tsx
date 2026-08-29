@@ -48,9 +48,9 @@ export function JoinDealScreen() {
           <View style={[styles.successIcon, { backgroundColor: '#dcfce7' }]}>
             <ShieldCheck size={26} color="#166534" />
           </View>
-          <Text style={[styles.emptyTitle, { color: theme.text }]}>You've joined the deal</Text>
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>You&apos;ve joined the deal</Text>
           <Text style={[styles.emptyHint, { color: theme.textSecondary }]}>
-            {deal ? `“${deal.title}” is now between you and @${deal.creator.username}.` : ''} You'll
+            {deal ? `“${deal.title}” is now between you and @${deal.creator.username}.` : ''} You&apos;ll
             find it under My Deals.
           </Text>
           <AdminButton label="Go to my deals" onPress={() => router.replace('/deals')} />
@@ -153,7 +153,7 @@ export function JoinDealScreen() {
           {!deal.joinable ? (
             <View style={[styles.notice, { backgroundColor: theme.backgroundElement }]}>
               <Text style={[styles.noticeText, { color: theme.textSecondary }]}>
-                This deal isn't open to join — it already has both parties, or it has moved past the
+                This deal isn&apos;t open to join — it already has both parties, or it has moved past the
                 invite stage.
               </Text>
             </View>

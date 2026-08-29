@@ -17,16 +17,20 @@ export interface AuthUser {
   createdAt: string
 }
 
-export interface AuthResult {
-  user: AuthUser
-  tokens: AuthTokens
-}
-
 export interface MeResponse extends AuthUser {
   kycStatus: 'unverified' | 'pending' | 'verified' | 'rejected'
   prefs: { emailShipmentUpdates: boolean; smsReleaseAlerts: boolean }
   wallets: { currency: 'GHS' | 'TRX'; balance: number }[]
   stats: { activeOrdersCount: number; totalSpent: number; savedItemsCount: number }
+}
+
+/**
+ * Login answers with the full `/me` payload, not a thinner user — so the
+ * signed-in shell can be drawn from this response without a second request.
+ */
+export interface AuthResult {
+  user: MeResponse
+  tokens: AuthTokens
 }
 
 export const authKeys = {
@@ -90,9 +94,20 @@ export function useLogin() {
   return useMutation({
     mutationFn: (input: { identifier: string; password: string }) =>
       api<AuthResult>('/api/auth/login', { method: 'POST', body: input }),
-    onSuccess: ({ tokens }) => {
+    onSuccess: ({ user, tokens }) => {
       tokenStore.set(tokens)
-      queryClient.invalidateQueries({ queryKey: authKeys.me })
+      /*
+        Write the user straight into the cache instead of invalidating.
+
+        `invalidateQueries` only marks the query stale and starts a *refetch* —
+        `useMe().data` stays `null` until that returns, so for a full round trip
+        after a successful sign-in the header still rendered Sign up / Log in to
+        someone who was already signed in. The login response now carries the
+        same payload `/me` does, so there is nothing left to go and ask for:
+        setting it notifies every subscriber synchronously and the header flips
+        in the same tick.
+      */
+      queryClient.setQueryData<MeResponse>(authKeys.me, user)
     },
   })
 }

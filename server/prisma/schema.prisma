@@ -701,6 +701,12 @@ model CryptoEscrow {
   orderRef            String    @unique
   invoiceId           String?
   invoiceUrl          String?
+  /// Where this invoice sends the buyer back to, as it was resolved when the
+  /// invoice was created. Stored so a live invoice can be recognised as stale
+  /// when the destination changes — a web invoice reused by the phone would
+  /// otherwise redirect into the web app, and an invoice created under an old
+  /// WEB_ORIGIN keeps sending people to that host forever.
+  returnUrl           String?
   /// Only known once the buyer actually picks a coin on the hosted page — it
   /// arrives on the IPN, or as `NP_id` on the success redirect.
   paymentId           String?

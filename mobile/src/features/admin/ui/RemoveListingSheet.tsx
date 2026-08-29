@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Trash2, X } from '@/components/icons';
 

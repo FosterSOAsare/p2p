@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -14,6 +14,8 @@ import {
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import { useCreateStandaloneEscrow } from '../data/dealsApi';
 
 /**
  * Standalone Off-Platform Contract — the phone version of the web's
@@ -75,6 +77,7 @@ export function NewEscrowScreen() {
   const [feeSplit, setFeeSplit] = useState<FeeSplit>('BUYER');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const createEscrow = useCreateStandaloneEscrow();
 
   // The web binds a number input; a phone keyboard hands back a string, so parse
   // once here and treat anything unparseable as 0 for the preview.
@@ -94,19 +97,38 @@ export function NewEscrowScreen() {
         : amountValue;
 
   /** Mirrors the web's guard: a title and a positive amount are required. */
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError(null);
-    if (!title.trim()) {
-      setError('Give the contract a title.');
+    if (createEscrow.isPending) return;
+
+    // The server's minimum is 3 characters, so a one-character title used to
+    // pass here and come back as a validation error from the API.
+    if (title.trim().length < 3) {
+      setError('Give the contract a title of at least 3 characters.');
       return;
     }
     if (amountValue <= 0) {
       setError('Enter a deal amount greater than zero.');
       return;
     }
-    // TODO(api): POST the standalone escrow, then push the new deal's detail
-    // screen the way the web navigates to /escrow/:id.
-    goBack();
+
+    try {
+      const deal = await createEscrow.mutateAsync({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        amount: amountValue,
+        currency,
+        // The chips carry uppercase labels; the server's schema is lowercase.
+        role,
+        // The chips carry uppercase labels; the server's schema is lowercase.
+        feeSplit: feeSplit.toLowerCase() as 'buyer' | 'seller' | 'split',
+        invitedUsername: invitedUsername.trim() || undefined,
+      });
+      // Straight to the new deal, as the web does after creating one.
+      router.replace(`/escrow/${deal.id}`);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
   };
 
   /** Back to My Deals — falls back to the tab when there's nothing to pop. */
@@ -362,13 +384,22 @@ export function NewEscrowScreen() {
         {/* Submit */}
         <Pressable
           onPress={handleSubmit}
-          style={({ pressed }) => [
+          disabled={createEscrow.isPending}
+          accessibilityRole="button"
+          accessibilityState={{ busy: createEscrow.isPending }}
+          style={[
             styles.submit,
-            { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+            { backgroundColor: theme.primary, opacity: createEscrow.isPending ? 0.6 : 1 },
           ]}
         >
-          <ArrowRight size={16} color="#ffffff" />
-          <Text style={styles.submitText}>Create &amp; Launch Escrow Deal</Text>
+          {createEscrow.isPending ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <ArrowRight size={16} color="#ffffff" />
+          )}
+          <Text style={styles.submitText}>
+            {createEscrow.isPending ? 'Creating…' : 'Create & Launch Escrow Deal'}
+          </Text>
         </Pressable>
       </KeyboardAwareScroll>
     </SafeAreaView>

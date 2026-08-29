@@ -40,7 +40,7 @@ export function TestimonialsSection() {
               </View>
             </View>
             <ThemedText type="small" style={styles.comment}>
-              "{review.comment}"
+              &quot;{review.comment}&quot;
             </ThemedText>
           </ThemedView>
         ))}

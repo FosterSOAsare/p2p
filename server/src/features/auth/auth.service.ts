@@ -134,9 +134,22 @@ export async function login(input: LoginInput, ctx: RequestContext): Promise<Aut
     });
   }
 
-  const tokens = await startSession(user, ctx);
+  /*
+    Return the same shape `/api/auth/me` does, not the thinner `publicUser`.
+
+    Both clients used to sign in and then immediately ask `/me`, because login
+    withheld the one field that decides what the app looks like — `kycStatus`,
+    which is what makes someone a seller. That second request is a whole extra
+    HTTP round trip on the critical path, and until it landed the web header had
+    no user and rendered Sign up / Log in to someone who had just signed in.
+
+    Gathered concurrently with the session write: `me` is four parallel reads
+    and `startSession` is a write, so neither waits on the other and login costs
+    what it did before.
+  */
+  const [tokens, profile] = await Promise.all([startSession(user, ctx), me(user.id)]);
   void mailer.loginAlert(user.email, user.fullName, new Date().toUTCString(), ctx.ip ?? "unknown");
-  return { user: publicUser(user), tokens };
+  return { user: profile, tokens };
 }
 
 // ---------- Sessions & token rotation ----------
@@ -279,14 +292,20 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
 }
 
 /** GET /me — profile + KYC status + wallets + the dashboard counts the client shows. */
+/**
+ * All four queries in one batch, not the user row and then the three stats.
+ *
+ * They were sequential, but only by habit — the stats key off `userId`, which
+ * the caller already has from the verified token, so none of them ever needed
+ * the user row. Against a database ~450ms away that ordering was costing a
+ * whole extra round trip on the request every signed-in screen makes first.
+ */
 export async function me(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { kyc: { select: { status: true } }, wallets: true },
-  });
-  if (!user) throw ApiError.notFound("User not found");
-
-  const [activeOrdersCount, spent, savedItemsCount] = await Promise.all([
+  const [user, activeOrdersCount, spent, savedItemsCount] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      include: { kyc: { select: { status: true } }, wallets: true },
+    }),
     prisma.escrow.count({
       where: { buyerId: userId, status: { in: ["created", "funded", "delivered"] } },
     }),
@@ -296,6 +315,8 @@ export async function me(userId: string) {
     }),
     prisma.savedListing.count({ where: { userId } }),
   ]);
+
+  if (!user) throw ApiError.notFound("User not found");
 
   return {
     ...publicUser(user),

@@ -1,14 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image } from 'expo-image';
-import {
-  FlatList,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { FlatList, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Heart, Search, ShieldCheck, Store, X } from '@/components/icons';
@@ -22,7 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useSaved } from '@/context/SavedContext';
 import { useBlocked } from '@/context/BlockedContext';
 import { usePersona } from '@/hooks/use-persona';
-import { type ImageRef } from '@/constants/mockData';
+import { type ImageRef } from '@/constants/appTypes';
 import {
   useCategories,
   useMarketplaceListings,
@@ -274,7 +267,11 @@ export function MarketplaceScreen() {
         <View style={[styles.cardFooter, { borderTopColor: theme.border }]}>
           <View style={styles.priceBlock}>
             <Text style={[styles.escrowLabel, { color: theme.textTertiary }]}>In Escrow</Text>
-            <Text style={[styles.price, { color: theme.text }]}>
+            {/* One line, always. A long amount used to wrap, and the footer is
+                pinned to the bottom of a fixed-height card, so the second line
+                had nowhere to go and pushed the price and chip out of the
+                card. */}
+            <Text style={[styles.price, { color: theme.text }]} numberOfLines={1}>
               {formatMoney(item.price, item.currency)}
             </Text>
           </View>
@@ -686,10 +683,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.one,
   },
-  priceBlock: { flexShrink: 1 },
+  /**
+   * `minWidth: 0` is what actually lets this shrink. A flex child won't go
+   * narrower than its content without it, so `flexShrink` alone did nothing and
+   * the price simply overflowed the card instead of yielding.
+   */
+  priceBlock: { flexShrink: 1, minWidth: 0 },
   escrowLabel: { fontSize: 9, fontFamily: Fonts.sans[600] },
-  price: { fontSize: 13, fontFamily: Fonts.sans[700] },
+  // 12, not 13: two columns leave a card ~142pt wide inside its padding, and
+  // the extra point was the difference between "GH₵ 1,998,000.00" fitting and
+  // being truncated next to the chip.
+  price: { fontSize: 12, fontFamily: Fonts.sans[700] },
   viewChip: {
+    // The chip holds its size; the price is what gives way.
+    flexShrink: 0,
     borderRadius: Radius.sm,
     paddingHorizontal: 9,
     paddingVertical: 4,

@@ -1,12 +1,6 @@
 import { Image } from 'expo-image';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, MessageSquare, ShieldCheck } from '@/components/icons';

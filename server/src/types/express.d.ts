@@ -9,6 +9,13 @@ declare global {
         username: string;
         role: UserRole;
       };
+      /**
+       * The signed-in user's KYC status, loaded alongside `user` by `auth`.
+       *
+       * Exists so `requireSeller` can decide without a second query for a fact
+       * the previous middleware already had. `null` means no KYC profile yet.
+       */
+      authKycStatus?: string | null;
     }
   }
 }

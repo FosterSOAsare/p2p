@@ -22,6 +22,13 @@ export interface SellerSaleOrder {
   title: string;
   amount: number;
   currency: 'GHS' | 'TRX';
+  /**
+   * Dispatch details, once the seller has entered them. The server has always
+   * sent both (`users.service.ts`) — they were simply missing from this type,
+   * so the courier line the web shows on each sale row had no data to read.
+   */
+  carrier?: string;
+  trackingNumber?: string;
 }
 
 /** A row of the store inventory strip. Note `stock` and `imageUrl`. */

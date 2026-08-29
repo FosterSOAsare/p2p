@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link } from 'expo-router';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowRight, Check, Eye, EyeOff, Lock, Mail, ShieldCheck } from '@/components/icons';
 
@@ -21,7 +22,8 @@ import { AuthField } from './AuthField';
  * below the `lg` breakpoint, so the phone mirrors the right-hand form column:
  * same badge, same headings, same fields, same copy, same green CTA.
  *
- * Auth is still the mock in AuthContext — no server calls yet.
+ * Sign-in is real: `AuthContext.login` posts to `/api/auth/login` and a
+ * rejected attempt throws, so the message below is the server's.
  */
 export function LoginScreen() {
   const theme = useTheme();

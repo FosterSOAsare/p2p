@@ -1,5 +1,6 @@
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
+import { invalidateUser } from "../../shared/lib/auth-cache";
 import type {
   AccountStatus,
   DisputeOutcome,
@@ -46,6 +47,9 @@ export async function approveKyc(adminId: string, id: string) {
     data: { status: "verified", rejectionReason: null, reviewedById: adminId, reviewedAt: new Date() },
     include: kycWithUser,
   });
+  // `requireSeller` reads this off the cached auth row — without dropping it,
+  // a freshly approved seller would still be refused until the entry aged out.
+  invalidateUser(kyc.userId);
   void notify({
     userId: kyc.userId,
     category: "kyc",
@@ -63,6 +67,7 @@ export async function rejectKyc(adminId: string, id: string, reason: string) {
     data: { status: "rejected", rejectionReason: reason, reviewedById: adminId, reviewedAt: new Date() },
     include: kycWithUser,
   });
+  invalidateUser(kyc.userId);
   void notify({
     userId: kyc.userId,
     category: "kyc",
@@ -415,6 +420,9 @@ export async function setUserStatus(adminId: string, id: string, status: Account
   const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
   if (!target) throw ApiError.notFound("User not found");
   const updated = await prisma.user.update({ where: { id }, data: { status }, select: userRowSelect });
+  // `auth` serves a cached copy of this row; without this a suspension would
+  // not bite until the entry aged out, and the account would keep working.
+  invalidateUser(id);
   return toAdminUserRow(updated);
 }
 
