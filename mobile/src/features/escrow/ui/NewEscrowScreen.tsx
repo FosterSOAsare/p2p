@@ -8,13 +8,14 @@ import {
   FileText,
   LockKeyhole,
   ShieldCheck,
-  User,
 } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { useCreateStandaloneEscrow } from '../data/dealsApi';
+import { CounterpartyPicker } from './CounterpartyPicker';
+import type { CounterpartyMatch } from '@/features/user/data/usersApi';
 import { quoteFee, type FeeSplit } from '../data/fees';
 import { apiErrorMessage } from '@/features/shared/data/api';
 
@@ -72,7 +73,14 @@ export function NewEscrowScreen() {
 
   const [role, setRole] = useState<Role>('buyer');
   const [title, setTitle] = useState('');
-  const [invitedUsername, setInvitedUsername] = useState('');
+  /**
+   * The counterparty, in two parts: `counterparty` is a confirmed account and
+   * the only thing ever sent; `counterpartyQuery` is the raw text, kept so
+   * blank (fine — invite by link) can be told from typed-but-never-picked
+   * (an error the server used to have to catch after the round trip).
+   */
+  const [counterparty, setCounterparty] = useState<CounterpartyMatch | null>(null);
+  const [counterpartyQuery, setCounterpartyQuery] = useState('');
   const [amount, setAmount] = useState('500');
   const [currency, setCurrency] = useState<Currency>('GHS');
   // Same default as the web form and the server's schema.
@@ -81,6 +89,9 @@ export function NewEscrowScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const createEscrow = useCreateStandaloneEscrow();
+
+  /** Text typed into the counterparty box with no account picked from the list. */
+  const unresolvedCounterparty = !counterparty && counterpartyQuery.trim().length > 0;
 
   // The web binds a number input; a phone keyboard hands back a string, so parse
   // once here and treat anything unparseable as 0 for the preview.
@@ -106,6 +117,12 @@ export function NewEscrowScreen() {
       setError('Enter a deal amount greater than zero.');
       return;
     }
+    if (unresolvedCounterparty) {
+      setError(
+        `Pick @${counterpartyQuery.replace(/^@/, '').trim()} from the list, or clear the field to invite by link instead.`,
+      );
+      return;
+    }
 
     createEscrow.mutate(
       {
@@ -114,7 +131,7 @@ export function NewEscrowScreen() {
         amount: amountValue,
         currency,
         role,
-        invitedUsername: invitedUsername.trim() || undefined,
+        invitedUsername: counterparty?.username,
         feeSplit,
       },
       {
@@ -250,26 +267,23 @@ export function NewEscrowScreen() {
         {/* Counterparty */}
         <View ref={counterpartyRow} collapsable={false} style={styles.field}>
           {label('Counterparty Username', '(optional)')}
-          <View
+          <CounterpartyPicker
+            value={counterparty}
+            onChange={setCounterparty}
+            query={counterpartyQuery}
+            onQueryChange={setCounterpartyQuery}
+            disabled={createEscrow.isPending}
+            onFocus={() => ensureVisible(counterpartyRow.current)}
+          />
+          <Text
             style={[
-              styles.inputWrap,
-              { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder },
+              styles.hint,
+              { color: unresolvedCounterparty ? '#b45309' : theme.textTertiary },
             ]}
           >
-            <User size={16} color={theme.textTertiary} />
-            <TextInput
-              value={invitedUsername}
-              onChangeText={setInvitedUsername}
-              placeholder="e.g. kwame_dev or seller_username"
-              placeholderTextColor={theme.textTertiary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              onFocus={() => ensureVisible(counterpartyRow.current)}
-              style={[styles.input, { color: theme.text }]}
-            />
-          </View>
-          <Text style={[styles.hint, { color: theme.textTertiary }]}>
-            Leave blank to generate a public invite link to share with anyone.
+            {unresolvedCounterparty
+              ? 'Pick an account from the list — or clear the field to invite by link.'
+              : "Leave blank to generate a public invite link to share with anyone. Admins can't be invited."}
           </Text>
         </View>
 

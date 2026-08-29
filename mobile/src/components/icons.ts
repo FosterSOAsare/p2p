@@ -62,6 +62,8 @@ export { default as PackageSearch } from 'lucide-react-native/icons/package-sear
 export { default as Paperclip } from 'lucide-react-native/icons/paperclip';
 export { default as Pencil } from 'lucide-react-native/icons/pencil';
 export { default as Plus } from 'lucide-react-native/icons/plus';
+export { default as QrCode } from 'lucide-react-native/icons/qr-code';
+export { default as Share2 } from 'lucide-react-native/icons/share-2';
 export { default as PlusCircle } from 'lucide-react-native/icons/circle-plus';
 export { default as RefreshCw } from 'lucide-react-native/icons/refresh-cw';
 export { default as RotateCcw } from 'lucide-react-native/icons/rotate-ccw';

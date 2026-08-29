@@ -1,8 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
+import { Image } from 'expo-image';
 import {
   ActivityIndicator,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -22,7 +24,9 @@ import {
   FileText,
   MessageCircle,
   Pencil,
+  QrCode,
   RotateCcw,
+  Share2,
   ShieldCheck,
   Truck,
 } from '@/components/icons';
@@ -193,6 +197,8 @@ export function EscrowDetailScreen() {
       // The server has no free-text release condition; the delivery note is the
       // nearest equivalent it does send.
       releaseCondition: d.deliveryNote ?? '',
+      // Present only while a side is empty — see the note on `Deal.share`.
+      share: d.share ?? null,
       events: d.events.map((e) => {
         const copy = eventCopy(e.event);
         return {
@@ -400,6 +406,30 @@ export function EscrowDetailScreen() {
       setFundError(apiErrorMessage(err));
     } finally {
       funding.current = false;
+    }
+  };
+
+  /**
+   * Hand the deal to someone out of band.
+   *
+   * The OS share sheet rather than a clipboard copy: the whole point is getting
+   * the link into WhatsApp or SMS, and a "copied!" toast still leaves the
+   * creator to find the other app themselves. The URL comes from the server
+   * (`WEB_ORIGIN`), so it follows wherever the API is deployed instead of
+   * pointing at a host baked into the build.
+   */
+  const shareInvite = async () => {
+    if (!deal.share) return;
+    try {
+      await Share.share({
+        message: `Join my escrow deal "${deal.title}" on P2P Trust Market:\n${deal.share.joinUrl}\n\nDeal code: ${deal.share.code}`,
+        // iOS shows both; Android ignores `url` and uses `message`, which is
+        // why the link is in the message text too.
+        url: deal.share.joinUrl,
+      });
+    } catch {
+      // Dismissing the sheet throws on some Android builds; there is nothing
+      // to report and nothing to undo.
     }
   };
 
@@ -832,6 +862,75 @@ export function EscrowDetailScreen() {
                   <Text style={styles.submitBtnText}>Confirm Delivery</Text>
                 </Pressable>
               </View>
+            </View>
+          ) : null}
+
+          {/*
+            Invite panel — the phone version of the web's, and its presence is
+            the condition: the server sends `share` only while a side is still
+            empty. On a one-sided deal, getting someone to join is the only
+            thing left to do here, so it sits above the actions.
+
+            This is what was missing. A deal created without a counterparty had
+            no way to reach the other party from the app at all — the server was
+            building the link and QR, the web was showing them, and mobile threw
+            the whole payload away.
+          */}
+          {deal.share ? (
+            <View style={[styles.card, styles.inviteCard, { borderColor: theme.primary }]}>
+              <View style={styles.inviteHead}>
+                <QrCode size={16} color={theme.primary} />
+                <Text style={[styles.inviteTitle, { color: theme.text }]}>
+                  Invite the other party
+                </Text>
+              </View>
+              <Text style={[styles.body, { color: theme.textSecondary }]}>
+                They scan this or open the link to join. The deal can&apos;t be funded until
+                they do.
+              </Text>
+
+              {/* A base64 PNG from the server, so it needs no QR library here
+                  and can never disagree with the link it encodes. */}
+              <View style={styles.qrWrap}>
+                <Image
+                  source={{ uri: deal.share.dataUrl }}
+                  style={styles.qr}
+                  contentFit="contain"
+                  accessibilityLabel={`QR code for deal ${deal.share.code}`}
+                />
+              </View>
+
+              <View style={styles.inviteCodeWrap}>
+                <Text style={[styles.inviteCodeLabel, { color: theme.textTertiary }]}>
+                  DEAL CODE
+                </Text>
+                <Text selectable style={[styles.inviteCode, { color: theme.text }]}>
+                  {deal.share.code}
+                </Text>
+              </View>
+
+              {/* The link itself, selectable so it can be copied by hand if the
+                  share sheet is unavailable. */}
+              <Text
+                selectable
+                style={[styles.inviteLink, { color: theme.textTertiary }]}
+                numberOfLines={2}
+              >
+                {deal.share.joinUrl}
+              </Text>
+
+              <Pressable
+                onPress={shareInvite}
+                accessibilityRole="button"
+                accessibilityLabel="Share the invite link"
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Share2 size={16} color="#ffffff" />
+                <Text style={styles.primaryBtnText}>Share invite link</Text>
+              </Pressable>
             </View>
           ) : null}
 
@@ -1294,6 +1393,25 @@ const styles = StyleSheet.create({
   backText: { fontSize: 13, fontFamily: Fonts.sans[700] },
 
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four, gap: Spacing.three },
+
+  // Invite panel. Sits on the plain background rather than `theme.card` so the
+  // QR reads against white in both schemes — a dark card behind a black-on-
+  // white code is exactly where scanners start to struggle.
+  inviteCard: { backgroundColor: 'transparent', alignItems: 'stretch' },
+  inviteHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  inviteTitle: { fontSize: 14, fontFamily: Fonts.display[700] },
+  qrWrap: { alignItems: 'center' },
+  qr: {
+    width: 176,
+    height: 176,
+    borderRadius: Radius.lg,
+    backgroundColor: '#ffffff',
+    padding: Spacing.two,
+  },
+  inviteCodeWrap: { alignItems: 'center', gap: 2 },
+  inviteCodeLabel: { fontSize: 9.5, fontFamily: Fonts.sans[700], letterSpacing: 0.8 },
+  inviteCode: { fontSize: 20, fontFamily: Fonts.display[700], letterSpacing: 3 },
+  inviteLink: { fontSize: 10.5, fontFamily: Fonts.sans[400], textAlign: 'center' },
 
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.sm },

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ShieldCheck, ArrowLeft, ArrowRight, User, FileText, LockKeyhole, Loader2 } from 'lucide-react'
+import { ShieldCheck, ArrowLeft, ArrowRight, FileText, LockKeyhole, Loader2 } from 'lucide-react'
 import { useCreateStandaloneEscrow } from '../features/escrow/data/ordersApi'
+import { CounterpartyPicker } from '../features/escrow/ui/CounterpartyPicker'
+import type { CounterpartyMatch } from '../features/user/data/usersApi'
 import { quoteFee, type FeeSplit } from '../features/escrow/data/fees'
 import { formatMoney } from '../features/shared/libs/currency'
 import { apiErrorMessage } from '../features/shared/libs/api'
@@ -11,7 +13,17 @@ export function NewEscrow() {
   const createEscrow = useCreateStandaloneEscrow()
 
   const [title, setTitle] = useState('')
-  const [invitedUsername, setInvitedUsername] = useState('')
+  /**
+   * The counterparty, in two parts.
+   *
+   * `counterparty` is a *confirmed* account and the only thing ever sent to the
+   * server. `counterpartyQuery` is the raw text in the box, kept so the three
+   * states can be told apart: blank (fine — the deal goes out as an invite
+   * link), confirmed, and typed-but-never-picked. Only the last is an error,
+   * and it used to be one the server had to catch after the round trip.
+   */
+  const [counterparty, setCounterparty] = useState<CounterpartyMatch | null>(null)
+  const [counterpartyQuery, setCounterpartyQuery] = useState('')
   const [amount, setAmount] = useState<number>(500)
   const [currency, setCurrency] = useState<'GHS' | 'TRX'>('GHS')
   const [role, setRole] = useState<'buyer' | 'seller'>('buyer')
@@ -19,10 +31,22 @@ export function NewEscrow() {
   const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  /**
+   * Text was typed into the counterparty box but no account was picked from the
+   * list. Blocks submission — see the note on the state above.
+   */
+  const unresolvedCounterparty = !counterparty && counterpartyQuery.trim().length > 0
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     if (!title.trim() || amount <= 0) return
+    if (unresolvedCounterparty) {
+      setError(
+        `Pick @${counterpartyQuery.replace(/^@/, '').trim()} from the list, or clear the field to invite by link instead.`,
+      )
+      return
+    }
 
     createEscrow.mutate(
       {
@@ -31,7 +55,7 @@ export function NewEscrow() {
         amount,
         currency,
         role,
-        invitedUsername: invitedUsername.trim() || undefined,
+        invitedUsername: counterparty?.username,
         feeSplit,
       },
       {
@@ -136,18 +160,23 @@ export function NewEscrow() {
             <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400" htmlFor="deal-counterparty">
               Counterparty Username <span className="text-slate-400 normal-case">(optional)</span>
             </label>
-            <div className="relative">
-              <User size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                id="deal-counterparty"
-                type="text"
-                value={invitedUsername}
-                onChange={(e) => setInvitedUsername(e.target.value)}
-                placeholder="e.g. kwame_dev or seller_username"
-                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
-              />
-            </div>
-            <p className="text-[11px] text-slate-400">Leave blank to generate a public invite link to share with anyone.</p>
+            <CounterpartyPicker
+              value={counterparty}
+              onChange={setCounterparty}
+              query={counterpartyQuery}
+              onQueryChange={setCounterpartyQuery}
+              disabled={createEscrow.isPending}
+            />
+            {unresolvedCounterparty ? (
+              <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                Pick an account from the list — or clear the field to invite by link.
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-400">
+                Leave blank to generate a public invite link to share with anyone. Admins can&apos;t
+                be invited.
+              </p>
+            )}
           </div>
 
           {/* Amount & Currency */}

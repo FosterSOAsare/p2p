@@ -5,6 +5,78 @@ import type { PublicUser } from "../auth/auth.model";
 import type { NotificationPrefsInput, SavedListingCard, UpdateProfileInput } from "./users.model";
 import { feeMathP, toPesewas, fromPesewas } from "../escrows/money";
 
+// ---------- Counterparty search ----------
+
+/** One suggestion for the escrow counterparty picker. */
+export interface CounterpartyMatch {
+  username: string;
+  avatarUrl: string | null;
+  storeName: string | null;
+  /** KYC-verified — the badge the picker shows, same meaning as elsewhere. */
+  verified: boolean;
+}
+
+/**
+ * Usernames that may be invited to an escrow deal, for the counterparty picker.
+ *
+ * Deliberately narrow about who appears. Three exclusions, each for a different
+ * reason:
+ *
+ * - **admins** — an admin rules on disputes; putting one on the other side of a
+ *   deal makes them a party to a case they may later have to judge. They also
+ *   bypass `requireSeller`, so an admin suggested here reads as an ordinary
+ *   trader when they are not.
+ * - **the caller** — `createStandalone` rejects self-dealing, so suggesting
+ *   yourself only offers a choice that cannot be taken.
+ * - **suspended accounts** — they cannot transact, so an invite would strand
+ *   the deal on a side that can never fill.
+ *
+ * Matches on username or store name so a seller can be found by the name on
+ * their shopfront rather than only by handle. Prefix matches rank first: typing
+ * "kwa" should surface `kwame` before `akwasi`.
+ */
+export async function searchCounterparties(actorId: string, query: string): Promise<CounterpartyMatch[]> {
+  const q = query.replace(/^@/, "").trim();
+  // One character matches most of the table and helps nobody choose.
+  if (q.length < 2) return [];
+
+  const rows = await prisma.user.findMany({
+    where: {
+      id: { not: actorId },
+      role: { not: "admin" },
+      status: { not: "suspended" },
+      OR: [
+        { username: { contains: q, mode: "insensitive" } },
+        { kyc: { storeName: { contains: q, mode: "insensitive" } } },
+      ],
+    },
+    select: {
+      username: true,
+      avatarUrl: true,
+      kyc: { select: { status: true, storeName: true } },
+    },
+    // A stable secondary sort, so equal-ranked rows don't reshuffle between
+    // keystrokes — the list jumping under a moving finger is its own bug.
+    orderBy: { username: "asc" },
+    take: 20,
+  });
+
+  const lower = q.toLowerCase();
+  return rows
+    .map((u) => ({
+      username: u.username,
+      avatarUrl: u.avatarUrl,
+      storeName: u.kyc?.storeName ?? null,
+      verified: u.kyc?.status === "verified",
+    }))
+    .sort((a, b) => {
+      const aPrefix = a.username.toLowerCase().startsWith(lower) ? 0 : 1;
+      const bPrefix = b.username.toLowerCase().startsWith(lower) ? 0 : 1;
+      return aPrefix - bPrefix || a.username.localeCompare(b.username);
+    })
+    .slice(0, 8);
+}
+
 // ---------- Public seller profile ----------
 
 /** Public view of a user — store identity, stats, and active listings. No email/legal name. */

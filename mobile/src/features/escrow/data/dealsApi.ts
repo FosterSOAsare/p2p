@@ -87,6 +87,16 @@ export interface Deal {
   disputedAt: string | null;
   cancelledAt: string | null;
   creatorUsername: string;
+  /**
+   * The invite kit, present only while a side is still empty — which is exactly
+   * when the creator has someone to hand the deal to. `dataUrl` is a base64 PNG
+   * QR of `joinUrl`, and `joinUrl` is built from the server's `WEB_ORIGIN`, so
+   * it points at whatever host the API is configured for rather than anything
+   * baked in here.
+   *
+   * Sent on the **detail** response only, not on list rows.
+   */
+  share: { code: string; joinUrl: string; dataUrl: string } | null;
   events: DealEvent[];
 }
 
@@ -150,9 +160,12 @@ export function useDeal(id: string) {
       const lists = qc.getQueriesData<DealsResponse>({ queryKey: dealKeys.all });
       for (const [, data] of lists) {
         const hit = data?.deals?.find((d) => d.id === id);
-        // The list omits `events`; an empty timeline renders as no rows rather
-        // than as a crash, and is replaced a moment later.
-        if (hit) return { ...hit, events: hit.events ?? [] };
+        // The list omits `events` and `share`; both are filled by the real
+        // fetch a moment later. An empty timeline renders as no rows rather
+        // than as a crash, and a null `share` keeps the invite panel hidden —
+        // showing it from a placeholder would flash a QR with no image behind
+        // it on every open.
+        if (hit) return { ...hit, events: hit.events ?? [], share: hit.share ?? null };
       }
       return undefined;
     },

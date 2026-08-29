@@ -214,6 +214,13 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
   let invitedUserId: string | null = null;
   let cleanCounterpartyUsername: string | null = null;
 
+  /*
+    An empty counterparty is allowed and means "public invite" — the deal is
+    created one-sided and handed over by share code. Only a *typed* username
+    that doesn't resolve is an error, and the checks below mirror exactly who
+    `users.searchCounterparties` is willing to suggest, so the picker can never
+    offer someone the create call would then refuse.
+  */
   if (rawCounterparty) {
     const invited = await prisma.user.findUnique({ where: { username: rawCounterparty } });
     if (!invited) {
@@ -221,6 +228,14 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
     }
     if (invited.id === creatorId) {
       throw ApiError.badRequest("You cannot create an escrow deal with yourself");
+    }
+    // An admin rules on disputes; making one a party to a deal puts them on a
+    // case they may later have to judge.
+    if (invited.role === "admin") {
+      throw ApiError.badRequest("Admins can't be invited to a deal. Choose a buyer or seller instead.");
+    }
+    if (invited.status === "suspended") {
+      throw ApiError.badRequest(`@${invited.username} can't take part in deals right now.`);
     }
     invitedUserId = invited.id;
     cleanCounterpartyUsername = invited.username;
