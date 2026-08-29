@@ -216,6 +216,46 @@ The server already had every handler — history and gap-fill in the
 
 ---
 
+## 5b. Deals didn't update live
+
+Joining a deal by share link left the creator staring at the invite QR until
+they refreshed by hand. The cause was general, not specific to joining: **no
+event ever invalidated a deal.** `notify:new` refreshed the notification list
+and `notify:message` refreshed the inbox — nothing touched the deal itself. The
+same gap applied to every transition, so a buyer watching a deal wouldn't see
+the seller mark it delivered either.
+
+Both clients now listen for a new `deal:updated`, emitted to buyer, seller and
+creator on join, on every state transition, and on an amendment. Only the id
+travels: each party's view of a deal differs (`myRole`, `availableActions`,
+`share` are computed per viewer), so each re-reads its own rather than being
+handed the other's copy.
+
+Joining was also slow — about seven seconds. `acceptByCode` ran five statements
+inside one interactive transaction, and in a transaction every statement is a
+separate round trip on a pinned connection, plus BEGIN and COMMIT:
+
+```
+one read, plain              :  270ms
+the same read in $transaction:  762ms
+five reads in $transaction   : 6065ms   <- what acceptByCode did
+```
+
+Only the claim and its audit row need to be atomic. The checks around them are
+reads and were never what kept it correct — two people racing for the same slot
+are separated by the guarded `updateMany`, and the loser sees `count === 0`.
+The join notice is no longer awaited either; it is a chat message for someone
+who has already been told over the socket.
+
+| | Before | After |
+|---|---|---|
+| creator's screen updates | never (manual refresh) | **~2.0s** |
+| joiner's own response | ~7s | **~4.2s** |
+
+Race behaviour re-verified after the change: two simultaneous accepts on one
+empty side give exactly one winner (409 / 200, `joinable` false), accepting
+twice is idempotent, and the creator still can't join their own deal.
+
 ## 6. Optimistic UI
 
 Nothing in the mobile app used `onMutate`. Every tap waited out a round trip.
