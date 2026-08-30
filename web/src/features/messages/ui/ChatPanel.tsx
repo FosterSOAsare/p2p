@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -17,6 +17,9 @@ import { useUploadSingleFile } from '../../upload/data/uploadApi'
 import { useChat, type ChatMessage } from '../data/useChat'
 import { formatTime } from '../../shared/libs/date'
 
+/** Within this many px of the bottom still counts as being at the bottom. */
+const NEAR_BOTTOM_PX = 80
+
 /**
  * One open conversation. Fills whatever container it's given — the Messages
  * page mounts it as the right-hand pane. `onBack` is only rendered on mobile,
@@ -34,25 +37,85 @@ export function ChatPanel({ username, onBack }: { username: string; onBack?: () 
   const [draft, setDraft] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Scroll the message list itself, not via scrollIntoView on a sentinel —
-  // that walks up and scrolls every ancestor container including the window,
-  // which dragged the whole page down on each incoming message.
-  //
-  // Keyed on the newest id rather than the count: loading older history also
-  // changes the count, and jumping to the bottom is the opposite of what the
-  // reader asked for by scrolling up.
+  /*
+    Scroll intent, tracked rather than assumed.
+
+    `stick` is whether the reader is pinned to the newest message. Everything
+    below is gated on it, so someone who scrolled up to read history is never
+    yanked back down — not by an arriving message, and not by the re-pin that
+    corrects for late-loading images.
+
+    `opening` separates the first paint of a conversation from a message
+    arriving into one already on screen. The first is a jump; only the second
+    should animate.
+  */
+  const stick = useRef(true)
+  const opening = useRef(true)
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
+    const el = scrollRef.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior })
+  }, [])
+
+  // A different conversation starts over — the previous thread's scroll
+  // position says nothing about this one.
+  useEffect(() => {
+    stick.current = true
+    opening.current = true
+  }, [username])
+
+  /*
+    Scroll the message list itself, not via scrollIntoView on a sentinel —
+    that walks up and scrolls every ancestor container including the window,
+    which dragged the whole page down on each incoming message.
+
+    Keyed on the newest id rather than the count: loading older history also
+    changes the count, and jumping to the bottom is the opposite of what the
+    reader asked for by scrolling up.
+
+    Instant on open, and before paint. `behavior: 'smooth'` animates toward the
+    height measured when the animation *starts*, so opening a thread whose
+    images had not decoded yet finished at what was then the bottom and had
+    since become the middle — landing at the newest message and drifting back
+    up, which is the bug this addresses.
+  */
   const newestId = chat.messages.at(-1)?.id
+  useLayoutEffect(() => {
+    if (!newestId || !stick.current) return
+    if (opening.current) {
+      opening.current = false
+      scrollToBottom('auto')
+      return
+    }
+    scrollToBottom('smooth')
+  }, [newestId, chat.counterpartyTyping, scrollToBottom])
+
+  /*
+    Attachment images are sized by their own content, so they take up no room
+    until they decode and then push the thread down by up to 224px each. Re-pin
+    as each one lands; this also covers a late webfont rewrapping text. `load`
+    does not bubble, hence the capture listener on the container.
+  */
   useEffect(() => {
     const el = scrollRef.current
-    el?.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-  }, [newestId, chat.counterpartyTyping])
+    if (!el) return
+    const repin = () => {
+      if (stick.current) scrollToBottom('auto')
+    }
+    el.addEventListener('load', repin, true)
+    return () => el.removeEventListener('load', repin, true)
+  }, [scrollToBottom])
 
   /** Height and first id captured when a history request goes out. */
   const anchor = useRef<{ height: number; firstId?: string } | null>(null)
 
   const onScroll = () => {
     const el = scrollRef.current
-    if (!el || el.scrollTop > 80 || !chat.hasMore || chat.loadingOlder) return
+    if (!el) return
+    // Re-read on every scroll: this is the only thing that tells an auto-scroll
+    // apart from someone deliberately reading back through the thread.
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX
+    if (el.scrollTop > 80 || !chat.hasMore || chat.loadingOlder) return
     anchor.current = { height: el.scrollHeight, firstId: chat.messages[0]?.id }
     chat.loadOlder()
   }

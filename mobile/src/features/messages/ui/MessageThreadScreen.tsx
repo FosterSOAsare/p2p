@@ -4,6 +4,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import {
   ActivityIndicator,
   Linking,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   ScrollView,
   StyleSheet,
   Text,
@@ -52,6 +54,9 @@ import { useUploadFile } from '@/features/upload/data/uploadApi';
 
 /** The server's cap, mirrored so an oversized pick fails before uploading. */
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+/** Within this many px of the bottom still counts as being at the bottom. */
+const NEAR_BOTTOM_PX = 80;
 
 interface LocalMessage {
   id: string;
@@ -150,12 +155,50 @@ export function MessageThreadScreen() {
   /** Comes with the `conversation:open` ack — no directory lookup needed. */
   const counterparty = chat.counterparty;
 
-  // Keep the newest message in view — on send, and when the keyboard opens and
-  // steals the bottom of the thread.
+  /*
+    Keep the newest message in view — on send, and when the keyboard opens and
+    steals the bottom of the thread.
+
+    Gated on `stick`, which tracks whether the reader is actually at the bottom.
+    Without it an arriving message drags someone reading back through the thread
+    down to the newest one, and the keyboard does the same on every focus.
+
+    `opening` makes the first scroll of a conversation instant. Animating it
+    means entering a thread visibly travels from the top, and the animation
+    targets the height measured when it starts — bubbles that size themselves
+    late leave it short of the true bottom, which is the web's version of this
+    bug. Images here are a fixed box (`bubbleImage`), so this is hardening
+    rather than a fix for something currently visible.
+  */
+  const stick = useRef(true);
+  const opening = useRef(true);
+
+  const onThreadScroll = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+    stick.current =
+      contentSize.height - contentOffset.y - layoutMeasurement.height < NEAR_BOTTOM_PX;
+  };
+
+  // A different conversation starts over — the previous thread's position says
+  // nothing about this one.
   useEffect(() => {
+    stick.current = true;
+    opening.current = true;
+  }, [username]);
+
+  const newestId = messages[messages.length - 1]?.id;
+  useEffect(() => {
+    if (!newestId || !stick.current) return;
+    if (opening.current) {
+      opening.current = false;
+      scrollRef.current?.scrollToEnd({ animated: false });
+      return;
+    }
+    // Still deferred a frame: the bubble has to be laid out before its height
+    // counts toward the end of the thread.
     const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
     return () => clearTimeout(t);
-  }, [messages.length, keyboardHeight]);
+  }, [newestId, keyboardHeight]);
 
   /** Back honours the `redirect` the caller passed, like the web's back link. */
   const goBack = () => {
@@ -307,6 +350,8 @@ export function MessageThreadScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
+            onScroll={onThreadScroll}
+            scrollEventThrottle={16}
           >
             <View style={[styles.lockNotice, { backgroundColor: theme.backgroundElement }]}>
               <Lock size={11} color={theme.textTertiary} />
