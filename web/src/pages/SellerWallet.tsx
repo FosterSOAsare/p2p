@@ -14,14 +14,18 @@ import {
   ChevronRight,
   ShieldCheck,
   History,
-  Clock,
   Plus,
+  Banknote,
+  Coins,
+  Info,
+  Lock,
 } from 'lucide-react'
 import { useMe } from '../features/auth/data/authApi'
 import {
   useWallet,
   useWalletTransactions,
   useWithdraw,
+  type WalletCurrency,
   type WalletTransaction,
 } from '../features/escrow/data/walletApi'
 import { useInitDeposit, pendingAction, type PayMethod } from '../features/escrow/data/paymentsApi'
@@ -31,22 +35,90 @@ import { apiErrorMessage } from '../features/shared/libs/api'
 
 /**
  * Everything the two renderings of a transaction need. Derived once so the
- * phone card and the desktop table can't drift on what "cleared" means.
+ * phone card and the desktop table can't drift on how a row reads.
  */
 function txView(tx: WalletTransaction) {
   const createdAt = new Date(tx.createdAt)
-  const ageInHours = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60)
   return {
     isCredit: tx.amount > 0,
-    // A payout is spendable a day after release; until then it's on the clock.
-    isRelease: tx.type === 'escrow_release',
-    isPendingClearance: tx.type === 'escrow_release' && ageInHours < 24,
-    hoursRemaining: Math.max(1, Math.ceil(24 - ageInHours)),
     label: tx.type.replace('_', ' ').toUpperCase(),
     // The note repeats the deal code, which gets its own column/line.
     note: tx.note ? tx.note.replace(/\s*\([A-Z0-9-]+\)/gi, '') : 'Wallet activity',
     when: createdAt.toLocaleString(),
   }
+}
+
+/** Per-rail copy and iconography, so the page reads as one wallet in two
+ *  denominations rather than two bolted-together pages. */
+const RAILS: Record<
+  WalletCurrency,
+  { label: string; short: string; icon: typeof Banknote; available: string; locked: string; payoutTo: string }
+> = {
+  GHS: {
+    label: 'Cedi',
+    short: 'GH₵',
+    icon: Banknote,
+    available: 'Cleared & ready for MoMo payout',
+    locked: 'Held in active GH₵ escrow deals',
+    payoutTo: 'Mobile Money',
+  },
+  TRX: {
+    label: 'TRON',
+    short: 'TRX',
+    icon: Coins,
+    available: 'Cleared & ready to send on-chain',
+    locked: 'Held in active TRX escrow deals',
+    payoutTo: 'TRX address',
+  },
+}
+
+/**
+ * Which balance the page is showing. The two are separate ledgers, never a
+ * converted view of one another, so this switches the whole page — cards,
+ * ledger and payout — rather than just reformatting the same numbers.
+ */
+function CurrencySwitch({
+  value,
+  options,
+  onChange,
+}: {
+  value: WalletCurrency
+  options: WalletCurrency[]
+  onChange: (c: WalletCurrency) => void
+}) {
+  // Only rendered when there is a genuine choice. A TRX wallet exists only once
+  // TRX has actually moved, so a fiat-only user sees no switch at all rather
+  // than a second tab that would always read zero.
+  if (options.length < 2) return null
+  return (
+    <div
+      role="tablist"
+      aria-label="Wallet currency"
+      className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+    >
+      {options.map((code) => {
+        const rail = RAILS[code]
+        const Icon = rail.icon
+        const active = value === code
+        return (
+          <button
+            key={code}
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(code)}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+              active
+                ? 'bg-primary-600 text-white shadow-sm'
+                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white'
+            }`}
+          >
+            <Icon size={14} />
+            {rail.short}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 function TypeChip({ isCredit, label }: { isCredit: boolean; label: string }) {
@@ -64,27 +136,13 @@ function TypeChip({ isCredit, label }: { isCredit: boolean; label: string }) {
   )
 }
 
-function ClearanceChip({ tx }: { tx: WalletTransaction }) {
-  const v = txView(tx)
-  if (!v.isRelease) return <span className="text-[10px] text-slate-400">Settled</span>
-  return v.isPendingClearance ? (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold">
-      <Clock size={10} /> Clears in ~{v.hoursRemaining}h
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold">
-      <CheckCircle2 size={10} /> Cleared
-    </span>
-  )
-}
-
 /**
  * The phone rendering of a ledger row. Six columns behind a horizontal
  * scrollbar isn't a table anyone reads on a 390px screen, so the same fields
  * are stacked: what and how much on top, why in the middle, when and against
  * which deal underneath.
  */
-function TransactionCard({ tx }: { tx: WalletTransaction }) {
+function TransactionCard({ tx, currency }: { tx: WalletTransaction; currency: WalletCurrency }) {
   const v = txView(tx)
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm space-y-2">
@@ -96,14 +154,13 @@ function TransactionCard({ tx }: { tx: WalletTransaction }) {
           }`}
         >
           {v.isCredit ? '+' : ''}
-          {formatMoney(tx.amount)}
+          {formatMoney(tx.amount, currency)}
         </span>
       </div>
 
       <p className="text-[11px] leading-relaxed text-slate-700 dark:text-slate-300 line-clamp-2">{v.note}</p>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <ClearanceChip tx={tx} />
         {tx.escrow && (
           <Link
             to={`/escrow/${tx.escrow.id}`}
@@ -122,8 +179,11 @@ export function SellerWallet() {
   const { data: me, isLoading: meLoading } = useMe()
   const { data: wallet, isLoading: walletLoading, refetch: refetchWallet } = useWallet()
 
+  // Which ledger the page is showing. Everything below — cards, history,
+  // payout — reads from this rather than rendering both rails at once.
+  const [currency, setCurrency] = useState<WalletCurrency>('GHS')
   const [page, setPage] = useState(1)
-  const txQuery = useWalletTransactions(`page=${page}&limit=10`)
+  const txQuery = useWalletTransactions(`page=${page}&limit=10&currency=${currency}`)
 
   const withdrawMutation = useWithdraw()
   const initDeposit = useInitDeposit()
@@ -140,6 +200,16 @@ export function SellerWallet() {
   const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null)
   const [withdrawError, setWithdrawError] = useState<string | null>(null)
 
+  const switchCurrency = (next: WalletCurrency) => {
+    setCurrency(next)
+    // Page 3 of the cedi ledger is meaningless in the TRX one, and a payout
+    // receipt for one rail shouldn't hang over the other.
+    setPage(1)
+    setWithdrawSuccess(null)
+    setWithdrawDestination('')
+    setWithdrawAmount('')
+  }
+
   if (meLoading || walletLoading) {
     return (
       <div className="py-20 text-center">
@@ -152,9 +222,19 @@ export function SellerWallet() {
 
   const isSeller = me.role === 'admin' || me.kycStatus === 'verified'
 
-  const balance = wallet?.balance ?? 0
-  const pendingClearance = wallet?.pendingClearance ?? 0
-  const escrowLocked = wallet?.escrowLocked ?? 0
+  // The wallets the user actually holds. GHS is always there; TRX appears only
+  // once TRX has moved, so the switch has something to switch between only then.
+  const held = wallet?.wallets ?? []
+  const currencies = held.map((w) => w.currency)
+  // Falls back to zeroes so a rail the user doesn't hold still reads as an
+  // empty wallet rather than a spinner or a blank.
+  const active = held.find((w) => w.currency === currency)
+  const rail = RAILS[currency]
+  const balance = active?.balance ?? 0
+  const escrowLocked = active?.escrowLocked ?? 0
+  // Top-ups are a fiat concept: TRX reaches a deal through its own invoice, so
+  // there is no hosted "add TRX to wallet" page to send anyone to.
+  const canTopUp = currency === 'GHS'
 
   /**
    * Top up via the hosted provider page. Nothing is credited here — the wallet
@@ -198,19 +278,19 @@ export function SellerWallet() {
       return
     }
     if (numAmount > balance) {
-      setWithdrawError(`Insufficient cleared balance. Maximum available: ${formatMoney(balance)}`)
+      setWithdrawError(`Insufficient cleared balance. Maximum available: ${formatMoney(balance, currency)}`)
       return
     }
     if (!withdrawDestination.trim()) {
-      setWithdrawError('Please provide a Mobile Money phone number for payout.')
+      setWithdrawError(`Please provide a ${rail.payoutTo} for payout.`)
       return
     }
 
     withdrawMutation.mutate(
-      { amount: numAmount, destination: withdrawDestination.trim() },
+      { amount: numAmount, destination: withdrawDestination.trim(), currency },
       {
         onSuccess: () => {
-          setWithdrawSuccess(`Successfully paid out ${formatMoney(numAmount)} to ${withdrawDestination}!`)
+          setWithdrawSuccess(`Successfully paid out ${formatMoney(numAmount, currency)} to ${withdrawDestination}!`)
           setWithdrawAmount('')
           setWithdrawDestination('')
           // Close the modal — the confirmation is shown on the page behind it,
@@ -248,81 +328,90 @@ export function SellerWallet() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 dark:bg-emerald-950 px-3 py-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              <ShieldCheck size={14} /> VeriTrust Escrow Settle Rail • GH₵
+              <ShieldCheck size={14} /> VeriTrust Escrow Settle Rail • {rail.short}
             </div>
             <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
               {isSeller ? 'Seller Payout Wallet' : 'My P2P Wallet'}
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-xl">
-              Withdraw cleared sales earnings directly to your Mobile Money account or view pending deal clearances.
+              Withdraw cleared earnings to your {rail.payoutTo}, or review what's still held in escrow.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {/* Adding funds is what makes escrow deals fundable — without it the
-                only way money reaches a wallet is a marketplace checkout. */}
-            <button
-              onClick={() => {
-                setTopUpError(null)
-                setTopUpAmount('')
-                setTopUpModalOpen(true)
-              }}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer"
-            >
-              <Plus size={18} /> Add Funds
-            </button>
-            <button
-              onClick={() => {
-                setWithdrawError(null)
-                setWithdrawSuccess(null)
-                setWithdrawModalOpen(true)
-              }}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-500 px-5 py-3 text-xs sm:text-sm font-bold text-white dark:text-slate-950 shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 dark:hover:bg-emerald-400 transition-all cursor-pointer"
-            >
-              <ArrowUpRight size={18} /> Withdraw Payout
-            </button>
-          </div>
+          <CurrencySwitch value={currency} options={currencies} onChange={switchCurrency} />
         </div>
 
-        {/* Balance Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 pt-4 border-t border-slate-200/80 dark:border-slate-800 text-xs">
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1 shadow-sm">
-            <span className="text-slate-500 dark:text-slate-400 font-medium block">Available Balance</span>
-            <span className="font-display text-xl sm:text-2xl font-bold text-sky-600 dark:text-sky-400 block">
-              {formatMoney(balance)}
-            </span>
-            <span className="text-[11px] text-slate-400">Cleared & ready for MoMo payout</span>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Pending Clearance (24h Hold)</span>
-              <Clock size={14} className="text-amber-500" />
+        {/* One number carries this page, so it is sized like it. Escrow-locked
+            is context for it, not a peer, and sits underneath as a strip —
+            which is also what keeps the layout honest now that the clearance
+            hold is gone and there are only two figures to show. */}
+        <div
+          key={currency}
+          className="pt-4 border-t border-slate-200/80 dark:border-slate-800 space-y-4 animate-fade-in"
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-0.5">
+              <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                Available balance
+              </span>
+              <span className="block font-display text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
+                {formatMoney(balance, currency)}
+              </span>
+              <span className="block text-[11px] text-slate-500 dark:text-slate-400">{rail.available}</span>
             </div>
-            <span className="font-display text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400 block">
-              {formatMoney(pendingClearance)}
-            </span>
-            <span className="text-[11px] text-slate-400">Released by buyer — clears in 24h if no dispute</span>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {/* Adding funds is what makes escrow deals fundable — without it the
+                  only way money reaches a wallet is a marketplace checkout. */}
+              {canTopUp && (
+                <button
+                  onClick={() => {
+                    setTopUpError(null)
+                    setTopUpAmount('')
+                    setTopUpModalOpen(true)
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-3 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer"
+                >
+                  <Plus size={18} /> Add Funds
+                </button>
+              )}
+              {/* Nothing to withdraw is a disabled button, not a modal that
+                  opens only to reject you. */}
+              <button
+                onClick={() => {
+                  setWithdrawError(null)
+                  setWithdrawSuccess(null)
+                  setWithdrawModalOpen(true)
+                }}
+                disabled={balance <= 0}
+                title={balance <= 0 ? 'No cleared balance to withdraw yet' : undefined}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-500 px-5 py-3 text-xs sm:text-sm font-bold text-white dark:text-slate-950 shadow-lg shadow-emerald-500/20 transition-all enabled:hover:bg-emerald-700 dark:enabled:hover:bg-emerald-400 enabled:cursor-pointer disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed"
+              >
+                <ArrowUpRight size={18} /> Withdraw
+              </button>
+            </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1 shadow-sm">
-            <span className="text-slate-500 dark:text-slate-400 font-medium block">Escrow-Locked Funds</span>
-            <span className="font-display text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400 block">
-              {formatMoney(escrowLocked)}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl border border-slate-200 bg-white/70 px-3.5 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-950/60">
+            <Lock size={13} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <span className="font-medium text-slate-500 dark:text-slate-400">Escrow-locked</span>
+            <span className="font-display font-bold text-slate-900 dark:text-white">
+              {formatMoney(escrowLocked, currency)}
             </span>
-            <span className="text-[11px] text-slate-400">Held in active buyer escrow deals</span>
+            <span className="text-[11px] text-slate-400">· {rail.locked}</span>
           </div>
-        </div>
-      </div>
 
-      {/* Security Holding Period Info Card */}
-      <div className="rounded-2xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 p-2 sm:p-4 text-slate-800 dark:text-amber-200 text-xs flex items-start gap-3">
-        <Clock size={20} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <h4 className="font-bold text-slate-900 dark:text-white">24-Hour Safety Holding Period</h4>
-          <p className="text-slate-600 dark:text-amber-300/80 leading-relaxed">
-            To protect buyers and sellers against fraud, funds released by the buyer enter a 24-hour holding security clearance before transitioning to your liquid Available Payout Balance. Provided no dispute is filed during this window, funds settle automatically.
-          </p>
+          {/* Why there's no Add Funds on this rail. Without this the button simply
+              vanishing on TRX reads as a bug. */}
+          {!canTopUp && (
+            <div className="flex items-start gap-2 rounded-2xl border border-slate-200 bg-white/70 p-3 text-[11px] text-slate-600 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-400">
+              <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
+              <span>
+                TRX isn't topped up here — each crypto deal opens its own invoice, and the deposit lands in this
+                balance when it confirms. Released and refunded TRX collects here too.
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -334,6 +423,9 @@ export function SellerWallet() {
             <h2 className="font-display text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
               Transaction History
             </h2>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {rail.short}
+            </span>
           </div>
 
           <button
@@ -355,9 +447,13 @@ export function SellerWallet() {
         ) : (txQuery.data?.transactions ?? []).length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-6 sm:p-8 text-center space-y-2">
             <WalletIcon size={32} className="mx-auto text-slate-400" />
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">No transactions recorded yet</p>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              No {rail.short} transactions yet
+            </p>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-              Completed sales payouts and mobile money withdrawal records will appear here.
+              {currency === 'GHS'
+                ? 'Deposits, escrow funding, sales payouts and withdrawals will appear here.'
+                : 'Confirmed TRX deposits, escrow funding and released payouts will appear here.'}
             </p>
           </div>
         ) : (
@@ -365,7 +461,7 @@ export function SellerWallet() {
             {/* Cards on a phone, the ledger table from `md` up. */}
             <div className="space-y-2 md:hidden">
               {txQuery.data?.transactions.map((tx) => (
-                <TransactionCard key={tx.id} tx={tx} />
+                <TransactionCard key={tx.id} tx={tx} currency={currency} />
               ))}
             </div>
 
@@ -375,7 +471,6 @@ export function SellerWallet() {
                   <thead className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     <tr>
                       <th className="px-3 py-2 font-semibold">Type</th>
-                      <th className="px-3 py-2 font-semibold">Status / Clearance</th>
                       <th className="px-3 py-2 font-semibold">Description / Note</th>
                       <th className="px-3 py-2 font-semibold">Deal Reference</th>
                       <th className="px-3 py-2 font-semibold text-right">Amount</th>
@@ -390,10 +485,6 @@ export function SellerWallet() {
                         <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                           <td className="px-3 py-2 font-semibold">
                             <TypeChip isCredit={v.isCredit} label={v.label} />
-                          </td>
-
-                          <td className="px-3 py-2 font-semibold">
-                            <ClearanceChip tx={tx} />
                           </td>
 
                           <td className="px-3 py-2 text-slate-700 dark:text-slate-300 text-[11px] truncate max-w-xs">
@@ -419,7 +510,7 @@ export function SellerWallet() {
                             }`}
                           >
                             {v.isCredit ? '+' : ''}
-                            {formatMoney(tx.amount)}
+                            {formatMoney(tx.amount, currency)}
                           </td>
 
                           <td className="px-3 py-2 text-right text-slate-400 text-[10px]">{v.when}</td>
@@ -555,7 +646,7 @@ export function SellerWallet() {
                   <ArrowUpRight size={18} />
                 </div>
                 <h3 className="font-display font-bold text-slate-900 dark:text-white text-base">
-                  Withdraw to Mobile Money
+                  Withdraw to {rail.payoutTo}
                 </h3>
               </div>
               <button
@@ -576,10 +667,10 @@ export function SellerWallet() {
             <form onSubmit={handleWithdraw} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Withdrawal Amount (GH₵)
+                  Withdrawal Amount ({rail.short})
                 </label>
                 <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">GH₵</span>
+                  <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">{rail.short}</span>
                   <input
                     type="number"
                     step="0.01"
@@ -592,20 +683,24 @@ export function SellerWallet() {
                     className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 pl-12 pr-4 py-2 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">Cleared available balance: {formatMoney(balance)}</p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Cleared available balance: {formatMoney(balance, currency)}
+                </p>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Mobile Money Number
+                  {currency === 'GHS' ? 'Mobile Money Number' : 'TRON (TRX) Address'}
                 </label>
                 <input
                   type="text"
                   value={withdrawDestination}
                   onChange={(e) => setWithdrawDestination(e.target.value)}
-                  placeholder="e.g. 0241234567"
+                  placeholder={currency === 'GHS' ? 'e.g. 0241234567' : 'e.g. TYGRPm5y9j9tKCxGkxawyaR3Cs698RaeTP'}
                   required
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3.5 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className={`w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3.5 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                    currency === 'TRX' ? 'font-mono' : ''
+                  }`}
                 />
               </div>
 

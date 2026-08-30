@@ -5,6 +5,7 @@ import * as nowpayments from "../../shared/lib/nowpayments";
 import type { CryptoEscrow, Escrow } from "../../generated/prisma/client";
 import { breakdown } from "./money";
 import { transition } from "./escrows.service";
+import * as walletService from "../wallet/wallet.service";
 
 /**
  * The TRX rail's deposit half — the crypto answer to wallet.service's Paystack
@@ -216,6 +217,38 @@ async function applySnapshot(
   // row stays visible as a short deposit for someone to sort out.
   if (!settled) return updated;
 
+  // Claim the settlement. `settledAt` is the idempotency key: the IPN and the
+  // buyer's poll race routinely, and only one of them may credit the wallet.
+  // The FUND below is separately protected by the state machine's status guard,
+  // but a double credit would have no such guard — hence claiming first.
+  const claim = await prisma.cryptoEscrow.updateMany({
+    where: { id: row.id, settledAt: null },
+    data: { settledAt: new Date() },
+  });
+
+  if (claim.count > 0 && escrow.buyerId) {
+    // The confirmed deposit is the buyer's money, so it lands in the buyer's
+    // TRX wallet as a deposit — the same shape Paystack produces on the fiat
+    // side. The FUND that follows debits it straight back out into the deal, so
+    // the pair nets to zero and the ledger reads deposit → escrow_fund exactly
+    // as it does for GHS.
+    //
+    // Credited outside the FUND transaction on purpose: if the transition fails,
+    // the buyer keeps a TRX balance they genuinely paid for and can retry,
+    // rather than the deposit vanishing with the failed deal.
+    await prisma.$transaction((tx) =>
+      walletService.credit(
+        tx,
+        escrow.buyerId!,
+        "TRX",
+        received,
+        "deposit",
+        `TRX deposit via NOWPayments (${row.orderRef})`,
+        escrow.id,
+      ),
+    );
+  }
+
   if (escrow.status === "created") {
     try {
       await transition(escrow.id, "FUND", "system");
@@ -227,10 +260,7 @@ async function applySnapshot(
     }
   }
 
-  return prisma.cryptoEscrow.update({
-    where: { id: row.id },
-    data: { settledAt: updated.settledAt ?? new Date() },
-  });
+  return prisma.cryptoEscrow.findUniqueOrThrow({ where: { id: row.id } });
 }
 
 /** The deposit as the client sees it. */

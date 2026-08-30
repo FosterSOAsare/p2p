@@ -5,7 +5,7 @@ The remaining work to finish the P2P Marketplace Escrow build, in priority order
 Shasta testnet**, usernames, share-code/QR join, admin dispute ruling. Real card/momo processing and
 mainnet crypto are **out of scope** by design.
 
-Detail lives in [server/TODO.md](server/TODO.md), [web/TODO.md](web/TODO.md), [FLOWS.md](FLOWS.md).
+Detail lives in [server/TODO.md](server/TODO.md), [FLOWS.md](FLOWS.md).
 Effort: **S** ≈ half a day · **M** ≈ 1–2 days · **L** ≈ 3+ days.
 
 ## Where we are ✅

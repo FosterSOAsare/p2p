@@ -2,11 +2,22 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '../../shared/libs/api'
 import { authKeys } from '../../auth/data/authApi'
 
-export interface Wallet {
-  currency: 'GHS'
+export type WalletCurrency = 'GHS' | 'TRX'
+
+export interface CurrencyWallet {
+  currency: WalletCurrency
   balance: number
-  pendingClearance: number
   escrowLocked: number
+}
+
+/**
+ * `GET /api/wallet` returns the GHS wallet spread onto the top level (what this
+ * client and the mobile one have always read) plus `wallets`, one entry per
+ * currency the user can hold. Read `wallets` for anything that should show both.
+ */
+export interface Wallet extends CurrencyWallet {
+  currency: 'GHS'
+  wallets: CurrencyWallet[]
 }
 
 export interface WalletTransaction {
@@ -60,8 +71,17 @@ export function useDeposit() {
 export function useWithdraw() {
   const invalidate = useInvalidateWallet()
   return useMutation({
-    mutationFn: ({ amount, destination }: { amount: number; destination: string }) =>
-      api<Wallet>('/api/wallet/withdraw', { method: 'POST', body: { amount, destination } }),
+    // `currency` picks which balance is cashed out, and with it what the server
+    // expects `destination` to be — a momo number for GHS, a TRON address for TRX.
+    mutationFn: ({
+      amount,
+      destination,
+      currency = 'GHS',
+    }: {
+      amount: number
+      destination: string
+      currency?: WalletCurrency
+    }) => api<Wallet>('/api/wallet/withdraw', { method: 'POST', body: { amount, destination, currency } }),
     onSuccess: invalidate,
   })
 }

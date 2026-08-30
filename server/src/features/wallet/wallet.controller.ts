@@ -3,9 +3,19 @@ import type { Request, Response } from "express";
 import * as walletService from "./wallet.service";
 import { verifyWebhookSignature } from "../../shared/lib/paystack";
 
+/**
+ * Every balance the user holds.
+ *
+ * The GHS wallet is spread onto the top level as well as appearing in
+ * `wallets`. That duplication is deliberate back-compat: the web and mobile
+ * clients both read `balance` / `escrowLocked` straight off
+ * the response today, and this keeps them working untouched while new UI reads
+ * `wallets` and renders one card per currency.
+ */
 export const getWallet = asyncHandler(async (req, res) => {
-  const wallet = await walletService.getWallet(req.user!.id);
-  res.json(wallet);
+  const wallets = await walletService.getWallets(req.user!.id);
+  const fiat = wallets.find((w) => w.currency === "GHS")!;
+  res.json({ ...fiat, wallets });
 });
 
 export const deposit = asyncHandler(async (req, res) => {
@@ -14,13 +24,22 @@ export const deposit = asyncHandler(async (req, res) => {
 });
 
 export const withdraw = asyncHandler(async (req, res) => {
-  const wallet = await walletService.withdraw(req.user!.id, req.body.amount, req.body.destination);
+  const wallet = await walletService.withdraw(
+    req.user!.id,
+    req.body.amount,
+    req.body.destination,
+    req.body.currency,
+  );
   res.json(wallet);
 });
 
 export const transactions = asyncHandler(async (req, res) => {
-  const { page, limit } = req.query as unknown as { page: number; limit: number };
-  const result = await walletService.listTransactions(req.user!.id, page, limit);
+  const { page, limit, currency } = req.query as unknown as {
+    page: number;
+    limit: number;
+    currency: "GHS" | "TRX";
+  };
+  const result = await walletService.listTransactions(req.user!.id, page, limit, currency);
   res.json(result);
 });
 

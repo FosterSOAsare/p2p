@@ -1,6 +1,6 @@
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
-import type { Prisma, TransactionType } from "../../generated/prisma/client";
+import type { Currency, Prisma, TransactionType } from "../../generated/prisma/client";
 import { feeMathP, toPesewas, fromPesewas } from "../escrows/money";
 import * as paystack from "../../shared/lib/paystack";
 import { paystackEnabled } from "../../shared/config/env";
@@ -10,18 +10,36 @@ import { notify } from "../notifications/notifications.service";
 type Tx = Prisma.TransactionClient;
 
 /**
- * Simulated GHS rail. TaaS's double-entry ledger is replaced by:
- *  - one balance per user (Wallet row, created at signup)
+ * The ledger, one balance per (user, currency). TaaS's double-entry ledger is
+ * replaced by:
+ *  - a Wallet row per currency the user actually touches, created on demand
  *  - atomic guarded updates (UPDATE ... WHERE balance >= X) instead of row locks
  *  - a Transaction row per movement (signed amounts: + credit, - debit)
  * Invariant kept from TaaS: money only ever moves inside the same DB
  * transaction as the state change that justifies it.
+ *
+ * BOTH rails settle through here — GHS and TRX differ only by the `currency`
+ * argument. A TRX deposit credits the TRX wallet, funding a TRX deal debits it,
+ * and releasing one credits the seller's TRX wallet, exactly as the fiat rail
+ * has always worked. What the provider holds off-platform is float backing
+ * those balances; the row here is the claim on it.
+ *
+ * Amounts are stored at 2dp for both currencies, so a TRX movement is rounded
+ * to the hundredth of a coin. Deliberate — see money.ts.
  */
 
-async function ensureWallet(tx: Tx, userId: string) {
+/** How an amount is written to the user in that currency. */
+export function formatAmount(amount: number, currency: Currency): string {
+  return currency === "GHS" ? `GH₵ ${amount.toFixed(2)}` : `${amount.toFixed(2)} TRX`;
+}
+
+/** The wallet a deal settles through: a deal's currency IS its rail's currency. */
+export const walletCurrencyFor = (escrow: { currency: Currency }): Currency => escrow.currency;
+
+async function ensureWallet(tx: Tx, userId: string, currency: Currency) {
   return tx.wallet.upsert({
-    where: { userId_currency: { userId, currency: "GHS" } },
-    create: { userId, currency: "GHS" },
+    where: { userId_currency: { userId, currency } },
+    create: { userId, currency },
     update: {},
   });
 }
@@ -30,12 +48,13 @@ async function ensureWallet(tx: Tx, userId: string) {
 export async function credit(
   tx: Tx,
   userId: string,
+  currency: Currency,
   amount: number,
   type: TransactionType,
   note: string,
   escrowId?: string,
 ) {
-  const wallet = await ensureWallet(tx, userId);
+  const wallet = await ensureWallet(tx, userId, currency);
   await tx.wallet.update({ where: { id: wallet.id }, data: { balance: { increment: amount } } });
   await tx.transaction.create({
     data: { walletId: wallet.id, type, amount, note, escrowId },
@@ -46,12 +65,13 @@ export async function credit(
 export async function debitGuarded(
   tx: Tx,
   userId: string,
+  currency: Currency,
   amount: number,
   type: TransactionType,
   note: string,
   escrowId?: string,
 ) {
-  const wallet = await ensureWallet(tx, userId);
+  const wallet = await ensureWallet(tx, userId, currency);
   const updated = await tx.wallet.updateMany({
     where: { id: wallet.id, balance: { gte: amount } },
     data: { balance: { decrement: amount } },
@@ -60,7 +80,7 @@ export async function debitGuarded(
     // Report the shortfall, not the total: "you need GH₵ 50" reads as though an
     // existing GH₵ 40 balance doesn't count toward it.
     const short = Math.max(0, amount - Number(wallet.balance));
-    throw ApiError.badRequest(`Insufficient wallet balance — add GH₵ ${short.toFixed(2)} to cover this`);
+    throw ApiError.badRequest(`Insufficient wallet balance — add ${formatAmount(short, currency)} to cover this`);
   }
   await tx.transaction.create({
     data: { walletId: wallet.id, type, amount: -amount, note, escrowId },
@@ -69,20 +89,25 @@ export async function debitGuarded(
 
 // ---------- API surface ----------
 
-export async function getWallet(userId: string) {
-  const wallet = await prisma.wallet.upsert({
-    where: { userId_currency: { userId, currency: "GHS" } },
-    create: { userId, currency: "GHS" },
-    update: {},
+export async function getWallet(userId: string, currency: Currency = "GHS") {
+  // Read-only on purpose: looking at a balance must not bring a wallet into
+  // existence. `ensureWallet` is the only thing that creates one, so a row
+  // means money has actually moved in that currency — a user who never touches
+  // crypto never gets a TRX row, and the admin user panel stays free of empty
+  // ones. GHS is created at signup (auth.service), so it is normally present.
+  const wallet = await prisma.wallet.findUnique({
+    where: { userId_currency: { userId, currency } },
   });
 
-  // Escrow-locked = Σ fundingTotal of funded-and-live fiat deals as buyer or seller.
+  // Escrow-locked = Σ fundingTotal of funded-and-live deals as buyer or seller.
+  // Scoped by the deal's currency, not its rail: a GHS balance must not be
+  // reduced by TRX a deal locked, and vice versa.
   // `created` is excluded: an unfunded deal hasn't debited the wallet yet, so
   // counting it would understate available balance.
   const active = await prisma.escrow.findMany({
     where: {
       OR: [{ buyerId: userId }, { sellerId: userId }],
-      rail: "fiat",
+      currency,
       status: { in: ["funded", "delivered", "disputed"] },
     },
     select: { amount: true, feeAmount: true },
@@ -92,42 +117,46 @@ export async function getWallet(userId: string) {
     0,
   );
 
-  // Pending Clearance = payouts released to seller within the last 24h safety holding window.
-  // Admin-resolved disputes skip the hold — the funds were released by admin ruling, so they
-  // clear straight to available balance (no dispute → subject to the 24h hold).
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const pendingClearanceDeals = await prisma.escrow.findMany({
-    where: {
-      sellerId: userId,
-      rail: "fiat",
-      status: "disbursed",
-      disbursedAt: { gte: twentyFourHoursAgo },
-      dispute: { is: null },
-    },
-    select: { amount: true, feeAmount: true },
-  });
-  const pendingClearanceP = pendingClearanceDeals.reduce((sum, e) => {
-    const money = feeMathP(toPesewas(Number(e.amount)), toPesewas(Number(e.feeAmount)));
-    return sum + money.sellerPayoutP;
-  }, 0);
-
-  const pendingClearance = fromPesewas(pendingClearanceP);
-  const totalDbBalance = Number(wallet.balance);
-  const clearedAvailableBalance = Math.max(0, totalDbBalance - pendingClearance);
-
+  // There is no clearance hold: a payout the buyer has released is the seller's
+  // money immediately, so `balance` is the wallet row as stored. The 24h window
+  // that used to sit here was enforced by a read-then-act check on top of an
+  // atomic guard that knew nothing about it, which made it raceable — and with
+  // admin rulings final and disputes only openable before release, it was not
+  // buying a window anyone acted in.
   return {
-    currency: "GHS" as const,
-    balance: clearedAvailableBalance,
-    pendingClearance,
+    currency,
+    // No row yet means nothing has ever landed, so zero. `escrowLocked` is
+    // still computed either way — it comes from the deals, not the wallet, and
+    // a seller can be owed TRX by a funded deal before ever holding any.
+    balance: wallet ? Number(wallet.balance) : 0,
     escrowLocked: fromPesewas(escrowLockedP),
   };
+}
+
+/**
+ * Every balance the user actually holds, GHS first.
+ *
+ * GHS is always present — it is created at signup and is the wallet everyone
+ * has, whether or not they ever touch crypto. TRX is included only once a row
+ * exists, which happens the first time TRX genuinely moves (see ensureWallet).
+ * So a fiat-only user is never offered a crypto wallet they don't have, and
+ * the list grows the moment their first deposit or payout lands.
+ *
+ * The single-wallet response shape is kept alongside this (see the controller)
+ * so existing clients keep working — the web and mobile apps both read
+ * `balance`/`escrowLocked` off the top level today.
+ */
+export async function getWallets(userId: string) {
+  const held = await prisma.wallet.findMany({ where: { userId }, select: { currency: true } });
+  const currencies: Currency[] = held.some((w) => w.currency === "TRX") ? ["GHS", "TRX"] : ["GHS"];
+  return Promise.all(currencies.map((c) => getWallet(userId, c)));
 }
 
 /** Simulated momo top-up — instant. Kept as the dev-complete fallback when
  *  Paystack isn't configured. */
 export async function deposit(userId: string, amount: number) {
   await prisma.$transaction((tx) =>
-    credit(tx, userId, amount, "deposit", "Mobile money deposit (simulated)"),
+    credit(tx, userId, "GHS", amount, "deposit", "Mobile money deposit (simulated)"),
   );
   return getWallet(userId);
 }
@@ -217,7 +246,15 @@ async function settleDeposit(
       data: { status: "success", paidAt: new Date() },
     });
     if (flip.count === 0) return false; // another caller settled it first
-    await credit(tx, intent.userId, Number(intent.amount), "deposit", `Wallet deposit via Paystack (${reference})`);
+    // Paystack settles fiat only — the intent is created with currency GHS.
+    await credit(
+      tx,
+      intent.userId,
+      "GHS",
+      Number(intent.amount),
+      "deposit",
+      `Wallet deposit via Paystack (${reference})`,
+    );
     return true;
   });
 
@@ -260,41 +297,67 @@ export async function handlePaystackWebhook(event: {
 }
 
 /** Simulated momo payout — instant settle at this scope. */
-export async function withdraw(userId: string, amount: number, destination: string) {
-  const walletState = await getWallet(userId);
+export async function withdraw(
+  userId: string,
+  amount: number,
+  destination: string,
+  currency: Currency = "GHS",
+) {
+  // Friendly pre-check only. Correctness is the atomic guard inside
+  // debitGuarded — this exists so the common case reads as a payout problem
+  // ("you have X available") rather than a top-up one, and a lost race just
+  // surfaces the guard's message instead.
+  const walletState = await getWallet(userId, currency);
   if (walletState.balance < amount) {
     throw ApiError.badRequest(
-      `Insufficient cleared balance — you have GH₵ ${walletState.balance.toFixed(2)} available (GH₵ ${walletState.pendingClearance.toFixed(2)} is pending 24h clearance).`
+      `Insufficient balance — you have ${formatAmount(walletState.balance, currency)} available to withdraw.`,
     );
   }
 
+  // A TRX payout is a transfer to the address on file, not a momo cash-out.
+  const note =
+    currency === "GHS"
+      ? `Mobile money payout to ${destination} (simulated)`
+      : `TRX payout to ${destination} (simulated)`;
   await prisma.$transaction((tx) =>
-    debitGuarded(tx, userId, amount, "withdrawal", `Mobile money payout to ${destination} (simulated)`),
+    debitGuarded(tx, userId, currency, amount, "withdrawal", note),
   );
 
   // Money-movement receipt — always sent (not gated by shipment prefs).
   prisma.user
     .findUnique({ where: { id: userId }, select: { email: true, fullName: true } })
-    .then((u) => u && mailer.withdrawal(u.email, u.fullName, amount.toFixed(2), destination))
+    // Pre-formatted with its currency — the template no longer hardcodes GH₵,
+    // since this receipt now covers TRX payouts too.
+    .then((u) => u && mailer.withdrawal(u.email, u.fullName, formatAmount(amount, currency), destination))
     .catch(() => undefined);
 
   void notify({
     userId,
     category: "wallet",
     title: "Withdrawal sent",
-    body: `GH₵ ${amount.toFixed(2)} is on its way to ${destination}.`,
+    body: `${formatAmount(amount, currency)} is on its way to ${destination}.`,
     link: "/wallet",
   });
 
-  return getWallet(userId);
+  return getWallet(userId, currency);
 }
 
-export async function listTransactions(userId: string, page: number, limit: number) {
-  const wallet = await prisma.wallet.upsert({
-    where: { userId_currency: { userId, currency: "GHS" } },
-    create: { userId, currency: "GHS" },
-    update: {},
+export async function listTransactions(
+  userId: string,
+  page: number,
+  limit: number,
+  currency: Currency = "GHS",
+) {
+  // Read-only, like getWallet: asking for a ledger must not create the wallet
+  // it would belong to. No wallet means no movements have ever been recorded,
+  // which is an empty page rather than an error.
+  const wallet = await prisma.wallet.findUnique({
+    where: { userId_currency: { userId, currency } },
   });
+  if (!wallet) {
+    return { transactions: [], currency, total: 0, page, pages: 1 };
+  }
+
   const where = { walletId: wallet.id };
   // Concurrent, not transactional — see the note in listings.service list().
   const [total, rows] = await Promise.all([
@@ -316,6 +379,7 @@ export async function listTransactions(userId: string, page: number, limit: numb
       escrow: t.escrow ? { id: t.escrow.id, title: t.escrow.title, code: t.escrow.code } : null,
       createdAt: t.createdAt.toISOString(),
     })),
+    currency,
     total,
     page,
     pages: Math.max(1, Math.ceil(total / limit)),

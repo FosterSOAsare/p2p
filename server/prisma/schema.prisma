@@ -277,7 +277,12 @@ model KycProfile {
   @@map("kyc_profiles")
 }
 
-// ---------- Money (simulated GHS; TRX moves on-chain, not in wallets) ----------
+// ---------- Money (one Wallet row per user per currency: GHS and TRX) ----------
+// Both rails settle through the same ledger. A TRX deposit confirmed by the
+// provider credits the TRX wallet, funding a TRX deal debits it, and releasing
+// one credits the seller's. What the provider holds off-platform is the float
+// backing those balances. Amounts are Decimal(14,2) for both currencies, so TRX
+// is carried to the hundredth of a coin.
 
 model Wallet {
   id        String   @id @default(uuid(7))

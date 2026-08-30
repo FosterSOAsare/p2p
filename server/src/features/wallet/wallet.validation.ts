@@ -28,10 +28,22 @@ export const verifyDeposit: RequestSchema = {
 export const withdraw: RequestSchema = {
   body: Joi.object({
     amount: Joi.number().positive().max(1_000_000).required(),
-    destination: Joi.string()
-      .pattern(/^\+?[0-9\s-]{9,15}$/)
-      .required()
-      .messages({ "string.pattern.base": "Enter a valid mobile money number" }),
+    // Defaulted, so an existing client that sends neither still cashes out GHS.
+    currency: Joi.string().valid("GHS", "TRX").default("GHS"),
+    // The destination means a different thing per rail — a momo number for GHS,
+    // a base58 TRON address for TRX — so it is validated against whichever was
+    // asked for rather than accepting either shape for both.
+    destination: Joi.when("currency", {
+      is: "TRX",
+      then: Joi.string()
+        .pattern(/^T[1-9A-HJ-NP-Za-km-z]{33}$/)
+        .required()
+        .messages({ "string.pattern.base": "Enter a valid TRON (TRX) address" }),
+      otherwise: Joi.string()
+        .pattern(/^\+?[0-9\s-]{9,15}$/)
+        .required()
+        .messages({ "string.pattern.base": "Enter a valid mobile money number" }),
+    }),
   }),
 };
 
@@ -39,5 +51,6 @@ export const transactions: RequestSchema = {
   query: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(50).default(15),
+    currency: Joi.string().valid("GHS", "TRX").default("GHS"),
   }),
 };

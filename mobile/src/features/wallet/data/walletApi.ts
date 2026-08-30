@@ -11,10 +11,8 @@ import { api } from '@/features/shared/data/api';
 
 export interface WalletBalances {
   currency: 'GHS' | 'TRX';
-  /** Cleared and withdrawable. */
+  /** Withdrawable. A released payout is available at once — there is no hold. */
   balance: number;
-  /** Released by a buyer but still inside the 24h clearance window. */
-  pendingClearance: number;
   /** Held against deals that haven't settled. */
   escrowLocked: number;
 }

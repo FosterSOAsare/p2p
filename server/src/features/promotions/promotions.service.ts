@@ -288,9 +288,11 @@ export async function launch(userId: string, listingId: string, planId: string, 
     const chargeP = change.chargeP;
 
     if (chargeP > 0) {
+      // Spotlights are priced in GHS regardless of what the seller's listings sell for.
       await walletService.debitGuarded(
         tx,
         userId,
+        "GHS",
         fromPesewas(chargeP),
         "promotion",
         change.mode === "new"

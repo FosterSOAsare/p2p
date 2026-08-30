@@ -245,28 +245,12 @@ export async function getDashboard(userId: string) {
     }),
   ]);
 
-  // Admin-resolved disputes skip the 24h hold — those funds were released by ruling and
-  // clear straight to available balance (only non-disputed payouts are held).
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const pendingClearanceDeals = await prisma.escrow.findMany({
-    where: {
-      sellerId: userId,
-      rail: "fiat",
-      status: "disbursed",
-      disbursedAt: { gte: twentyFourHoursAgo },
-      dispute: { is: null },
-    },
-    select: { amount: true, feeAmount: true },
-  });
-  const pendingClearanceP = pendingClearanceDeals.reduce((sum, e) => {
-    const money = feeMathP(toPesewas(Number(e.amount)), toPesewas(Number(e.feeAmount)));
-    return sum + money.sellerPayoutP;
-  }, 0);
-  const pendingClearance = fromPesewas(pendingClearanceP);
-
+  // No clearance hold is withheld from this any more (see wallet.service
+  // getWallet) — a released payout is available at once, so the dashboard's
+  // payout figure is just the GHS wallet. The field keeps its name because the
+  // web and mobile dashboards both read it.
   const ghsWallet = user.wallets.find((w) => w.currency === "GHS");
-  const totalDbBalance = ghsWallet ? Number(ghsWallet.balance) : 0;
-  const availablePayoutBalance = Math.max(0, totalDbBalance - pendingClearance);
+  const availablePayoutBalance = ghsWallet ? Number(ghsWallet.balance) : 0;
 
   const profile = {
     fullName: user.fullName,

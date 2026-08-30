@@ -8,7 +8,6 @@ import {
   CreditCard,
   Smartphone,
   CheckCircle2,
-  Clock,
   Lock,
   Plus,
   ShieldCheck,
@@ -99,7 +98,6 @@ export function WalletScreen() {
    */
   const available = walletQuery.data?.balance ?? 0;
   const escrowLocked = walletQuery.data?.escrowLocked ?? 0;
-  const pendingClearance = walletQuery.data?.pendingClearance ?? 0;
 
   /**
    * The real ledger, rather than reconstructing credits from released deals.
@@ -264,21 +262,6 @@ export function WalletScreen() {
               <View style={[styles.smallCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
                 <View style={styles.balanceHead}>
                   <Text style={[styles.smallLabel, { color: theme.textSecondary }]}>
-                    Pending Clearance (24h Hold)
-                  </Text>
-                  <Clock size={13} color="#f59e0b" />
-                </View>
-                <Text style={[styles.smallValue, { color: '#d97706' }]}>
-                  {formatMoney(pendingClearance, currency)}
-                </Text>
-                <Text style={[styles.balanceHint, { color: theme.textTertiary }]}>
-                  Released by buyer — clears in 24h if no dispute
-                </Text>
-              </View>
-
-              <View style={[styles.smallCard, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                <View style={styles.balanceHead}>
-                  <Text style={[styles.smallLabel, { color: theme.textSecondary }]}>
                     Escrow-Locked Funds
                   </Text>
                   <Lock size={13} color={theme.primary} />
@@ -303,20 +286,6 @@ export function WalletScreen() {
 
 
 
-        {/* 24-hour hold — the web gives this its own amber card with a heading,
-            not a green aside. It's a caution, so it reads as one. */}
-        <View style={styles.holdCard}>
-          <Clock size={20} color="#d97706" />
-          <View style={styles.holdText}>
-            <Text style={styles.holdTitle}>24-Hour Safety Holding Period</Text>
-            <Text style={styles.holdBody}>
-              To protect buyers and sellers against fraud, funds released by the buyer enter a
-              24-hour holding security clearance before transitioning to your liquid Available
-              Payout Balance. Provided no dispute is filed during this window, funds settle
-              automatically.
-            </Text>
-          </View>
-        </View>
 
         {/* Ledger */}
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
@@ -773,19 +742,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     marginTop: Spacing.two,
   },
-
-  holdCard: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-    backgroundColor: '#fffbeb',
-    borderWidth: 1,
-    borderColor: '#fde68a',
-    borderRadius: Radius.md,
-    padding: Spacing.three,
-  },
-  holdText: { flex: 1, gap: 3 },
-  holdTitle: { fontSize: 12.5, fontFamily: Fonts.sans[700], color: '#92400e' },
-  holdBody: { fontSize: 11, lineHeight: 16, fontFamily: Fonts.sans[400], color: '#92400e' },
 
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four, gap: Spacing.three },
   cardTitle: {

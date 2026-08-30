@@ -5,7 +5,7 @@ React + Vite + TypeScript front-end for the Group 2 P2P Marketplace Escrow proje
 KYC and arbitrate disputes — all against a 6-state escrow (`created → funded → delivered → disbursed | disputed | cancelled`).
 
 > Fiat (GHS) payments are **simulated**; the TRX crypto rail is **not built yet**. See [../FLOWS.md](../FLOWS.md)
-> for every flow and [TODO.md](./TODO.md) for the per-persona status.
+> for every flow.
 
 ## Tech stack
 
@@ -143,4 +143,4 @@ image.** Everything else works without it.
 Order lifecycle, wallet, dashboards, and the admin console (KYC · disputes · users · deals) are wired to
 the real API. Known gaps: **deal messaging** is a UI shell (`MessageThread` is local-state only — the
 `/api/messages` backend exists but isn't wired), the **TRX crypto rail** and **real payments** are not built,
-and the homepage's featured/metrics sections are still mock. Full breakdown in [TODO.md](./TODO.md).
+and the homepage's featured/metrics sections are still mock. Full breakdown in [../FLOWS.md](../FLOWS.md).

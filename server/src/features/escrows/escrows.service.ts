@@ -141,9 +141,11 @@ export async function checkoutFromListing(buyerId: string, input: CheckoutInput)
     // (stock restored) — the buyer must top up (Paystack deposit) first.
     // Marketplace checkout has no fee-split control — always 50/50.
     const fundingTotal = fromPesewas(feeMathP(amountP, feeP, "split").fundingTotalP);
+    // Marketplace listings are priced in GHS, so checkout is always the fiat wallet.
     await walletService.debitGuarded(
       tx,
       buyerId,
+      "GHS",
       fundingTotal,
       "escrow_fund",
       `Escrow funded — ${escrow.title}`,
@@ -498,24 +500,24 @@ async function applyEffects(
       if (!escrow.buyerId || !escrow.sellerId) {
         throw ApiError.badRequest("The counterparty must join before the deal can be funded");
       }
-      if (escrow.rail === "crypto") {
+      if (escrow.rail === "crypto" && role !== "system") {
         // A crypto deal is not funded by asking us to fund it — it is funded by
         // the deposit confirming, which only the settle path in crypto.service
         // observes, and which runs as `system`. Without this guard the buyer's
         // own POST /:id/fund would move a TRX deal to `funded` for free.
-        if (role !== "system") {
-          throw ApiError.badRequest("Pay the TRX invoice — the deal funds itself once the deposit confirms");
-        }
-        // The money arrived from outside the platform, so there is no wallet to
-        // debit. The provider's confirmation IS the payment.
-        return { fundedAt: new Date() };
+        throw ApiError.badRequest("Pay the TRX invoice — the deal funds itself once the deposit confirms");
       }
-      // Buyer pays the funding total (item + their half of the fee) from their
-      // wallet. Guarded debit rolls the whole transition back if the balance is
-      // short — the buyer must top up (Paystack deposit) first.
+      // Buyer pays the funding total (item + their half of the fee) from the
+      // wallet in the deal's own currency. Guarded debit rolls the whole
+      // transition back if the balance is short.
+      //
+      // Both rails land here. On the crypto rail crypto.service has just
+      // credited this same wallet with the confirmed deposit, so the debit is
+      // covered by construction — deposit in, escrow out, one ledger.
       await walletService.debitGuarded(
         tx,
         escrow.buyerId,
+        escrow.currency,
         money.fundingTotal,
         "escrow_fund",
         `Escrow funded — ${escrow.title}`,
@@ -615,11 +617,14 @@ async function applyEffects(
   }
 }
 
+// Both rails settle into the wallet matching the deal's currency: GHS deals pay
+// the fiat balance, TRX deals the crypto one. The seller withdraws from there —
+// to momo for GHS, to the TRX address on their KYC profile for TRX.
 async function payout(tx: Tx, escrow: Escrow, sellerAmount: number) {
-  if (escrow.rail !== "fiat") throw ApiError.notImplemented("Crypto payouts land with the TRX rail");
   await walletService.credit(
     tx,
     escrow.sellerId!,
+    escrow.currency,
     sellerAmount,
     "escrow_release",
     `Escrow payout released — ${escrow.title}`,
@@ -628,10 +633,10 @@ async function payout(tx: Tx, escrow: Escrow, sellerAmount: number) {
 }
 
 async function refundBuyer(tx: Tx, escrow: Escrow, refundAmount: number) {
-  if (escrow.rail !== "fiat") throw ApiError.notImplemented("Crypto refunds land with the TRX rail");
   await walletService.credit(
     tx,
     escrow.buyerId!,
+    escrow.currency,
     refundAmount,
     "escrow_refund",
     `Escrow refunded — ${escrow.title}`,
