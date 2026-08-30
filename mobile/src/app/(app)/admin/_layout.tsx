@@ -103,6 +103,14 @@ export default function AdminTabsLayout() {
         looking when a flagged listing matters.
       */}
       <Tabs.Screen name="reports" options={{ href: null }} />
+
+      {/*
+        Payout review, same reasoning again — the bar stays at five. It is
+        reached from the console home's Withdrawals tile, which carries the
+        pending count, so a queue with work in it is visible from the landing
+        screen without spending a bar slot on it.
+      */}
+      <Tabs.Screen name="withdrawals" options={{ href: null }} />
     </Tabs>
   );
 }

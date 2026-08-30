@@ -7,6 +7,7 @@ import {
   ArrowDownLeft,
   ArrowLeft,
   ArrowUpRight,
+  Clock,
   CreditCard,
   ExternalLink,
   Smartphone,
@@ -27,6 +28,7 @@ import { apiErrorMessage } from '@/features/shared/data/api';
 import {
   useWallet,
   useWalletTransactions,
+  useWalletWithdrawals,
   useWithdraw,
   type WalletTransaction,
 } from '../data/walletApi';
@@ -93,6 +95,13 @@ export function WalletScreen() {
   const withdraw = useWithdraw();
 
   const currency = walletQuery.data?.currency ?? 'GHS';
+  // Pending only, matching the web: a settled payout drops off this list and
+  // lives in the ledger below, so the section answers one question — what is
+  // still in flight — rather than duplicating the history.
+  const pendingPayoutsQuery = useWalletWithdrawals(
+    `page=1&limit=10&status=pending&currency=${currency}`,
+  );
+  const pendingPayouts = pendingPayoutsQuery.data?.withdrawals ?? [];
   // The web titles this "Seller Payout Wallet" for sellers, "My P2P Wallet"
   // otherwise — the page itself is open to every signed-in account.
   const isSeller = usePersona() === 'seller';
@@ -306,8 +315,58 @@ export function WalletScreen() {
           </View>
         ) : null}
 
+        {/*
+          Pending payouts. Rendered when there is something in flight, and also
+          when the request failed — a failure must not look the same as "nothing
+          pending", because the difference is whether money is unaccounted for.
+        */}
+        {pendingPayoutsQuery.isError || pendingPayouts.length > 0 ? (
+          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <Text style={[styles.cardTitle, { color: theme.text, borderBottomColor: theme.border }]}>
+              Pending payouts
+            </Text>
 
+            {pendingPayoutsQuery.isError ? (
+              <Text style={[styles.empty, { color: '#b91c1c' }]}>
+                Couldn&apos;t load your pending payouts — {apiErrorMessage(pendingPayoutsQuery.error)}
+              </Text>
+            ) : (
+              <>
+                <Text style={[styles.payoutHint, { color: theme.textTertiary }]}>
+                  Already deducted from your balance and waiting to be sent. Once sent, a payout
+                  moves to your transaction history below.
+                </Text>
 
+                {pendingPayouts.map((w) => (
+                  <View
+                    key={w.id}
+                    style={[styles.payoutRow, { borderColor: theme.border }]}
+                  >
+                    <View style={styles.payoutHead}>
+                      <Text style={[styles.payoutAmount, { color: theme.text }]}>
+                        {formatMoney(w.amount, currency)}
+                      </Text>
+                      <View style={[styles.clearChip, { backgroundColor: '#fef3c7' }]}>
+                        <Clock size={10} color="#92400e" />
+                        <Text style={[styles.clearChipText, { color: '#92400e' }]}>
+                          Awaiting review
+                        </Text>
+                      </View>
+                    </View>
+                    {/* Wraps rather than truncates — a TRON address is 34
+                        characters and the point of showing it is to be checked. */}
+                    <Text style={[styles.payoutDest, { color: theme.textSecondary }]}>
+                      To {w.destination}
+                    </Text>
+                    <Text style={[styles.payoutWhen, { color: theme.textTertiary }]}>
+                      Requested {new Date(w.createdAt).toLocaleString()}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+          </View>
+        ) : null}
 
         {/* Ledger */}
         <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
@@ -933,6 +992,18 @@ const styles = StyleSheet.create({
   txAmount: { flexShrink: 0, fontSize: 13.5, fontFamily: Fonts.display[700] },
   txNote: { fontSize: 11, lineHeight: 16, fontFamily: Fonts.sans[400] },
   txFoot: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: Spacing.two },
+  payoutHint: { fontSize: 11, lineHeight: 16, fontFamily: Fonts.sans[400] },
+  payoutRow: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three, gap: 4 },
+  payoutHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  payoutAmount: { fontSize: 15, fontFamily: Fonts.display[700], letterSpacing: -0.2 },
+  payoutDest: { fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.sans[400] },
+  payoutWhen: { fontSize: 10.5, fontFamily: Fonts.sans[400] },
+
   clearChip: {
     flexDirection: 'row',
     alignItems: 'center',

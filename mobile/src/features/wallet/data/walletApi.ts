@@ -42,10 +42,38 @@ export interface TransactionsResponse {
   pages: number;
 }
 
+export type WithdrawalStatus = 'pending' | 'completed' | 'rejected';
+
+/**
+ * A payout request. Distinct from the `withdrawal` transaction it produces: the
+ * transaction records that the balance moved, this records whether the money
+ * has actually left the platform yet — or come back.
+ */
+export interface Withdrawal {
+  id: string;
+  reference: string;
+  amount: number;
+  currency: 'GHS' | 'TRX';
+  destination: string;
+  status: WithdrawalStatus;
+  /** Why it was rejected — set by an admin, shown to the user. */
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
+
+export interface WithdrawalsResponse {
+  withdrawals: Withdrawal[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
 export const walletKeys = {
   all: ['wallet'] as const,
   balances: () => [...walletKeys.all, 'balances'] as const,
   transactions: () => [...walletKeys.all, 'transactions'] as const,
+  withdrawals: (query: string) => [...walletKeys.all, 'withdrawals', query] as const,
 };
 
 export function useWallet() {
@@ -85,10 +113,28 @@ export function useWalletTransactions() {
 }
 
 /**
+ * The user's own payout requests for one currency, newest first.
+ *
+ * Worth having separately from the ledger because a `withdrawal` transaction
+ * only says the balance moved. It cannot say whether the money has actually
+ * been sent, or was refused and returned — which is the question a seller
+ * staring at a smaller balance is actually asking.
+ */
+export function useWalletWithdrawals(query: string) {
+  return useQuery({
+    queryKey: walletKeys.withdrawals(query),
+    queryFn: () =>
+      api<WithdrawalsResponse>(`/api/wallet/withdrawals${query ? `?${query}` : ''}`),
+    retry: false,
+  });
+}
+
+/**
  * `POST /api/wallet/withdraw`.
  *
  * Both cached views go stale on success — the balance drops and a new debit row
- * appears — so both are invalidated rather than adjusted by hand.
+ * appears — so both are invalidated rather than adjusted by hand. The payout
+ * list is keyed under `wallet` too, so the same invalidation covers it.
  */
 export function useWithdraw() {
   const qc = useQueryClient();

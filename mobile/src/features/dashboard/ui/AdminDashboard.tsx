@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Pressable } from '@/components/ui/pressable';
 import { useRouter, type Href } from 'expo-router';
 import {
+  Banknote,
   ChevronRight,
   ClipboardCheck,
   Flag,
@@ -21,6 +22,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useAdminStats } from '@/features/admin/data/adminStatsApi';
 import { useAdminDisputes } from '@/features/admin/data/adminDisputesApi';
 import { useAdminListingDisputes } from '@/features/admin/data/adminListingsApi';
+import { useAdminWithdrawals } from '@/features/admin/data/adminWithdrawalsApi';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { AdminError, AdminLoading, money } from '@/features/admin/ui/AdminScaffold';
 import { AppBar } from '@/features/shared/ui/AppBar';
@@ -58,6 +60,10 @@ export function AdminDashboard() {
   // instead of forcing a tap to find out whether there's work waiting.
   const disputesQuery = useAdminDisputes('open');
   const appealsQuery = useAdminListingDisputes('open');
+  // Only the total is wanted, so ask for a single row rather than a page of 20.
+  // `/api/admin/stats` carries no withdrawal figure, and the count is what makes
+  // the tile worth having — a queue with money waiting in it should say so.
+  const pendingPayoutsQuery = useAdminWithdrawals('status=pending&page=1&limit=1');
 
   if (!isRealSession) {
     return (
@@ -98,6 +104,7 @@ export function AdminDashboard() {
   const s = statsQuery.data;
   const openDisputes = disputesQuery.data?.length ?? s.openDisputes;
   const openAppeals = appealsQuery.data?.disputes.filter((d) => d.status === 'open').length ?? 0;
+  const pendingPayouts = pendingPayoutsQuery.data?.total ?? 0;
 
   const sections = [
     {
@@ -139,6 +146,14 @@ export function AdminDashboard() {
       color: theme.primary,
       count: s.suspendedUsers,
       href: '/admin/users' as Href,
+    },
+    {
+      label: 'Withdrawals',
+      hint: 'Confirm payouts went out, or refuse and refund',
+      icon: Banknote,
+      color: '#0d9488',
+      count: pendingPayouts,
+      href: '/admin/withdrawals' as Href,
     },
     {
       label: 'Deals',

@@ -18,6 +18,7 @@ export { default as ArrowRight } from 'lucide-react-native/icons/arrow-right';
 export { default as ArrowUpRight } from 'lucide-react-native/icons/arrow-up-right';
 export { default as BadgeDollarSign } from 'lucide-react-native/icons/badge-dollar-sign';
 export { default as Ban } from 'lucide-react-native/icons/ban';
+export { default as Banknote } from 'lucide-react-native/icons/banknote';
 export { default as Bell } from 'lucide-react-native/icons/bell';
 export { default as BellOff } from 'lucide-react-native/icons/bell-off';
 export { default as CalendarDays } from 'lucide-react-native/icons/calendar-days';
