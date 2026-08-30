@@ -244,25 +244,27 @@ export async function unsaveListing(userId: string, listingId: string): Promise<
 // ---------- Unified User & Seller Dashboard ----------
 
 /**
- * The home screen for every persona, in **one** batch of queries.
+ * The home screen for every persona.
  *
- * It used to be three round trips deep: the user row, then ten aggregates, then
- * the pending-clearance list — each waiting on the one before for no reason.
- * Nothing in the batch reads the user row (they all key off `userId`, which the
- * verified token supplies), and `isVerifiedSeller` only shapes the response at
- * the end. On a database ~230ms away, that ordering was two thirds of the wait
- * on the first screen anyone sees.
- *
- * The 24-hour clearance window is computed here rather than inside the query
- * builder below purely so the whole array can be constructed in one go.
+ * The user row is fetched and checked *first*, then the ten aggregates go out
+ * together. Two round trips rather than one: the batch is the expensive half
+ * and it stays parallel, but nothing in it runs for an account that turns out
+ * not to exist. A token can outlive the user it names, and ten aggregates for a
+ * request that ends in 404 is work nobody asked for.
  */
 export async function getDashboard(userId: string) {
-  // Admin-resolved disputes skip the 24h hold — those funds were released by
-  // ruling and clear straight to available balance.
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      kyc: { select: { status: true, storeName: true, country: true } },
+      wallets: true,
+    },
+  });
+  if (!user) throw ApiError.notFound("User not found");
+
+  const isVerifiedSeller = user.kyc?.status === "verified";
 
   const [
-    user,
     buyerActiveCount,
     buyerLockedSum,
     buyerSpentSum,
@@ -273,15 +275,7 @@ export async function getDashboard(userId: string) {
     sellerLockedSum,
     salesOrders,
     sellerListings,
-    pendingClearanceDeals,
   ] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        kyc: { select: { status: true, storeName: true, country: true } },
-        wallets: true,
-      },
-    }),
     prisma.escrow.count({
       where: { buyerId: userId, status: { in: ["created", "funded", "delivered", "disputed"] } },
     }),
