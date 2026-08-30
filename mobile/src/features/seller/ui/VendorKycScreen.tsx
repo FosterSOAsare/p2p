@@ -21,13 +21,23 @@ import { useMyKyc, useSubmitKyc, type KycSubmission } from '../data/kycApi';
  * The web has a fourth — a signed-out prompt — which can't be reached here,
  * since the route sits inside the authenticated `(app)` group.
  *
- * The form keeps the web's three steps — store and legal details, government
- * identity, escrow payout accounts — with the same country and document
+ * The form asks for the web's three groups — store and legal details,
+ * government identity, escrow payout accounts — with the same fields, rules and
  * options. Its `<select>`s become `SelectField` sheets, which is the native
  * equivalent.
  *
+ * Where it deliberately departs from the web: those groups are paged rather
+ * than stacked. The web can afford one long form on a desktop screen; on a
+ * phone the same markup was a single scroll deep enough to bury the submit
+ * button, with no sense of how much was left. So an intro names the three steps
+ * before the seller commits to any of them, then each is its own screen behind
+ * a progress bar, and Next refuses to leave a step whose fields aren't valid —
+ * errors surface where the field is rather than after a scroll to the bottom.
+ *
  * A rejected application prefills from the answers already on file, so
- * resubmitting is a correction rather than a retype — see the adopt effect.
+ * resubmitting is a correction rather than a retype — see the adopt effect. Its
+ * rejection reason gets the intro screen, where there is room for the
+ * reviewer's actual words.
  */
 
 const COUNTRIES = ['Ghana', 'Nigeria', 'Kenya', 'United States', 'United Kingdom'];
@@ -56,6 +66,17 @@ const ID_TYPES = [
   { value: 'Drivers License', label: "Driver's License" },
 ];
 
+/** 0 is the intro; 1–3 are the form steps, in order. */
+type Step = 0 | 1 | 2 | 3;
+
+const STEP_TITLES: Record<Exclude<Step, 0>, string> = {
+  1: 'Store & Legal Info',
+  2: 'Government Identity',
+  3: 'Escrow Payout Accounts',
+};
+
+const LAST_STEP = 3;
+
 export function VendorKycScreen() {
   const theme = useTheme();
   const tones = useTones();
@@ -74,6 +95,16 @@ export function VendorKycScreen() {
   const [momoNumber, setMomoNumber] = useState('');
   const [trxAddress, setTrxAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /*
+    Which page of the application is on screen. The form was one long scroll of
+    all three groups; on a phone that buried the submit button under a column of
+    inputs with no sense of how much was left.
+
+    Local state rather than three routes: every step writes into the same set of
+    fields and only the last one submits, so routing would mean lifting all of
+    it somewhere shared for no gain the back gesture doesn't already give.
+  */
+  const [step, setStep] = useState<Step>(0);
 
   const myKyc = useMyKyc();
   const submitKyc = useSubmitKyc();
@@ -210,17 +241,28 @@ export function VendorKycScreen() {
    * The web's `kycSchema`, message for message — and the Joi behind it in
    * `kyc.validation.ts`, which is where these rules actually come from.
    *
+   * Split by step rather than checked in one pass, so Next can refuse to leave
+   * a step the seller has not finished. Same rules and same wording as before,
+   * only asked about a step at a time; sweeping all three in order reproduces
+   * the original single check exactly, which is what submit still does.
+   *
    * Reported one at a time, in field order, because this screen has a single
    * banner rather than the web's per-field errors. The patterns matter most:
    * a mistyped TRX address used to cost a round trip to be told the same
    * thing the server already knew.
    */
-  const firstProblem = (): string | null => {
-    if (legalName.trim().length < 2) return 'Enter your legal name';
-    if (storeName.trim().length < 2) return 'Enter your store name';
-    if (country.trim().length < 2) return 'Select your country';
-    if (address.trim().length < 5) return 'Enter your business address';
-    if (idNumber.trim().length < 4) return 'Enter your document number';
+  const problemInStep = (s: Step): string | null => {
+    if (s === 1) {
+      if (legalName.trim().length < 2) return 'Enter your legal name';
+      if (storeName.trim().length < 2) return 'Enter your store name';
+      if (country.trim().length < 2) return 'Select your country';
+      if (address.trim().length < 5) return 'Enter your business address';
+      return null;
+    }
+    if (s === 2) {
+      if (idNumber.trim().length < 4) return 'Enter your document number';
+      return null;
+    }
     if (momoNumber.trim() && !MOMO_PATTERN.test(momoNumber.trim())) {
       return 'Enter a valid mobile money number';
     }
@@ -233,11 +275,43 @@ export function VendorKycScreen() {
     return null;
   };
 
-  const onSubmit = async () => {
-    const problem = firstProblem();
+  /** Advance, but only once this step's own fields are good. */
+  const goNext = () => {
+    if (step === 0) {
+      setError(null);
+      setStep(1);
+      return;
+    }
+    const problem = problemInStep(step);
     if (problem) {
       setError(problem);
       return;
+    }
+    setError(null);
+    setStep((step + 1) as Step);
+  };
+
+  const goPrevious = () => {
+    setError(null);
+    setStep((step - 1) as Step);
+  };
+
+  const onSubmit = async () => {
+    /*
+      Re-check every step, not just the last one.
+
+      Stepping through can only have validated what was on screen at the time,
+      and a seller can walk back and empty a field they had already passed. On a
+      failure this returns them to the step that owns it — reporting a problem
+      the seller cannot see is worse than not reporting it.
+    */
+    for (const s of [1, 2, 3] as const) {
+      const problem = problemInStep(s);
+      if (problem) {
+        setError(problem);
+        setStep(s);
+        return;
+      }
     }
     setError(null);
 
@@ -379,34 +453,135 @@ export function VendorKycScreen() {
     );
   }
 
-  /* ── Application form (unverified / rejected) ─────────────── */
+  /* ── Intro (unverified / rejected) ────────────────────────── */
+  if (step === 0) {
+    const rejected = status === 'rejected';
+    return (
+      <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
+        <KeyboardAwareScroll contentContainerStyle={styles.scroll}>
+          {backButton}
+          {header}
+
+          {rejected ? (
+            <View
+              style={[
+                styles.rejectedBox,
+                { backgroundColor: tones.danger.chip, borderColor: tones.danger.border },
+              ]}
+            >
+              <Text style={[styles.rejectedText, { color: tones.danger.text }]}>
+                Your previous application was rejected
+              </Text>
+              {/* The reviewer's own words. Without this the seller is told to
+                  correct the details but not which ones were wrong. */}
+              <Text style={[styles.rejectedReason, { color: tones.danger.text }]}>
+                {myKyc.data?.rejectionReason ||
+                  'No reason was provided. Please review your details and submit again.'}
+              </Text>
+              <Text style={[styles.rejectedHint, { color: tones.danger.text }]}>
+                Your previous answers are prefilled — correct them and resubmit.
+              </Text>
+            </View>
+          ) : null}
+
+          <View
+            style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+          >
+            <View style={[styles.introIcon, { backgroundColor: theme.primaryLight }]}>
+              <ShieldCheck size={26} color={theme.primary} />
+            </View>
+            <Text style={[styles.introTitle, { color: theme.text }]}>
+              {rejected ? 'Fix your application' : 'Verify to start selling'}
+            </Text>
+            <Text style={[styles.introBody, { color: theme.textSecondary }]}>
+              {rejected
+                ? 'Three short steps, already filled in with your previous answers.'
+                : 'Three short steps. Have your ID document and a payout account to hand — it takes a couple of minutes.'}
+            </Text>
+
+            {/* Naming the steps up front is the point of this screen: the
+                seller can see what is being asked before committing to it. */}
+            <View style={styles.introSteps}>
+              {([1, 2, 3] as const).map((n) => (
+                <View key={n} style={styles.introStepRow}>
+                  <View style={[styles.introStepNum, { backgroundColor: theme.backgroundElement }]}>
+                    <Text style={[styles.introStepNumText, { color: theme.textSecondary }]}>{n}</Text>
+                  </View>
+                  <Text style={[styles.introStepLabel, { color: theme.textSecondary }]}>
+                    {STEP_TITLES[n]}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <Pressable
+            onPress={goNext}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <ShieldCheck size={16} color="#ffffff" />
+            <Text style={styles.primaryBtnText}>
+              {rejected ? 'Fix and resubmit' : 'Verify to start selling'}
+            </Text>
+            <ArrowRight size={16} color="#ffffff" />
+          </Pressable>
+
+          <Text style={[styles.footNote, { color: theme.textTertiary }]}>
+            Your details are used for verification only and are never shown on your public profile.
+          </Text>
+        </KeyboardAwareScroll>
+      </SafeAreaView>
+    );
+  }
+
+  /* ── Application form, one step at a time ─────────────────── */
+  const current = step as Exclude<Step, 0>;
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
       <KeyboardAwareScroll contentContainerStyle={styles.scroll}>
-        {backButton}
-        {header}
+        {/* Back walks the wizard, not the navigator — leaving the screen
+            entirely from step 2 would throw away the steps already done. */}
+        <Pressable
+          onPress={goPrevious}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={current === 1 ? 'Back to start' : 'Back to previous step'}
+          style={({ pressed }) => [
+            styles.backRow,
+            {
+              backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
+              borderColor: theme.border,
+            },
+          ]}
+        >
+          <ArrowLeft size={20} color={theme.text} />
+          <Text style={[styles.backText, { color: theme.text }]}>Back</Text>
+        </Pressable>
 
-        {status === 'rejected' ? (
-          <View
-            style={[
-              styles.rejectedBox,
-              { backgroundColor: tones.danger.chip, borderColor: tones.danger.border },
-            ]}
-          >
-            <Text style={[styles.rejectedText, { color: tones.danger.text }]}>
-              Your previous application was rejected
+        <View style={styles.progress}>
+          <View style={styles.progressHead}>
+            <Text style={[styles.progressCount, { color: theme.primary }]}>
+              Step {current} of {LAST_STEP}
             </Text>
-            {/* The reviewer's own words. Without this the seller is told to
-                correct the details but not which ones were wrong. */}
-            <Text style={[styles.rejectedReason, { color: tones.danger.text }]}>
-              {myKyc.data?.rejectionReason ||
-                'No reason was provided. Please review your details and submit again.'}
-            </Text>
-            <Text style={[styles.rejectedHint, { color: tones.danger.text }]}>
-              Your previous answers are prefilled below — correct them and resubmit.
+            <Text style={[styles.progressTitle, { color: theme.text }]}>
+              {STEP_TITLES[current]}
             </Text>
           </View>
-        ) : null}
+          <View style={styles.progressTrack}>
+            {([1, 2, 3] as const).map((n) => (
+              <View
+                key={n}
+                style={[
+                  styles.progressSegment,
+                  { backgroundColor: n <= current ? theme.primary : theme.border },
+                ]}
+              />
+            ))}
+          </View>
+        </View>
 
         {error ? (
           <View
@@ -419,12 +594,11 @@ export function VendorKycScreen() {
           </View>
         ) : null}
 
-        {/* Step 1 */}
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-          <Text style={[styles.stepTitle, { color: theme.text, borderBottomColor: theme.border }]}>
-            Store &amp; Legal Info
-          </Text>
-          {field('legalName', 'Legal Full Name', legalName, setLegalName, 'Kwame Asante', {
+        {current === 1 ? (
+          <View
+            style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+          >
+            {field('legalName', 'Legal Full Name', legalName, setLegalName, 'Kwame Asante', {
             maxLength: 100,
           })}
           {field(
@@ -448,70 +622,87 @@ export function VendorKycScreen() {
             sheetTitle="Select operating country"
           />
 
-          {field('address', 'Business Street Address', address, setAddress, '12 Oxford Street, Osu, Accra', {
-            multiline: true,
-            maxLength: 200,
-          })}
-        </View>
+            {field(
+              'address',
+              'Business Street Address',
+              address,
+              setAddress,
+              '12 Oxford Street, Osu, Accra',
+              { multiline: true, maxLength: 200 },
+            )}
+          </View>
+        ) : null}
 
-        {/* Step 2 */}
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-          <Text style={[styles.stepTitle, { color: theme.text, borderBottomColor: theme.border }]}>
-            Government Identity
-          </Text>
+        {current === 2 ? (
+          <View
+            style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+          >
+            <SelectField
+              label="Document Type"
+              value={idType}
+              options={ID_TYPES}
+              onSelect={setIdType}
+              sheetTitle="Select document type"
+            />
 
-          <SelectField
-            label="Document Type"
-            value={idType}
-            options={ID_TYPES}
-            onSelect={setIdType}
-            sheetTitle="Select document type"
-          />
+            {field('idNumber', 'Document Number', idNumber, setIdNumber, 'GHA-000000000-0', {
+              maxLength: 50,
+            })}
+          </View>
+        ) : null}
 
-          {field('idNumber', 'Document Number', idNumber, setIdNumber, 'GHA-000000000-0', {
-            maxLength: 50,
-          })}
-        </View>
+        {current === 3 ? (
+          <View
+            style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}
+          >
+            <Text style={[styles.stepHint, { color: theme.textTertiary }]}>
+              Provide at least one. GH₵ deals pay out to your mobile money; TRX deals pay out to
+              your TRX address.
+            </Text>
 
-        {/* Step 3 */}
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-          <Text style={[styles.stepTitle, { color: theme.text, borderBottomColor: theme.border }]}>
-            Escrow Payout Accounts
-          </Text>
-          <Text style={[styles.stepHint, { color: theme.textTertiary }]}>
-            Provide at least one. GH₵ deals pay out to your mobile money; TRX deals pay out to
-            your TRX address.
-          </Text>
+            {field('momo', 'Mobile Money Number', momoNumber, setMomoNumber, '+233 24 000 0000', {
+              hint: '(GH₵ · simulated)',
+              keyboardType: 'phone-pad',
+            })}
+            {field('trx', 'TRX Address', trxAddress, setTrxAddress, 'T...', {
+              hint: '(TRON Shasta testnet)',
+            })}
+          </View>
+        ) : null}
 
-          {field('momo', 'Mobile Money Number', momoNumber, setMomoNumber, '+233 24 000 0000', {
-            hint: '(GH₵ · simulated)',
-            keyboardType: 'phone-pad',
-          })}
-          {field('trx', 'TRX Address', trxAddress, setTrxAddress, 'T...', {
-            hint: '(TRON Shasta testnet)',
-          })}
-        </View>
-
-        <Pressable
-          onPress={onSubmit}
-          disabled={submitKyc.isPending}
-          style={({ pressed }) => [
-            styles.primaryBtn,
-            {
-              backgroundColor: theme.primary,
-              opacity: submitKyc.isPending ? 0.5 : pressed ? 0.85 : 1,
-            },
-          ]}
-        >
-          <ShieldCheck size={16} color="#ffffff" />
-          <Text style={styles.primaryBtnText}>
-            {submitKyc.isPending
-              ? 'Submitting KYC Application...'
-              : status === 'rejected'
-                ? 'Resubmit Vendor KYC Application'
-                : 'Submit Vendor KYC Application'}
-          </Text>
-        </Pressable>
+        {current < LAST_STEP ? (
+          <Pressable
+            onPress={goNext}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <Text style={styles.primaryBtnText}>Next</Text>
+            <ArrowRight size={16} color="#ffffff" />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={onSubmit}
+            disabled={submitKyc.isPending}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              {
+                backgroundColor: theme.primary,
+                opacity: submitKyc.isPending ? 0.5 : pressed ? 0.85 : 1,
+              },
+            ]}
+          >
+            <ShieldCheck size={16} color="#ffffff" />
+            <Text style={styles.primaryBtnText}>
+              {submitKyc.isPending
+                ? 'Submitting KYC Application...'
+                : status === 'rejected'
+                  ? 'Resubmit Vendor KYC Application'
+                  : 'Submit Vendor KYC Application'}
+            </Text>
+          </Pressable>
+        )}
 
         <Text style={[styles.footNote, { color: theme.textTertiary }]}>
           Your details are used for verification only and are never shown on your public profile.
@@ -565,13 +756,42 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[400] },
 
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four, gap: Spacing.three },
-  stepTitle: {
-    fontSize: 13.5,
-    fontFamily: Fonts.display[700],
-    borderBottomWidth: 1,
-    paddingBottom: Spacing.two,
+  stepHint: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.sans[400] },
+
+  // Intro
+  introIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  stepHint: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.sans[400], marginTop: -Spacing.two },
+  introTitle: { fontSize: 18, fontFamily: Fonts.display[700], letterSpacing: -0.3 },
+  introBody: { fontSize: 12.5, lineHeight: 19, fontFamily: Fonts.sans[400] },
+  introSteps: { gap: Spacing.two },
+  introStepRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  introStepNum: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  introStepNumText: { fontSize: 11, fontFamily: Fonts.sans[700] },
+  introStepLabel: { fontSize: 12.5, fontFamily: Fonts.sans[600] },
+
+  // Progress
+  progress: { gap: Spacing.two },
+  progressHead: { gap: 2 },
+  progressCount: {
+    fontSize: 10,
+    fontFamily: Fonts.sans[700],
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  progressTitle: { fontSize: 17, fontFamily: Fonts.display[700], letterSpacing: -0.3 },
+  progressTrack: { flexDirection: 'row', gap: 4 },
+  progressSegment: { flex: 1, height: 4, borderRadius: 2 },
 
   field: { gap: 5 },
   label: {
