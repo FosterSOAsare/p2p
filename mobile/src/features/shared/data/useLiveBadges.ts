@@ -48,14 +48,26 @@ import { promotionKeys } from '@/features/seller/data/promotions';
  * The dashboard is refreshed for every category rather than listed each time:
  * it aggregates balances, deal counts and KYC state, so any of these moves it.
  */
+/**
+ * Every admin queue is keyed under this prefix, so one entry refreshes the
+ * whole console. It belongs on the categories admins are notified about —
+ * a new KYC submission, a listing appeal or report, a new dispute — because
+ * those notifications go to admins, and without this an admin sitting on the
+ * queue saw the bell move while the list behind it did not.
+ *
+ * Harmless on a non-admin receiving the same category: they have no admin
+ * queries mounted, so nothing refetches.
+ */
+const ADMIN = ['admin'] as const;
+
 const CATEGORY_KEYS: Record<NotificationCategory, readonly (readonly unknown[])[]> = {
-  wallet: [walletKeys.all],
+  wallet: [walletKeys.all, ADMIN],
   // Disputes are argued on a deal and resolving one moves its money and status.
-  deal: [dealKeys.all, walletKeys.all],
-  dispute: [dealKeys.all, walletKeys.all],
+  deal: [dealKeys.all, walletKeys.all, ADMIN],
+  dispute: [dealKeys.all, walletKeys.all, ADMIN],
   // Approval flips the account to seller, which changes which tabs exist.
-  kyc: [kycKeys.all, listingKeys.all],
-  listing: [listingKeys.all],
+  kyc: [kycKeys.all, listingKeys.all, ADMIN],
+  listing: [listingKeys.all, ADMIN],
   promotion: [promotionKeys.all, listingKeys.all],
   // Account-level: status changes, announcements. Nothing narrower to hit.
   system: [],

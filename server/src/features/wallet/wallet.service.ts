@@ -11,7 +11,7 @@ import { feeMathP, toPesewas, fromPesewas } from "../escrows/money";
 import * as paystack from "../../shared/lib/paystack";
 import { paystackEnabled } from "../../shared/config/env";
 import { mailer } from "../../shared/mail/mail.service";
-import { notify } from "../notifications/notifications.service";
+import { notify, notifyAdmins } from "../notifications/notifications.service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -422,6 +422,23 @@ export async function withdraw(
       // money going missing.
       body: `${formatAmount(amount, currency)} to ${destination} is awaiting review.`,
       link: "/wallet",
+    });
+
+    /*
+      And tell the admins, because somebody has to act on this.
+
+      Every other queue announces itself on submission — KYC, listing appeals,
+      reports, disputes all call `notifyAdmins` — and payouts were the one that
+      did not, which left the review queue as the only console screen with no
+      live signal behind it. It is also the queue where waiting costs the most:
+      the money is already out of the seller's balance and sitting nowhere until
+      someone rules.
+    */
+    void notifyAdmins({
+      category: "wallet",
+      title: "Payout awaiting review",
+      body: `${formatAmount(amount, currency)} to ${destination} is waiting to be sent or refused.`,
+      link: "/admin/withdrawals",
     });
   }
 

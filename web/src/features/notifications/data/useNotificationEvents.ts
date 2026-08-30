@@ -64,7 +64,8 @@ export function useNotificationEvents() {
      */
     const onNotification = (payload: { category?: string } | undefined) => {
       refresh()
-      switch (payload?.category) {
+      const category = payload?.category
+      switch (category) {
         case 'wallet':
           queryClient.invalidateQueries({ queryKey: ['wallet'] })
           break
@@ -89,6 +90,15 @@ export function useNotificationEvents() {
           queryClient.invalidateQueries()
           return
       }
+      /*
+        Every admin queue is keyed under this prefix, so one call refreshes the
+        console. Admins are the recipients of exactly these categories — a new
+        KYC submission, a listing appeal or report, a new dispute, a payout —
+        and without it the bell moved while the queue behind it did not.
+
+        Harmless for a non-admin: they have no admin queries mounted.
+      */
+      if (category !== 'promotion') queryClient.invalidateQueries({ queryKey: ['admin'] })
       // Balances, deal counts and KYC state all surface here.
       queryClient.invalidateQueries({ queryKey: dashboardKeys.data })
     }
