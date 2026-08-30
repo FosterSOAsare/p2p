@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
+  ShieldCheck,
 } from 'lucide-react'
 import {
   useAdminWithdrawals,
@@ -196,20 +197,32 @@ export function AdminWithdrawalsList() {
   }
 
   return (
-    <div className="py-4 sm:py-6 space-y-5">
-      <AdminSectionNav />
+    <div className="py-4 sm:py-6 space-y-6">
+      {/* Same header shape as every other admin list page. The section nav sits
+          beside the heading inside this row rather than above it — stacked full
+          width, as it was, the nav landed at a different height here than on the
+          neighbouring pages and jumped as you moved between them. */}
+      <div className="border-b border-slate-200 dark:border-slate-800 pb-5 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary-700 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/60 px-3 py-1 rounded-full border border-primary-200 dark:border-primary-800">
+              <ShieldCheck size={14} />
+              Admin Console
+            </div>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">
+              Withdrawal Queue
+            </h1>
+            {/* Kept to one line at this width, like the other admin pages — the
+                nav is centred beside this block, so a taller heading pushes it
+                out of line with them. */}
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+              Requests are already debited. Completing records the money as sent; rejecting returns it.
+            </p>
+          </div>
 
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-2">
-          <Banknote size={20} className="text-primary-600 dark:text-primary-400" />
-          <h1 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Withdrawals
-          </h1>
+          {/* Section Sub-Navigation */}
+          <AdminSectionNav />
         </div>
-        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
-          Payouts leave the user's balance the moment they're requested, so these are already debited.
-          Completing records that the money was actually sent; rejecting returns it to their wallet.
-        </p>
       </div>
 
       {/* Status tabs */}
