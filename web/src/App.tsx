@@ -36,6 +36,7 @@ import { AdminKycDetail } from './pages/AdminKycDetail'
 import { AdminDisputesList } from './pages/AdminDisputesList'
 import { AdminDisputeDetail } from './pages/AdminDisputeDetail'
 import { AdminUsersList } from './pages/AdminUsersList'
+import { AdminWithdrawalsList } from './pages/AdminWithdrawalsList'
 import { AdminListingsList } from './pages/AdminListingsList'
 import { AdminListingDetail } from './pages/AdminListingDetail'
 import { AdminReportsList } from './pages/AdminReportsList'
@@ -92,6 +93,7 @@ function App() {
           <Route path="admin/listings/:id" element={<AdminListingDetail />} />
           <Route path="admin/reports" element={<AdminReportsList />} />
           <Route path="admin/users" element={<AdminUsersList />} />
+          <Route path="admin/withdrawals" element={<AdminWithdrawalsList />} />
         </Route>
         <Route path="terms" element={<Terms />} />
         <Route path="privacy" element={<Privacy />} />

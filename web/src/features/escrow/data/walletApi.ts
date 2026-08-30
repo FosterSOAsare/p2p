@@ -29,6 +29,33 @@ export interface WalletTransaction {
   createdAt: string
 }
 
+export type WithdrawalStatus = 'pending' | 'completed' | 'rejected'
+
+/**
+ * A payout request. Distinct from the `withdrawal` Transaction row it produces:
+ * the transaction records that the balance moved, this records whether the
+ * money has actually left the platform yet.
+ */
+export interface Withdrawal {
+  id: string
+  reference: string
+  amount: number
+  currency: WalletCurrency
+  destination: string
+  status: WithdrawalStatus
+  /** Why it was rejected — set by an admin, shown to the user. */
+  reviewNote: string | null
+  reviewedAt: string | null
+  createdAt: string
+}
+
+export interface WithdrawalsResponse {
+  withdrawals: Withdrawal[]
+  total: number
+  page: number
+  pages: number
+}
+
 export interface TransactionsResponse {
   transactions: WalletTransaction[]
   total: number
@@ -52,9 +79,20 @@ export function useWalletTransactions(query: string) {
   })
 }
 
+/** The user's own payout history for one currency, newest first. */
+export function useWalletWithdrawals(query: string) {
+  return useQuery({
+    queryKey: ['wallet', 'withdrawals', query],
+    queryFn: () => api<WithdrawalsResponse>(`/api/wallet/withdrawals${query ? `?${query}` : ''}`),
+    placeholderData: keepPreviousData,
+  })
+}
+
 function useInvalidateWallet() {
   const queryClient = useQueryClient()
   return () => {
+    // Covers the balance, the ledger and the payout list — all three change on
+    // a deposit or a withdrawal, and all three are keyed under 'wallet'.
     queryClient.invalidateQueries({ queryKey: ['wallet'] })
     queryClient.invalidateQueries({ queryKey: authKeys.me })
   }

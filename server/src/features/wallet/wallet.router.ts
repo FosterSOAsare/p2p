@@ -14,3 +14,6 @@ walletRouter.post("/deposit/init", validate(walletValidation.initDeposit), walle
 walletRouter.get("/deposit/verify/:reference", validate(walletValidation.verifyDeposit), walletController.verifyDeposit);
 walletRouter.post("/withdraw", validate(walletValidation.withdraw), walletController.withdraw);
 walletRouter.get("/transactions", validate(walletValidation.transactions), walletController.transactions);
+// The user's own payout history — pending ones included, so they can see a
+// request is still under review rather than wondering where the money went.
+walletRouter.get("/withdrawals", validate(walletValidation.withdrawals), walletController.withdrawals);

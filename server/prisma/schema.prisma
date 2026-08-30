@@ -68,6 +68,15 @@ enum PaymentStatus {
   failed
 }
 
+/// `pending` — money already debited, waiting on an admin.
+/// `completed` — admin confirmed it was actually sent.
+/// `rejected` — admin refused it; the debit is credited back.
+enum WithdrawalStatus {
+  pending
+  completed
+  rejected
+}
+
 enum TransactionType {
   deposit
   withdrawal
@@ -206,6 +215,8 @@ model User {
   kycReviews       KycProfile[]  @relation("KycReviewer")
   wallets          Wallet[]
   paymentIntents   PaymentIntent[]
+  withdrawals         Withdrawal[] @relation("WithdrawalUser")
+  withdrawalsReviewed Withdrawal[] @relation("WithdrawalReviewer")
   listings         Listing[]
   promotions       Promotion[]
   listingsRemoved  Listing[]        @relation("ListingModerator")
@@ -334,6 +345,41 @@ model PaymentIntent {
 
   @@index([userId, createdAt])
   @@map("payment_intents")
+}
+
+/// A payout request. The counterpart to PaymentIntent on the way out, and the
+/// thing that makes money leaving the platform auditable — previously a payout
+/// left only a Transaction row, invisible to admins and impossible to retry or
+/// reverse.
+///
+/// The wallet is debited when the request is created, not when an admin
+/// approves it: otherwise the same balance could back several pending requests
+/// at once. Rejecting therefore *credits the money back* rather than merely
+/// cancelling a plan to send it.
+model Withdrawal {
+  id        String           @id @default(uuid(7))
+  userId    String
+  /// Idempotency key. A retried submit reuses it and is rejected as a duplicate
+  /// rather than debiting twice.
+  reference String           @unique
+  amount    Decimal          @db.Decimal(14, 2)
+  currency  Currency         @default(GHS)
+  /// Momo number for GHS, TRON address for TRX — validated per currency.
+  destination String
+  status    WithdrawalStatus @default(pending)
+  /// Why an admin rejected it, shown to the user.
+  reviewNote   String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user       User  @relation("WithdrawalUser", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("WithdrawalReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@map("withdrawals")
 }
 
 /// A seller's appeal against a listing takedown. Only one may be open per

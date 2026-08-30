@@ -19,14 +19,18 @@ import {
   Coins,
   Info,
   Lock,
+  Clock3,
+  XCircle,
 } from 'lucide-react'
 import { useMe } from '../features/auth/data/authApi'
 import {
   useWallet,
   useWalletTransactions,
+  useWalletWithdrawals,
   useWithdraw,
   type WalletCurrency,
   type WalletTransaction,
+  type Withdrawal,
 } from '../features/escrow/data/walletApi'
 import { useInitDeposit, pendingAction, type PayMethod } from '../features/escrow/data/paymentsApi'
 import { PayMethodPicker } from '../features/escrow/ui/PayMethodPicker'
@@ -121,6 +125,62 @@ function CurrencySwitch({
   )
 }
 
+/**
+ * A payout and where it has got to. Separate from the ledger below because a
+ * `withdrawal` transaction only says the balance moved — it can't say whether
+ * the money has actually left, or come back.
+ */
+function WithdrawalRow({ w }: { w: Withdrawal }) {
+  const chip = {
+    pending: {
+      label: 'Awaiting review',
+      className: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+      icon: Clock3,
+    },
+    completed: {
+      label: 'Sent',
+      className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+      icon: CheckCircle2,
+    },
+    rejected: {
+      label: 'Rejected — refunded',
+      className: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
+      icon: XCircle,
+    },
+  }[w.status]
+  const Icon = chip.icon
+
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm space-y-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-display text-sm font-bold text-slate-900 dark:text-white">
+          {formatMoney(w.amount, w.currency)}
+        </span>
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${chip.className}`}
+        >
+          <Icon size={11} /> {chip.label}
+        </span>
+      </div>
+
+      <p className="text-[11px] text-slate-500 dark:text-slate-400 break-all">
+        To <span className="font-mono">{w.destination}</span>
+      </p>
+
+      {w.reviewNote && (
+        <p className="rounded-lg bg-slate-50 dark:bg-slate-950/60 px-2.5 py-1.5 text-[11px] text-slate-600 dark:text-slate-400">
+          {w.reviewNote}
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-x-2 text-[10px] text-slate-400">
+        <span className="font-mono">{w.reference}</span>
+        <span className="ml-auto">{new Date(w.createdAt).toLocaleString()}</span>
+      </div>
+    </div>
+  )
+}
+
 function TypeChip({ isCredit, label }: { isCredit: boolean; label: string }) {
   return (
     <span
@@ -184,6 +244,11 @@ export function SellerWallet() {
   const [currency, setCurrency] = useState<WalletCurrency>('GHS')
   const [page, setPage] = useState(1)
   const txQuery = useWalletTransactions(`page=${page}&limit=10&currency=${currency}`)
+  // Only what is still in flight. A settled payout already appears in the
+  // ledger below as a `withdrawal` row, so listing it here too would state the
+  // same fact twice — this section exists to answer "where has my money got to",
+  // and once it's sent there is nothing left to answer.
+  const withdrawalsQuery = useWalletWithdrawals(`page=1&limit=10&status=pending&currency=${currency}`)
 
   const withdrawMutation = useWithdraw()
   const initDeposit = useInitDeposit()
@@ -290,7 +355,11 @@ export function SellerWallet() {
       { amount: numAmount, destination: withdrawDestination.trim(), currency },
       {
         onSuccess: () => {
-          setWithdrawSuccess(`Successfully paid out ${formatMoney(numAmount, currency)} to ${withdrawDestination}!`)
+          // Not "paid out": the balance has moved but an admin still has to
+          // send it, and a later rejection would make "paid out" a lie.
+          setWithdrawSuccess(
+            `${formatMoney(numAmount, currency)} to ${withdrawDestination} is awaiting review — you'll be notified once it's sent.`,
+          )
           setWithdrawAmount('')
           setWithdrawDestination('')
           // Close the modal — the confirmation is shown on the page behind it,
@@ -331,10 +400,13 @@ export function SellerWallet() {
               <ShieldCheck size={14} /> VeriTrust Escrow Settle Rail • {rail.short}
             </div>
             <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-              {isSeller ? 'Seller Payout Wallet' : 'My P2P Wallet'}
+              {isSeller ? 'Seller Payout Wallet' : 'My Wallet'}
             </h1>
+            {/* Deliberately not "earnings": this page is open to every
+                non-admin account, and a buyer's balance is top-ups and escrow
+                refunds, not sales. Anyone with a balance can withdraw it. */}
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-xl">
-              Withdraw cleared earnings to your {rail.payoutTo}, or review what's still held in escrow.
+              Withdraw your available balance to your {rail.payoutTo}, or review what's still held in escrow.
             </p>
           </div>
 
@@ -414,6 +486,41 @@ export function SellerWallet() {
           )}
         </div>
       </div>
+
+      {/* Pending payouts only — a settled one drops off and lives in the ledger.
+          Hidden when the list has genuinely loaded and is empty, but NOT when the
+          request failed: a failure must not look the same as "nothing pending". */}
+      {(withdrawalsQuery.isError || (withdrawalsQuery.data?.withdrawals.length ?? 0) > 0) && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Clock3 size={18} className="text-amber-500" />
+            <h2 className="font-display text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
+              Pending payouts
+            </h2>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {rail.short}
+            </span>
+          </div>
+
+          {withdrawalsQuery.isError ? (
+            <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 dark:bg-rose-950/60 dark:border-rose-800 dark:text-rose-300">
+              Couldn't load your pending payouts — {apiErrorMessage(withdrawalsQuery.error)}
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Already deducted from your balance and waiting to be sent. Once sent, a payout moves to
+                your transaction history below.
+              </p>
+              <div className="space-y-2">
+                {withdrawalsQuery.data?.withdrawals.map((w) => (
+                  <WithdrawalRow key={w.id} w={w} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Transaction History Section */}
       <div className="space-y-4">

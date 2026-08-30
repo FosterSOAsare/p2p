@@ -165,3 +165,28 @@ export const reportsDismiss: RequestSchema = {
     note: Joi.string().trim().max(500).allow("", null),
   }),
 };
+
+export const withdrawalList: RequestSchema = {
+  query: Joi.object({
+    status: Joi.string().valid("pending", "completed", "rejected", "all").default("pending"),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20),
+  }),
+};
+
+export const withdrawalParam: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+};
+
+export const withdrawalReject: RequestSchema = {
+  params: Joi.object({
+    id: Joi.string().guid().required(),
+  }),
+  body: Joi.object({
+    // Required, not optional: the money goes back to the user and they are told
+    // why, so "rejected" with no reason is not a usable outcome for them.
+    reason: Joi.string().trim().min(3).max(500).required(),
+  }),
+};

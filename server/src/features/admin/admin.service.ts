@@ -8,12 +8,14 @@ import type {
   KycStatus,
   Prisma,
   UserRole,
+  WithdrawalStatus,
 } from "../../generated/prisma/client";
 import type { ListingRemovalReason } from "../../generated/prisma/client";
 import { transition } from "../escrows/escrows.service";
 import { breakdown } from "../escrows/money";
 import { listDealTranscript, postDealMessage } from "../messages/messages.service";
 import { notify, notifyMany } from "../notifications/notifications.service";
+import * as walletService from "../wallet/wallet.service";
 import { mailer } from "../../shared/mail/mail.service";
 import { removalReasonText } from "../listings/removal-reasons";
 
@@ -1181,4 +1183,111 @@ export async function reinstateListing(adminId: string, listingId: string) {
     .catch(() => undefined);
 
   return toAdminListing(updated);
+}
+
+// ---------- Withdrawals (payout moderation) ----------
+
+/**
+ * The payout queue. Money is already out of the user's balance by the time a
+ * row appears here — `wallet.service.withdraw` debits on request — so what an
+ * admin decides is whether it actually leaves the platform, or comes back.
+ */
+export async function listWithdrawals(
+  status: WithdrawalStatus | "all",
+  page: number,
+  limit: number,
+) {
+  const where: Prisma.WithdrawalWhereInput = status === "all" ? {} : { status };
+  const [total, rows] = await Promise.all([
+    prisma.withdrawal.count({ where }),
+    prisma.withdrawal.findMany({
+      where,
+      // Oldest pending first: a payout queue is worked front to back, unlike
+      // the other admin lists where newest-first is what you want.
+      orderBy: { createdAt: status === "pending" ? "asc" : "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      include: {
+        user: { select: { id: true, username: true, email: true, fullName: true } },
+        reviewedBy: { select: { username: true } },
+      },
+    }),
+  ]);
+
+  return {
+    withdrawals: rows.map((w) => ({
+      ...walletService.serializeWithdrawal(w),
+      user: {
+        id: w.user.id,
+        username: w.user.username,
+        email: w.user.email,
+        fullName: w.user.fullName,
+      },
+      reviewedBy: w.reviewedBy?.username ?? null,
+    })),
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  };
+}
+
+/** Guarded claim of a pending row, so two admins can't both rule on one payout. */
+async function claimWithdrawal(id: string, adminId: string, status: WithdrawalStatus, reviewNote?: string) {
+  const claimed = await prisma.withdrawal.updateMany({
+    where: { id, status: "pending" },
+    data: { status, reviewNote: reviewNote ?? null, reviewedById: adminId, reviewedAt: new Date() },
+  });
+  if (claimed.count === 0) {
+    const existing = await prisma.withdrawal.findUnique({ where: { id } });
+    if (!existing) throw ApiError.notFound("Withdrawal not found");
+    throw ApiError.conflict(`This payout was already ${existing.status}`);
+  }
+  return prisma.withdrawal.findUniqueOrThrow({ where: { id } });
+}
+
+/** Mark a payout as actually sent. No money moves — it left on request. */
+export async function completeWithdrawal(adminId: string, id: string) {
+  const withdrawal = await claimWithdrawal(id, adminId, "completed");
+
+  void notify({
+    userId: withdrawal.userId,
+    category: "wallet",
+    title: "Withdrawal sent",
+    body: `${walletService.formatAmount(Number(withdrawal.amount), withdrawal.currency)} is on its way to ${withdrawal.destination}.`,
+    link: "/wallet",
+  });
+
+  return walletService.serializeWithdrawal(withdrawal);
+}
+
+/**
+ * Refuse a payout and give the money back.
+ *
+ * The credit is the whole point: the balance was debited when the request was
+ * made, so rejecting without crediting would simply destroy it. Claim first —
+ * the guarded update is what stops a double refund if two admins click at once.
+ */
+export async function rejectWithdrawal(adminId: string, id: string, reason: string) {
+  const withdrawal = await claimWithdrawal(id, adminId, "rejected", reason);
+
+  await prisma.$transaction((tx) =>
+    walletService.credit(
+      tx,
+      withdrawal.userId,
+      withdrawal.currency,
+      Number(withdrawal.amount),
+      "withdrawal",
+      `Withdrawal ${withdrawal.reference} rejected — returned to balance`,
+    ),
+  );
+
+  void notify({
+    userId: withdrawal.userId,
+    category: "wallet",
+    title: "Withdrawal rejected",
+    body: `${walletService.formatAmount(Number(withdrawal.amount), withdrawal.currency)} has been returned to your balance. ${reason}`,
+    link: "/wallet",
+  });
+
+  return walletService.serializeWithdrawal(withdrawal);
 }

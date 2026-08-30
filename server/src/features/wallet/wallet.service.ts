@@ -1,6 +1,12 @@
+import { randomBytes } from "node:crypto";
 import { prisma } from "../../shared/lib/prisma";
 import { ApiError } from "../../shared/lib/errors";
-import type { Currency, Prisma, TransactionType } from "../../generated/prisma/client";
+import type {
+  Currency,
+  Prisma,
+  TransactionType,
+  WithdrawalStatus,
+} from "../../generated/prisma/client";
 import { feeMathP, toPesewas, fromPesewas } from "../escrows/money";
 import * as paystack from "../../shared/lib/paystack";
 import { paystackEnabled } from "../../shared/config/env";
@@ -31,6 +37,36 @@ type Tx = Prisma.TransactionClient;
 /** How an amount is written to the user in that currency. */
 export function formatAmount(amount: number, currency: Currency): string {
   return currency === "GHS" ? `GH₵ ${amount.toFixed(2)}` : `${amount.toFixed(2)} TRX`;
+}
+
+/** Human-legible payout reference, and the row's idempotency key. */
+const newWithdrawalRef = () => `wd_${Date.now().toString(36)}_${randomBytes(4).toString("hex")}`;
+
+type WithdrawalRow = {
+  id: string;
+  reference: string;
+  amount: Prisma.Decimal;
+  currency: Currency;
+  destination: string;
+  status: WithdrawalStatus;
+  reviewNote: string | null;
+  reviewedAt: Date | null;
+  createdAt: Date;
+};
+
+/** One payout as every client sees it — user history and the admin queue alike. */
+export function serializeWithdrawal(w: WithdrawalRow) {
+  return {
+    id: w.id,
+    reference: w.reference,
+    amount: Number(w.amount),
+    currency: w.currency,
+    destination: w.destination,
+    status: w.status,
+    reviewNote: w.reviewNote,
+    reviewedAt: w.reviewedAt?.toISOString() ?? null,
+    createdAt: w.createdAt.toISOString(),
+  };
 }
 
 /** The wallet a deal settles through: a deal's currency IS its rail's currency. */
@@ -317,11 +353,18 @@ export async function withdraw(
   // A TRX payout is a transfer to the address on file, not a momo cash-out.
   const note =
     currency === "GHS"
-      ? `Mobile money payout to ${destination} (simulated)`
-      : `TRX payout to ${destination} (simulated)`;
-  await prisma.$transaction((tx) =>
-    debitGuarded(tx, userId, currency, amount, "withdrawal", note),
-  );
+      ? `Mobile money payout to ${destination}`
+      : `TRX payout to ${destination}`;
+
+  // Debit and record together. The debit happens now rather than on approval so
+  // one balance cannot back several pending requests at once; the Withdrawal
+  // row is what an admin later completes or reverses.
+  const withdrawal = await prisma.$transaction(async (tx) => {
+    await debitGuarded(tx, userId, currency, amount, "withdrawal", note);
+    return tx.withdrawal.create({
+      data: { userId, reference: newWithdrawalRef(), amount, currency, destination },
+    });
+  });
 
   // Money-movement receipt — always sent (not gated by shipment prefs).
   prisma.user
@@ -334,12 +377,47 @@ export async function withdraw(
   void notify({
     userId,
     category: "wallet",
-    title: "Withdrawal sent",
-    body: `${formatAmount(amount, currency)} is on its way to ${destination}.`,
+    title: "Withdrawal requested",
+    // Deliberately not "sent": the money has left their balance but not yet the
+    // platform. Saying "sent" here is what would make a later rejection read as
+    // money going missing.
+    body: `${formatAmount(amount, currency)} to ${destination} is awaiting review.`,
     link: "/wallet",
   });
 
-  return getWallet(userId, currency);
+  return { wallet: await getWallet(userId, currency), withdrawal: serializeWithdrawal(withdrawal) };
+}
+
+/** The user's own payout history, newest first. */
+export async function listWithdrawals(
+  userId: string,
+  page: number,
+  limit: number,
+  currency: Currency = "GHS",
+  status: WithdrawalStatus | "all" = "all",
+) {
+  // Scoped to one currency, like the transaction ledger — the wallet page shows
+  // one rail at a time and a TRX payout in the cedi list would read as an error.
+  //
+  // `status` lets the wallet page ask for only what is still in flight: a
+  // settled payout is already in the ledger below as a `withdrawal` row, so
+  // repeating it here would just be the same fact twice.
+  const where = { userId, currency, ...(status === "all" ? {} : { status }) };
+  const [total, rows] = await Promise.all([
+    prisma.withdrawal.count({ where }),
+    prisma.withdrawal.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+  ]);
+  return {
+    withdrawals: rows.map(serializeWithdrawal),
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  };
 }
 
 export async function listTransactions(

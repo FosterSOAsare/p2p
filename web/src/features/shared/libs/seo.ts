@@ -131,6 +131,7 @@ const ROUTES: RouteSeo[] = [
   { match: /^\/admin\/listings\/?$/, title: 'Listing Moderation', index: false },
   { match: /^\/admin\/reports\/?$/, title: 'Reported Listings', index: false },
   { match: /^\/admin\/users\/?$/, title: 'Users', index: false },
+  { match: /^\/admin\/withdrawals\/?$/, title: 'Withdrawals', index: false },
   { match: /^\/admin\/?$/, title: 'Admin Console', index: false },
 ]
 

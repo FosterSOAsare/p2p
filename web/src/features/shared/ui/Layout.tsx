@@ -30,6 +30,7 @@ import {
   PackageSearch,
   Bell,
   Sparkles,
+  Banknote,
 } from 'lucide-react'
 import { Footer } from './Footer'
 import logo from '../../../assets/logo.svg'
@@ -82,7 +83,10 @@ export function Layout() {
         // Next to Disputes — the two moderation queues belong together, and a
         // listing appeal is reviewed from here.
         { to: '/admin/listings', label: 'Listings', icon: PackageSearch },
-        { to: '/admin/users', label: 'Users', icon: Users }
+        { to: '/admin/users', label: 'Users', icon: Users },
+        // The payout queue. Money leaving the platform is the one admin surface
+        // that was reachable only by typing the URL.
+        { to: '/admin/withdrawals', label: 'Withdrawals', icon: Banknote },
       ]
     : [
         { to: '/marketplace', label: 'Marketplace', icon: Store },
@@ -288,6 +292,13 @@ export function Layout() {
                           </Link>
                           <Link to="/admin/users" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                             <Users size={15} /> User Management
+                          </Link>
+                          <Link
+                            to="/admin/withdrawals"
+                            onClick={() => setUserDropdownOpen(false)}
+                            className={dropdownLinkClass}
+                          >
+                            <Banknote size={15} /> Withdrawals
                           </Link>
                           <Link to="/deals" onClick={() => setUserDropdownOpen(false)} className={dropdownLinkClass}>
                             <Handshake size={15} /> Escrow Deals Oversight

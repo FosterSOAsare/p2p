@@ -110,3 +110,29 @@ export const reinstateListing = asyncHandler(async (req, res) => {
   const listing = await adminService.reinstateListing(req.user!.id, req.params.id as string);
   res.json({ listing });
 });
+
+// ---------- Withdrawals ----------
+
+export const listWithdrawals = asyncHandler(async (req, res) => {
+  const { status, page, limit } = req.query as unknown as {
+    status: "pending" | "completed" | "rejected" | "all";
+    page: number;
+    limit: number;
+  };
+  const result = await adminService.listWithdrawals(status, page, limit);
+  res.json(result);
+});
+
+export const completeWithdrawal = asyncHandler(async (req, res) => {
+  const withdrawal = await adminService.completeWithdrawal(req.user!.id, req.params.id as string);
+  res.json({ withdrawal });
+});
+
+export const rejectWithdrawal = asyncHandler(async (req, res) => {
+  const withdrawal = await adminService.rejectWithdrawal(
+    req.user!.id,
+    req.params.id as string,
+    req.body.reason,
+  );
+  res.json({ withdrawal });
+});

@@ -52,4 +52,18 @@ adminRouter.post(
 
 adminRouter.get("/escrows", validate(adminValidation.escrowList), adminController.listEscrows);
 
+// Payout moderation. The money has already left the user's balance by the time
+// it appears here — completing confirms it was sent, rejecting returns it.
+adminRouter.get("/withdrawals", validate(adminValidation.withdrawalList), adminController.listWithdrawals);
+adminRouter.post(
+  "/withdrawals/:id/complete",
+  validate(adminValidation.withdrawalParam),
+  adminController.completeWithdrawal,
+);
+adminRouter.post(
+  "/withdrawals/:id/reject",
+  validate(adminValidation.withdrawalReject),
+  adminController.rejectWithdrawal,
+);
+
 adminRouter.get("/stats", adminController.getStats);

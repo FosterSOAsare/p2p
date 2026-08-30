@@ -24,13 +24,27 @@ export const deposit = asyncHandler(async (req, res) => {
 });
 
 export const withdraw = asyncHandler(async (req, res) => {
-  const wallet = await walletService.withdraw(
+  const { wallet, withdrawal } = await walletService.withdraw(
     req.user!.id,
     req.body.amount,
     req.body.destination,
     req.body.currency,
   );
-  res.json(wallet);
+  // The wallet is spread onto the top level, as it always was, so clients
+  // reading `balance` off the response keep working; `withdrawal` is the new
+  // record they can show the pending state from.
+  res.json({ ...wallet, withdrawal });
+});
+
+export const withdrawals = asyncHandler(async (req, res) => {
+  const { page, limit, currency, status } = req.query as unknown as {
+    page: number;
+    limit: number;
+    currency: "GHS" | "TRX";
+    status: "pending" | "completed" | "rejected" | "all";
+  };
+  const result = await walletService.listWithdrawals(req.user!.id, page, limit, currency, status);
+  res.json(result);
 });
 
 export const transactions = asyncHandler(async (req, res) => {

@@ -1,5 +1,14 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, ShieldCheck, Scale, Users, Handshake, PackageSearch, Flag } from 'lucide-react'
+import {
+  LayoutDashboard,
+  ShieldCheck,
+  Scale,
+  Users,
+  Handshake,
+  PackageSearch,
+  Flag,
+  Banknote,
+} from 'lucide-react'
 import { useAdminStats } from '../data/adminStatsApi'
 
 const items = [
@@ -9,6 +18,7 @@ const items = [
   { to: '/admin/listings', label: 'Listings', icon: PackageSearch },
   { to: '/admin/reports', label: 'Reports', icon: Flag },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/withdrawals', label: 'Withdrawals', icon: Banknote },
   { to: '/deals', label: 'Deals', icon: Handshake },
 ]
 

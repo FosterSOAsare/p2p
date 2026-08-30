@@ -54,3 +54,12 @@ export const transactions: RequestSchema = {
     currency: Joi.string().valid("GHS", "TRX").default("GHS"),
   }),
 };
+
+export const withdrawals: RequestSchema = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(50).default(15),
+    currency: Joi.string().valid("GHS", "TRX").default("GHS"),
+    status: Joi.string().valid("pending", "completed", "rejected", "all").default("all"),
+  }),
+};
