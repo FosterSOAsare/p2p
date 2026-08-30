@@ -8,14 +8,15 @@ import {
   FileText,
   LockKeyhole,
   ShieldCheck,
-  User,
 } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { apiErrorMessage } from '@/features/shared/data/api';
+import type { CounterpartyMatch } from '@/features/user/data/usersApi';
 import { useCreateStandaloneEscrow } from '../data/dealsApi';
+import { CounterpartyPicker } from './CounterpartyPicker';
 
 /**
  * Standalone Off-Platform Contract — the phone version of the web's
@@ -26,10 +27,9 @@ import { useCreateStandaloneEscrow } from '../data/dealsApi';
  * `<select>` for currency and fee split; a phone gets segmented chips instead,
  * which is the native equivalent.
  *
- * No API yet — like the rest of the mobile app this is UI over mock state, so
- * submitting returns to My Deals without persisting. Wire
- * `useCreateStandaloneEscrow` (web `features/escrow/data/ordersApi`) when the
- * mobile API client lands; the web then routes on to the new deal's detail page.
+ * Live against `useCreateStandaloneEscrow`, and on success it routes straight to
+ * the new deal's detail page — where the share link lives for a deal created
+ * without a named counterparty.
  */
 
 type Role = 'buyer' | 'seller';
@@ -71,7 +71,17 @@ export function NewEscrowScreen() {
 
   const [role, setRole] = useState<Role>('buyer');
   const [title, setTitle] = useState('');
-  const [invitedUsername, setInvitedUsername] = useState('');
+  /*
+    The counterparty, in two parts — the same split the web keeps.
+
+    `counterparty` is a *confirmed* account and the only thing ever sent to the
+    server. `counterpartyQuery` is the raw text in the box, kept so the three
+    states stay distinguishable: blank (invite by link), picked, and typed but
+    unconfirmed. Only the last is an error, and collapsing it into a single
+    string is what let free text reach the server and fail a round trip later.
+  */
+  const [counterparty, setCounterparty] = useState<CounterpartyMatch | null>(null);
+  const [counterpartyQuery, setCounterpartyQuery] = useState('');
   const [amount, setAmount] = useState('500');
   const [currency, setCurrency] = useState<Currency>('GHS');
   const [feeSplit, setFeeSplit] = useState<FeeSplit>('BUYER');
@@ -96,6 +106,12 @@ export function NewEscrowScreen() {
         ? amountValue - estimatedFee / 2
         : amountValue;
 
+  /**
+   * Text was typed into the counterparty box but no account was picked from the
+   * list. Blocks submission — see the note on the state above.
+   */
+  const unresolvedCounterparty = !counterparty && counterpartyQuery.trim().length > 0;
+
   /** Mirrors the web's guard: a title and a positive amount are required. */
   const handleSubmit = async () => {
     setError(null);
@@ -111,6 +127,12 @@ export function NewEscrowScreen() {
       setError('Enter a deal amount greater than zero.');
       return;
     }
+    if (unresolvedCounterparty) {
+      setError(
+        `Pick @${counterpartyQuery.replace(/^@/, '').trim()} from the list, or clear the field to invite by link instead.`,
+      );
+      return;
+    }
 
     try {
       const deal = await createEscrow.mutateAsync({
@@ -122,7 +144,9 @@ export function NewEscrowScreen() {
         role,
         // The chips carry uppercase labels; the server's schema is lowercase.
         feeSplit: feeSplit.toLowerCase() as 'buyer' | 'seller' | 'split',
-        invitedUsername: invitedUsername.trim() || undefined,
+        // Only a confirmed pick — never the raw text, which the guard above has
+        // already refused.
+        invitedUsername: counterparty?.username,
       });
       // Straight to the new deal, as the web does after creating one.
       router.replace(`/escrow/${deal.id}`);
@@ -255,24 +279,14 @@ export function NewEscrowScreen() {
         {/* Counterparty */}
         <View ref={counterpartyRow} collapsable={false} style={styles.field}>
           {label('Counterparty Username', '(optional)')}
-          <View
-            style={[
-              styles.inputWrap,
-              { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder },
-            ]}
-          >
-            <User size={16} color={theme.textTertiary} />
-            <TextInput
-              value={invitedUsername}
-              onChangeText={setInvitedUsername}
-              placeholder="e.g. kwame_dev or seller_username"
-              placeholderTextColor={theme.textTertiary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              onFocus={() => ensureVisible(counterpartyRow.current)}
-              style={[styles.input, { color: theme.text }]}
-            />
-          </View>
+          <CounterpartyPicker
+            value={counterparty}
+            onChange={setCounterparty}
+            query={counterpartyQuery}
+            onQueryChange={setCounterpartyQuery}
+            disabled={createEscrow.isPending}
+            onFocus={() => ensureVisible(counterpartyRow.current)}
+          />
           <Text style={[styles.hint, { color: theme.textTertiary }]}>
             Leave blank to generate a public invite link to share with anyone.
           </Text>
