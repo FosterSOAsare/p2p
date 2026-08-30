@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -31,6 +32,29 @@ const plainInputClass =
 const selectClass =
   'w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 py-2.5 px-3 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none cursor-pointer'
 
+/** 0 is the intro; 1–3 are the form steps, in order. */
+type Step = 0 | 1 | 2 | 3
+
+const LAST_STEP = 3
+
+const STEP_TITLES: Record<Exclude<Step, 0>, string> = {
+  1: 'Store & Legal Info',
+  2: 'Government Identity',
+  3: 'Escrow Payout Accounts',
+}
+
+/**
+ * Which fields each step owns, so Next can validate only what is on screen.
+ *
+ * Step 3 is absent on purpose: it ends in Submit, and `handleSubmit` runs the
+ * whole schema — including the object-level `refine` that requires at least one
+ * payout account, which a field-scoped `trigger` would not reliably surface.
+ */
+const STEP_FIELDS: Record<1 | 2, (keyof KycForm)[]> = {
+  1: ['legalName', 'storeName', 'taxId', 'country', 'address'],
+  2: ['idType', 'idNumber'],
+}
+
 function FieldError({ message }: { message?: string }) {
   if (!message) return null
   return <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{message}</p>
@@ -44,9 +68,19 @@ export function VendorKyc() {
   const status = kycQuery.data?.status
   const submission = kycQuery.data?.submission
 
+  /*
+    Which page of the application is on screen.
+
+    Local state rather than routes: every step writes into the same form and
+    only the last one submits, so routing would mean lifting all of it somewhere
+    shared for nothing the Back button doesn't already give.
+  */
+  const [step, setStep] = useState<Step>(0)
+
   const {
     register,
     handleSubmit,
+    trigger,
     formState: { errors },
   } = useForm<KycForm>({
     resolver: zodResolver(kycSchema),
@@ -66,6 +100,19 @@ export function VendorKyc() {
         }
       : undefined,
   })
+
+  /** Advance, but only once this step's own fields pass. */
+  const goNext = async () => {
+    if (step === 0) {
+      setStep(1)
+      return
+    }
+    if (step === LAST_STEP) return
+    const ok = await trigger(STEP_FIELDS[step as 1 | 2], { shouldFocus: true })
+    if (ok) setStep((step + 1) as Step)
+  }
+
+  const goPrevious = () => setStep((step - 1) as Step)
 
   const onSubmit = handleSubmit((values) => {
     submitKyc.mutate({
@@ -210,31 +257,109 @@ export function VendorKyc() {
     )
   }
 
-  // Fresh application (unverified) or resubmission (rejected)
+  /*
+    Intro — what the seller sees before committing to anything.
+
+    Naming the three steps up front is the point of it: the application asks for
+    a legal name, a government document and a payout account, and being told
+    that before starting is worth a screen. A rejected application gets its
+    reason here too, where there is room for the reviewer's actual words.
+  */
+  if (step === 0) {
+    const rejected = status === 'rejected'
+    return (
+      <div className="mx-auto max-w-3xl py-4 sm:py-6 space-y-6">
+        {header}
+
+        {rejected && (
+          <div className="rounded-2xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/60 p-4 sm:p-5 space-y-2 animate-fade-in">
+            <div className="flex items-center gap-2 text-xs font-bold text-rose-800 dark:text-rose-300">
+              <XCircle size={16} /> Your previous application was rejected
+            </div>
+            <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
+              {kycQuery.data?.rejectionReason || 'No reason was provided. Please review your details and submit again.'}
+            </p>
+            <p className="text-[11px] text-rose-600/80 dark:text-rose-400/80">
+              Your previous answers are prefilled — correct them and resubmit.
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-10 shadow-xl space-y-6 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 dark:bg-primary-950/60">
+            <ShieldCheck size={26} className="text-primary-600 dark:text-primary-400" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="font-display text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              {rejected ? 'Fix your application' : 'Verify to start selling'}
+            </h2>
+            <p className="mx-auto max-w-md text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+              {rejected
+                ? 'Three short steps, already filled in with your previous answers.'
+                : 'Three short steps. Have your ID document and a payout account to hand — it takes a couple of minutes.'}
+            </p>
+          </div>
+
+          <ol className="mx-auto max-w-sm space-y-2.5 text-left">
+            {([1, 2, 3] as const).map((n) => (
+              <li key={n} className="flex items-center gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300">
+                  {n}
+                </span>
+                <span className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  {STEP_TITLES[n]}
+                </span>
+              </li>
+            ))}
+          </ol>
+
+          <button
+            type="button"
+            onClick={goNext}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-4 px-6 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer"
+          >
+            <ShieldCheck size={16} />
+            {rejected ? 'Fix and resubmit' : 'Verify to start selling'}
+            <ArrowRight size={16} />
+          </button>
+
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            Your details are used for verification only and are never shown on your public profile.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // The application itself, one step at a time.
+  const current = step as Exclude<Step, 0>
   return (
     <div className="mx-auto max-w-3xl py-4 sm:py-6 space-y-6">
       {header}
 
-      {status === 'rejected' && (
-        <div className="rounded-2xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/60 p-4 sm:p-5 space-y-2 animate-fade-in">
-          <div className="flex items-center gap-2 text-xs font-bold text-rose-800 dark:text-rose-300">
-            <XCircle size={16} /> Your previous application was rejected
-          </div>
-          <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
-            {kycQuery.data?.rejectionReason || 'No reason was provided. Please review your details and submit again.'}
-          </p>
-          <p className="text-[11px] text-rose-600/80 dark:text-rose-400/80">
-            Your previous answers are prefilled below — correct them and resubmit.
-          </p>
-        </div>
-      )}
-
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-10 shadow-xl space-y-6 sm:space-y-8">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
-          <span className="flex items-center gap-2 text-slate-900 dark:text-white font-bold">
-            <ShieldCheck size={18} className="text-primary-600 dark:text-primary-400" />
-            Seller KYC Verification Form
-          </span>
+        <div className="border-b border-slate-100 dark:border-slate-800 pb-4 space-y-3">
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <span className="flex items-center gap-2 text-slate-900 dark:text-white font-bold">
+              <ShieldCheck size={18} className="text-primary-600 dark:text-primary-400" />
+              Seller KYC Verification Form
+            </span>
+            <span className="text-primary-600 dark:text-primary-400">
+              Step {current} of {LAST_STEP}
+            </span>
+          </div>
+          {/* One segment per step, filled up to where the seller has reached. */}
+          <div className="flex gap-1.5" role="progressbar" aria-valuenow={current} aria-valuemin={1} aria-valuemax={LAST_STEP}>
+            {([1, 2, 3] as const).map((n) => (
+              <span
+                key={n}
+                className={`h-1 flex-1 rounded-full transition-colors ${
+                  n <= current ? 'bg-primary-600 dark:bg-primary-500' : 'bg-slate-200 dark:bg-slate-800'
+                }`}
+              />
+            ))}
+          </div>
         </div>
 
         {submitKyc.isError && (
@@ -243,9 +368,25 @@ export function VendorKyc() {
           </div>
         )}
 
-        <form onSubmit={onSubmit} className="space-y-8" noValidate>
+        {/*
+          Enter on a middle step advances rather than submits. Without this the
+          form would post a half-filled application from step 1, which is
+          exactly what paging it was meant to prevent.
+        */}
+        <form
+          onSubmit={(e) => {
+            if (current !== LAST_STEP) {
+              e.preventDefault()
+              void goNext()
+              return
+            }
+            void onSubmit(e)
+          }}
+          className="space-y-8"
+          noValidate
+        >
           {/* Step 1: Business & Store Information */}
-          <div className="space-y-4">
+          <div className={`space-y-4 ${current === 1 ? '' : 'hidden'}`}>
             <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold">
                 1
@@ -314,7 +455,7 @@ export function VendorKyc() {
           </div>
 
           {/* Step 2: Government ID */}
-          <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className={`space-y-4 ${current === 2 ? '' : 'hidden'}`}>
             <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold">
                 2
@@ -349,7 +490,7 @@ export function VendorKyc() {
           </div>
 
           {/* Step 3: Payout Accounts — both at once, each optional (min. one) */}
-          <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className={`space-y-4 ${current === 3 ? '' : 'hidden'}`}>
             <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold">
                 3
@@ -385,19 +526,41 @@ export function VendorKyc() {
             </div>
           </div>
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={submitKyc.isPending}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-4 px-6 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all disabled:opacity-50 cursor-pointer"
-          >
-            {submitKyc.isPending
-              ? 'Submitting KYC Application...'
-              : status === 'rejected'
-                ? 'Resubmit Vendor KYC Application'
-                : 'Submit Vendor KYC Application'}
-            {!submitKyc.isPending && <ArrowRight size={16} />}
-          </button>
+          {/* Back walks the wizard — leaving the page from step 2 would throw
+              away the steps already done. */}
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={goPrevious}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 py-4 px-5 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
+            >
+              <ArrowLeft size={16} />
+              Back
+            </button>
+
+            {current < LAST_STEP ? (
+              <button
+                type="submit"
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-4 px-6 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all cursor-pointer"
+              >
+                Next
+                <ArrowRight size={16} />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={submitKyc.isPending}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-4 px-6 text-xs sm:text-sm font-bold text-white shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {submitKyc.isPending
+                  ? 'Submitting KYC Application...'
+                  : status === 'rejected'
+                    ? 'Resubmit Vendor KYC Application'
+                    : 'Submit Vendor KYC Application'}
+                {!submitKyc.isPending && <ArrowRight size={16} />}
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </div>
