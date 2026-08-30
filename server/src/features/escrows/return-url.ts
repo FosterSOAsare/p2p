@@ -26,12 +26,15 @@ import { ApiError } from "../../shared/lib/errors";
 /**
  * The mobile app's deep-link scheme — must match `scheme` in mobile/app.json.
  *
- * Renamed with the app (`p2pm` → `veritrust`). Worth knowing that a mismatch
- * here is silent in the worst way: the redirect after paying is simply refused,
- * so the buyer pays and the deal never settles. If the app's scheme changes
- * again, this has to change with it.
+ * Worth knowing that a mismatch here is silent in the worst way: the redirect
+ * after paying is simply refused, so the buyer pays and the deal never settles.
+ * If the app's scheme changes, this has to change with it.
+ *
+ * Exported because the Joi schema needs the same value, and it having its own
+ * copy is not hypothetical — the rename from `p2pm` shipped here and missed
+ * there, leaving validation to reject the scheme this file would have accepted.
  */
-const APP_SCHEME = "veritrust";
+export const APP_SCHEME = "veritrust";
 
 function sameOrigin(a: URL, b: URL): boolean {
   return a.protocol === b.protocol && a.host === b.host;
@@ -53,7 +56,7 @@ export function resolveReturnUrl(candidate: string | undefined, fallback: string
     throw ApiError.badRequest("Invalid return URL");
   }
 
-  // Expo's `Linking.createURL` produces `p2pm://…` in a build and
+  // Expo's `Linking.createURL` produces `veritrust://…` in a build and
   // `exp://<host>/--/…` under Expo Go, so both are accepted. `exp` is
   // development-only and carries no host of ours, which is why it is gated on
   // NODE_ENV rather than allowed outright.

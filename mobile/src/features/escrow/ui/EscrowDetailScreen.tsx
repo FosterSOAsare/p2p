@@ -4,6 +4,7 @@ import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import {
   AlertCircle,
   AlertTriangle,
@@ -413,26 +414,42 @@ export function EscrowDetailScreen() {
     the server funds the deal when the deposit confirms. Opening the invoice is
     re-entrant, so a buyer who comes back gets the same one rather than a second.
 
-    The web hands the whole browser over and picks the thread back up on its
-    callback route. Here the invoice opens in a tab over the app: the provider's
-    success URL is fixed to the web origin server-side, so no deep link ever
-    fires back into the app, and `openBrowserAsync` resolving only means the tab
-    closed — not that anything was paid. So the answer worth acting on is the
-    server's, asked for the moment the buyer is back.
+    `openAuthSessionAsync`, the call the fiat top-up already uses, because the
+    server honours a `returnUrl` — so the redirect after paying lands back in the
+    app rather than on the web origin a phone never sees. That matters more than
+    it looks: `NP_id` on that redirect is the only place NOWPayments discloses
+    the payment id before an IPN has landed, and a dev server no webhook can
+    reach has nothing else to go on. Without it the buyer pays and the deal sits
+    on "waiting" indefinitely.
+
+    A dismissed sheet still checks, because the buyer may well have paid and then
+    swiped the provider's page away rather than tapping through it. A TRX
+    transfer rarely confirms in the seconds that takes either way, so a
+    still-pending answer here is the norm, not a failure — the panel polls on
+    from whatever this returns.
   */
   const payWithCrypto = async () => {
     if (redirecting) return;
     setRedirecting(true);
     setFundError(null);
     try {
-      const deposit = await startCrypto.mutateAsync(deal.id);
+      // Resolved rather than hard-coded: a dev client, Expo Go and a store build
+      // all carry different schemes.
+      const returnUrl = Linking.createURL(`/escrow/${deal.id}/crypto/callback`);
+      const deposit = await startCrypto.mutateAsync({ escrowId: deal.id, returnUrl });
       setFundOpen(false);
       if (!deposit.invoiceUrl) return;
-      await WebBrowser.openBrowserAsync(deposit.invoiceUrl);
-      // A TRX transfer rarely confirms in the seconds it takes to close a tab,
-      // so a still-pending answer here is the norm, not a failure — the panel
-      // polls on from whatever this returns.
-      await checkCrypto.mutateAsync({ escrowId: deal.id }).catch(() => null);
+
+      const result = await WebBrowser.openAuthSessionAsync(deposit.invoiceUrl, returnUrl);
+
+      // `NP_id` identifies the payment even when no IPN has landed yet. Absent
+      // on a dismissed sheet, where the server falls back to the id on file.
+      const paymentId =
+        result.type === 'success'
+          ? (Linking.parse(result.url).queryParams?.NP_id as string | undefined)
+          : undefined;
+
+      await checkCrypto.mutateAsync({ escrowId: deal.id, paymentId }).catch(() => null);
     } catch (err) {
       setFundError(apiErrorMessage(err));
     } finally {

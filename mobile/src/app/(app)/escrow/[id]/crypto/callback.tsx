@@ -19,11 +19,12 @@ import {
  * `web/src/pages/CryptoCallback.tsx`.
  *
  * Like the wallet's payment callback, this is the path the app normally does
- * *not* take: the server pins the provider's success URL to the web origin, so
- * a buyer paying from the phone comes back by closing the tab, and the deal
- * screen checks for them. This exists for when the redirect does land on the
- * router instead — the link opened from elsewhere, or a build wired to deep
- * link the callback — so nobody arrives on a dead screen having just paid.
+ * *not* take. The deal screen passes this route as the invoice's `returnUrl` and
+ * `openAuthSessionAsync` captures the redirect, handing control straight back
+ * there — so the usual flow completes without ever routing here. This exists for
+ * when the deep link does land on the router instead: the app was killed while
+ * the invoice was open, or the link was opened from somewhere else. Without it a
+ * buyer would arrive on a dead screen having just paid.
  *
  * It settles nothing itself either way: the deposit is confirmed by the chain,
  * not by the buyer arriving here. All it does is ask the provider on our

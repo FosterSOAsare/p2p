@@ -11,13 +11,14 @@ import { dealKeys } from './dealsApi';
  * buyer paying the provider, so the client only opens the invoice and then
  * watches — the FUND event is the server's to fire when the deposit confirms.
  *
- * That difference matters more here than on the web. The fiat top-up rides
- * `openAuthSessionAsync`, which hands control back to the caller the moment the
- * redirect fires, so the whole charge fits in one function. The provider's
- * success URL for a crypto invoice is fixed to the *web* origin server-side, so
- * no deep link ever comes back to the app. The state is on the server either
- * way, so the phone doesn't need the redirect at all: it opens the invoice,
- * and when the browser closes it asks.
+ * Mobile gets the same settlement fallback the web has. NOWPayments discloses
+ * the payment id only once the buyer picks a coin, handing it back as `NP_id` on
+ * the success redirect — and that redirect used to be pinned to `WEB_ORIGIN`,
+ * which a phone never sees. Its only route to settlement was then the IPN
+ * webhook, which cannot reach a server on localhost, so a buyer could pay and
+ * watch the deal sit on "waiting" forever. `startDeposit` now takes a
+ * `returnUrl`: the app passes its own deep link, `openAuthSessionAsync` catches
+ * the redirect, and `NP_id` comes back with it.
  */
 
 /** Raw provider status, passed through verbatim by the server. */
@@ -84,15 +85,21 @@ export function useCryptoDeposit(escrowId: string, enabled: boolean) {
  * Open (or re-open) the hosted invoice. Re-entrant server-side: a buyer who
  * closes the browser and comes back gets the same live invoice, so calling this
  * twice does not create two competing charges.
+ *
+ * `returnUrl` is part of what makes an invoice reusable, not just a parameter of
+ * the request — the destination is baked in at the provider when the invoice is
+ * created, so the server treats a changed one as stale and issues a fresh
+ * invoice rather than handing back a live one that redirects somewhere else.
  */
 export function useStartCryptoDeposit() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (escrowId: string) =>
+    mutationFn: ({ escrowId, returnUrl }: { escrowId: string; returnUrl: string }) =>
       api<{ deposit: CryptoDeposit }>(`/api/escrows/${escrowId}/crypto/start`, {
         method: 'POST',
+        body: { returnUrl },
       }).then((r) => r.deposit),
-    onSuccess: (deposit, escrowId) => {
+    onSuccess: (deposit, { escrowId }) => {
       queryClient.setQueryData(cryptoKeys.deposit(escrowId), deposit);
     },
   });
