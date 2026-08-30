@@ -1231,23 +1231,41 @@ export async function listWithdrawals(
   };
 }
 
-/** Guarded claim of a pending row, so two admins can't both rule on one payout. */
-async function claimWithdrawal(id: string, adminId: string, status: WithdrawalStatus, reviewNote?: string) {
-  const claimed = await prisma.withdrawal.updateMany({
+/**
+ * Guarded claim of a pending row, so two admins can't both rule on one payout.
+ *
+ * Takes the client to run on rather than reaching for `prisma` itself, so the
+ * claim can be enrolled in a caller's transaction. That matters for rejection,
+ * where the claim and the refund have to succeed or fail together — see
+ * `rejectWithdrawal`.
+ */
+async function claimWithdrawal(
+  db: Prisma.TransactionClient,
+  id: string,
+  adminId: string,
+  status: WithdrawalStatus,
+  reviewNote?: string,
+) {
+  const claimed = await db.withdrawal.updateMany({
     where: { id, status: "pending" },
     data: { status, reviewNote: reviewNote ?? null, reviewedById: adminId, reviewedAt: new Date() },
   });
   if (claimed.count === 0) {
-    const existing = await prisma.withdrawal.findUnique({ where: { id } });
+    const existing = await db.withdrawal.findUnique({ where: { id } });
     if (!existing) throw ApiError.notFound("Withdrawal not found");
     throw ApiError.conflict(`This payout was already ${existing.status}`);
   }
-  return prisma.withdrawal.findUniqueOrThrow({ where: { id } });
+  return db.withdrawal.findUniqueOrThrow({ where: { id } });
 }
 
-/** Mark a payout as actually sent. No money moves — it left on request. */
+/**
+ * Mark a payout as actually sent. No money moves — it left on request.
+ *
+ * No transaction needed, and none used: the guarded claim is a single statement
+ * and there is nothing for it to be atomic *with*.
+ */
 export async function completeWithdrawal(adminId: string, id: string) {
-  const withdrawal = await claimWithdrawal(id, adminId, "completed");
+  const withdrawal = await claimWithdrawal(prisma, id, adminId, "completed");
 
   void notify({
     userId: withdrawal.userId,
@@ -1264,22 +1282,33 @@ export async function completeWithdrawal(adminId: string, id: string) {
  * Refuse a payout and give the money back.
  *
  * The credit is the whole point: the balance was debited when the request was
- * made, so rejecting without crediting would simply destroy it. Claim first —
- * the guarded update is what stops a double refund if two admins click at once.
+ * made, so rejecting without crediting would simply destroy it.
+ *
+ * Claim and credit run in **one** transaction, and that is the whole reason
+ * this function has one. They used to be separate statements: the row was
+ * marked `rejected` first, then the refund went out on its own. A process that
+ * died in between left a payout reading "rejected — returned to your balance"
+ * over money that was never returned, and nothing could ever find it again,
+ * because the row itself claimed the refund had happened. Together, either both
+ * land or neither does, and a failed reject leaves the payout pending for
+ * someone to rule on again.
+ *
+ * The guarded claim inside still does its other job — stopping two admins from
+ * both refunding one payout — since only one of them can move it off `pending`.
  */
 export async function rejectWithdrawal(adminId: string, id: string, reason: string) {
-  const withdrawal = await claimWithdrawal(id, adminId, "rejected", reason);
-
-  await prisma.$transaction((tx) =>
-    walletService.credit(
+  const withdrawal = await prisma.$transaction(async (tx) => {
+    const claimed = await claimWithdrawal(tx, id, adminId, "rejected", reason);
+    await walletService.credit(
       tx,
-      withdrawal.userId,
-      withdrawal.currency,
-      Number(withdrawal.amount),
+      claimed.userId,
+      claimed.currency,
+      Number(claimed.amount),
       "withdrawal",
-      `Withdrawal ${withdrawal.reference} rejected — returned to balance`,
-    ),
-  );
+      `Withdrawal ${claimed.reference} rejected — returned to balance`,
+    );
+    return claimed;
+  });
 
   void notify({
     userId: withdrawal.userId,

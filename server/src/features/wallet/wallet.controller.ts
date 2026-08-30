@@ -29,6 +29,7 @@ export const withdraw = asyncHandler(async (req, res) => {
     req.body.amount,
     req.body.destination,
     req.body.currency,
+    req.body.reference,
   );
   // The wallet is spread onto the top level, as it always was, so clients
   // reading `balance` off the response keep working; `withdrawal` is the new

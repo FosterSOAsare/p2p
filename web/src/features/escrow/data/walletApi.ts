@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../shared/libs/api'
 import { authKeys } from '../../auth/data/authApi'
@@ -106,8 +107,26 @@ export function useDeposit() {
   })
 }
 
+/** Idempotency key for a payout. Matches the server's `[A-Za-z0-9_-]{8,64}`. */
+const newPayoutKey = () => `wd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`
+
 export function useWithdraw() {
   const invalidate = useInvalidateWallet()
+
+  /*
+    One idempotency key per payout, held until that payout succeeds.
+
+    The point is the double tap: without a key the second press is a second
+    payout, and the balance guard only stops it once the money runs out. Reusing
+    the key means the server answers the second press with the first payout
+    instead of debiting again.
+
+    Keyed on the payload, not just held: a seller whose request failed and who
+    then edits the amount is asking for a *different* payout, and replaying the
+    old key would hand them back the original — quietly ignoring the change.
+  */
+  const pending = useRef<{ signature: string; key: string } | null>(null)
+
   return useMutation({
     // `currency` picks which balance is cashed out, and with it what the server
     // expects `destination` to be — a momo number for GHS, a TRON address for TRX.
@@ -119,7 +138,20 @@ export function useWithdraw() {
       amount: number
       destination: string
       currency?: WalletCurrency
-    }) => api<Wallet>('/api/wallet/withdraw', { method: 'POST', body: { amount, destination, currency } }),
-    onSuccess: invalidate,
+    }) => {
+      const signature = `${amount}|${destination}|${currency}`
+      if (pending.current?.signature !== signature) {
+        pending.current = { signature, key: newPayoutKey() }
+      }
+      return api<Wallet>('/api/wallet/withdraw', {
+        method: 'POST',
+        body: { amount, destination, currency, reference: pending.current.key },
+      })
+    },
+    onSuccess: () => {
+      // Spent — the next payout is a new one and gets its own key.
+      pending.current = null
+      invalidate()
+    },
   })
 }

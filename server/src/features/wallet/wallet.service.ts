@@ -338,6 +338,13 @@ export async function withdraw(
   amount: number,
   destination: string,
   currency: Currency = "GHS",
+  /**
+   * Client-minted idempotency key, reused across retries of one payout.
+   *
+   * Absent from older clients, which then get a generated one and no
+   * protection: two taps are two payouts. That is what this exists to stop.
+   */
+  reference?: string,
 ) {
   // Friendly pre-check only. Correctness is the atomic guard inside
   // debitGuarded — this exists so the common case reads as a payout problem
@@ -356,34 +363,67 @@ export async function withdraw(
       ? `Mobile money payout to ${destination}`
       : `TRX payout to ${destination}`;
 
+  const payoutRef = reference ?? newWithdrawalRef();
+
   // Debit and record together. The debit happens now rather than on approval so
   // one balance cannot back several pending requests at once; the Withdrawal
   // row is what an admin later completes or reverses.
-  const withdrawal = await prisma.$transaction(async (tx) => {
-    await debitGuarded(tx, userId, currency, amount, "withdrawal", note);
-    return tx.withdrawal.create({
-      data: { userId, reference: newWithdrawalRef(), amount, currency, destination },
+  let withdrawal;
+  let replayed = false;
+  try {
+    withdrawal = await prisma.$transaction(async (tx) => {
+      await debitGuarded(tx, userId, currency, amount, "withdrawal", note);
+      return tx.withdrawal.create({
+        data: { userId, reference: payoutRef, amount, currency, destination },
+      });
     });
-  });
+  } catch (err) {
+    /*
+      The reference is already taken, so this is a resubmission of a payout that
+      already exists — a double tap, or a retry after a response was lost.
 
-  // Money-movement receipt — always sent (not gated by shipment prefs).
-  prisma.user
-    .findUnique({ where: { id: userId }, select: { email: true, fullName: true } })
-    // Pre-formatted with its currency — the template no longer hardcodes GH₵,
-    // since this receipt now covers TRX payouts too.
-    .then((u) => u && mailer.withdrawal(u.email, u.fullName, formatAmount(amount, currency), destination))
-    .catch(() => undefined);
+      Answer with the original rather than an error. The debit above rolled back
+      with the failed insert, so nothing was taken twice, and a client that never
+      saw the first response gets the same result it would have got then. Raising
+      a conflict here would be correct about the database and useless to the
+      caller, who cannot tell it apart from a genuine failure.
+    */
+    if (err && typeof err === "object" && (err as { code?: string }).code === "P2002") {
+      const existing = await prisma.withdrawal.findUnique({ where: { reference: payoutRef } });
+      // A key belonging to somebody else is not a replay, it is a probe — and
+      // answering would hand over another user's payout details.
+      if (!existing || existing.userId !== userId) {
+        throw ApiError.badRequest("That payout reference is already in use");
+      }
+      withdrawal = existing;
+      replayed = true;
+    } else {
+      throw err;
+    }
+  }
 
-  void notify({
-    userId,
-    category: "wallet",
-    title: "Withdrawal requested",
-    // Deliberately not "sent": the money has left their balance but not yet the
-    // platform. Saying "sent" here is what would make a later rejection read as
-    // money going missing.
-    body: `${formatAmount(amount, currency)} to ${destination} is awaiting review.`,
-    link: "/wallet",
-  });
+  // Only on a genuine first submission: a replay must not send a second receipt
+  // for money that moved once.
+  if (!replayed) {
+    // Money-movement receipt — always sent (not gated by shipment prefs).
+    prisma.user
+      .findUnique({ where: { id: userId }, select: { email: true, fullName: true } })
+      // Pre-formatted with its currency — the template no longer hardcodes GH₵,
+      // since this receipt now covers TRX payouts too.
+      .then((u) => u && mailer.withdrawal(u.email, u.fullName, formatAmount(amount, currency), destination))
+      .catch(() => undefined);
+
+    void notify({
+      userId,
+      category: "wallet",
+      title: "Withdrawal requested",
+      // Deliberately not "sent": the money has left their balance but not yet the
+      // platform. Saying "sent" here is what would make a later rejection read as
+      // money going missing.
+      body: `${formatAmount(amount, currency)} to ${destination} is awaiting review.`,
+      link: "/wallet",
+    });
+  }
 
   return { wallet: await getWallet(userId, currency), withdrawal: serializeWithdrawal(withdrawal) };
 }

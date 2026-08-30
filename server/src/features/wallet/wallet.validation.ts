@@ -44,6 +44,19 @@ export const withdraw: RequestSchema = {
         .required()
         .messages({ "string.pattern.base": "Enter a valid mobile money number" }),
     }),
+    /*
+      Idempotency key, minted by the client and reused on every retry of the
+      same payout.
+
+      Optional, so a client that predates this still works — it just gets a
+      server-generated reference and no protection against submitting twice.
+      Bounded to a safe alphabet because it becomes the payout's public
+      reference, which appears in ledger notes and emails.
+    */
+    reference: Joi.string()
+      .trim()
+      .pattern(/^[A-Za-z0-9_-]{8,64}$/)
+      .messages({ "string.pattern.base": "Invalid payout reference" }),
   }),
 };
 

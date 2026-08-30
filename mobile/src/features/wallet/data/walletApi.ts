@@ -1,5 +1,9 @@
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/features/shared/data/api';
+
+/** Idempotency key for a payout. Matches the server's `[A-Za-z0-9_-]{8,64}`. */
+const newPayoutKey = () => `wd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
 
 /**
  * The GHS payout wallet — `GET /api/wallet`, its ledger, and withdrawals.
@@ -138,18 +142,40 @@ export function useWalletWithdrawals(query: string) {
  */
 export function useWithdraw() {
   const qc = useQueryClient();
+
+  /*
+    One idempotency key per payout, held until that payout succeeds.
+
+    The point is the double tap, which a phone invites more than a mouse does:
+    without a key the second press is a second payout, and the balance guard
+    only stops it once the money runs out. Reusing the key means the server
+    answers the second press with the first payout instead of debiting again.
+
+    Keyed on the payload, not just held: a seller whose request failed and who
+    then edits the amount is asking for a *different* payout, and replaying the
+    old key would hand them back the original — quietly ignoring the change.
+  */
+  const pending = useRef<{ signature: string; key: string } | null>(null);
+
   return useMutation({
     /**
      * `destination` is the Mobile Money number the payout goes to. The server
      * requires it (`wallet.validation.ts`) and rejects the request without it,
      * so sending only the amount meant every withdrawal failed validation.
      */
-    mutationFn: ({ amount, destination }: { amount: number; destination: string }) =>
-      api<{ ok: true }>('/api/wallet/withdraw', {
+    mutationFn: ({ amount, destination }: { amount: number; destination: string }) => {
+      const signature = `${amount}|${destination}`;
+      if (pending.current?.signature !== signature) {
+        pending.current = { signature, key: newPayoutKey() };
+      }
+      return api<{ ok: true }>('/api/wallet/withdraw', {
         method: 'POST',
-        body: { amount, destination },
-      }),
+        body: { amount, destination, reference: pending.current.key },
+      });
+    },
     onSuccess: () => {
+      // Spent — the next payout is a new one and gets its own key.
+      pending.current = null;
       qc.invalidateQueries({ queryKey: walletKeys.all });
       // The dashboard shows the same payout figure.
       qc.invalidateQueries({ queryKey: ['users', 'dashboard'] });

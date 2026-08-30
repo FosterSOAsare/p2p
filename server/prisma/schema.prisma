@@ -359,8 +359,11 @@ model PaymentIntent {
 model Withdrawal {
   id        String           @id @default(uuid(7))
   userId    String
-  /// Idempotency key. A retried submit reuses it and is rejected as a duplicate
-  /// rather than debiting twice.
+  /// Idempotency key, and the payout's public reference. The client mints it
+  /// and reuses it on every retry of the same payout; a resubmission is
+  /// answered with the original row instead of debiting a second time. Older
+  /// clients send none and get a generated one, which is unique but protects
+  /// nothing — two taps are then two payouts.
   reference String           @unique
   amount    Decimal          @db.Decimal(14, 2)
   currency  Currency         @default(GHS)
