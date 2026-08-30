@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ArrowUpRight,
   CreditCard,
+  ExternalLink,
   Smartphone,
   CheckCircle2,
   Lock,
@@ -56,13 +57,12 @@ import { useTopUp, type PayMethod } from '../data/paymentsApi';
  */
 function txView(tx: WalletTransaction) {
   const createdAt = new Date(tx.createdAt);
-  const ageInHours = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
   return {
     isCredit: tx.amount > 0,
-    // A payout is spendable a day after release; until then it's on the clock.
+    // No 24-hour hold any more: a released payout is spendable at once, so a
+    // release is "Cleared" the moment it exists. The age of the transaction no
+    // longer changes how it reads.
     isRelease: tx.type === 'escrow_release',
-    isPendingClearance: tx.type === 'escrow_release' && ageInHours < 24,
-    hoursRemaining: Math.max(1, Math.ceil(24 - ageInHours)),
     label: tx.type.replace('_', ' ').toUpperCase(),
     // The note repeats the deal code, which gets its own line.
     note: tx.note ? tx.note.replace(/\s*\([A-Z0-9-]+\)/gi, '') : 'Wallet activity',
@@ -367,17 +367,10 @@ export function WalletScreen() {
                     {v.note}
                   </Text>
 
-                  {/* Clearance · deal code · when */}
+                  {/* Status · deal code · when */}
                   <View style={styles.txFoot}>
                     {!v.isRelease ? (
                       <Text style={[styles.txSettled, { color: theme.textTertiary }]}>Settled</Text>
-                    ) : v.isPendingClearance ? (
-                      <View style={[styles.clearChip, { backgroundColor: '#fef3c7' }]}>
-                        <Clock size={10} color="#92400e" />
-                        <Text style={[styles.clearChipText, { color: '#92400e' }]}>
-                          Clears in ~{v.hoursRemaining}h
-                        </Text>
-                      </View>
                     ) : (
                       <View style={[styles.clearChip, { backgroundColor: '#dcfce7' }]}>
                         <CheckCircle2 size={10} color="#166534" />
