@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -12,10 +12,14 @@ import {
   FileText,
   WifiOff,
   ArrowRight,
+  TriangleAlert,
 } from 'lucide-react'
 import { useUploadSingleFile } from '../../upload/data/uploadApi'
 import { useChat, type ChatMessage } from '../data/useChat'
 import { formatTime } from '../../shared/libs/date'
+
+/** Within this many px of the bottom still counts as being at the bottom. */
+const NEAR_BOTTOM_PX = 80
 
 /**
  * One open conversation. Fills whatever container it's given — the Messages
@@ -34,25 +38,85 @@ export function ChatPanel({ username, onBack }: { username: string; onBack?: () 
   const [draft, setDraft] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Scroll the message list itself, not via scrollIntoView on a sentinel —
-  // that walks up and scrolls every ancestor container including the window,
-  // which dragged the whole page down on each incoming message.
-  //
-  // Keyed on the newest id rather than the count: loading older history also
-  // changes the count, and jumping to the bottom is the opposite of what the
-  // reader asked for by scrolling up.
+  /*
+    Scroll intent, tracked rather than assumed.
+
+    `stick` is whether the reader is pinned to the newest message. Everything
+    below is gated on it, so someone who scrolled up to read history is never
+    yanked back down — not by an arriving message, and not by the re-pin that
+    corrects for late-loading images.
+
+    `opening` separates the first paint of a conversation from a message
+    arriving into one already on screen. The first is a jump; only the second
+    should animate.
+  */
+  const stick = useRef(true)
+  const opening = useRef(true)
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
+    const el = scrollRef.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior })
+  }, [])
+
+  // A different conversation starts over — the previous thread's scroll
+  // position says nothing about this one.
+  useEffect(() => {
+    stick.current = true
+    opening.current = true
+  }, [username])
+
+  /*
+    Scroll the message list itself, not via scrollIntoView on a sentinel —
+    that walks up and scrolls every ancestor container including the window,
+    which dragged the whole page down on each incoming message.
+
+    Keyed on the newest id rather than the count: loading older history also
+    changes the count, and jumping to the bottom is the opposite of what the
+    reader asked for by scrolling up.
+
+    Instant on open, and before paint. `behavior: 'smooth'` animates toward the
+    height measured when the animation *starts*, so opening a thread whose
+    images had not decoded yet finished at what was then the bottom and had
+    since become the middle — landing at the newest message and drifting back
+    up, which is the bug this addresses.
+  */
   const newestId = chat.messages.at(-1)?.id
+  useLayoutEffect(() => {
+    if (!newestId || !stick.current) return
+    if (opening.current) {
+      opening.current = false
+      scrollToBottom('auto')
+      return
+    }
+    scrollToBottom('smooth')
+  }, [newestId, chat.counterpartyTyping, scrollToBottom])
+
+  /*
+    Attachment images are sized by their own content, so they take up no room
+    until they decode and then push the thread down by up to 224px each. Re-pin
+    as each one lands; this also covers a late webfont rewrapping text. `load`
+    does not bubble, hence the capture listener on the container.
+  */
   useEffect(() => {
     const el = scrollRef.current
-    el?.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-  }, [newestId, chat.counterpartyTyping])
+    if (!el) return
+    const repin = () => {
+      if (stick.current) scrollToBottom('auto')
+    }
+    el.addEventListener('load', repin, true)
+    return () => el.removeEventListener('load', repin, true)
+  }, [scrollToBottom])
 
   /** Height and first id captured when a history request goes out. */
   const anchor = useRef<{ height: number; firstId?: string } | null>(null)
 
   const onScroll = () => {
     const el = scrollRef.current
-    if (!el || el.scrollTop > 80 || !chat.hasMore || chat.loadingOlder) return
+    if (!el) return
+    // Re-read on every scroll: this is the only thing that tells an auto-scroll
+    // apart from someone deliberately reading back through the thread.
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX
+    if (el.scrollTop > 80 || !chat.hasMore || chat.loadingOlder) return
     anchor.current = { height: el.scrollHeight, firstId: chat.messages[0]?.id }
     chat.loadOlder()
   }
@@ -210,7 +274,13 @@ export function ChatPanel({ username, onBack }: { username: string; onBack?: () 
         )}
 
         {chat.messages.map((m) => (
-          <MessageRow key={m.id} message={m} mine={m.senderId === chat.meId} />
+          <MessageRow
+            key={m.id}
+            message={m}
+            mine={m.senderId === chat.meId}
+            onRetry={chat.retry}
+            onDiscard={chat.discard}
+          />
         ))}
 
         {chat.counterpartyTyping && (
@@ -272,7 +342,17 @@ export function ChatPanel({ username, onBack }: { username: string; onBack?: () 
 }
 
 /** One message — a system chip, a file card, or a chat bubble. */
-function MessageRow({ message, mine }: { message: ChatMessage; mine: boolean }) {
+function MessageRow({
+  message,
+  mine,
+  onRetry,
+  onDiscard,
+}: {
+  message: ChatMessage
+  mine: boolean
+  onRetry: (id: string) => void
+  onDiscard: (id: string) => void
+}) {
   // Deal lifecycle notice: centered, and a link into the deal it refers to.
   if (message.type === 'system') {
     const chipClass =
@@ -299,24 +379,61 @@ function MessageRow({ message, mine }: { message: ChatMessage; mine: boolean }) 
     )
   }
 
+  /*
+    Three delivery states, and they read differently on purpose. `pending` is
+    dimmed with a spinner — on screen, not yet the server's. `failed` turns the
+    bubble red and offers the two things worth doing with it: send it again, or
+    give up. Nothing is ever removed silently, because the composer has already
+    been cleared and this bubble holds the only copy of what was typed.
+  */
+  const { pending, failed } = message
+
   return (
-    <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
       <div
-        className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm shadow-sm ${
-          mine
-            ? 'bg-primary-600 text-white rounded-br-md'
-            : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-md'
-        }`}
+        className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm shadow-sm transition-opacity ${
+          failed
+            ? 'bg-red-700 text-white rounded-br-md'
+            : mine
+              ? 'bg-primary-600 text-white rounded-br-md'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-md'
+        } ${pending ? 'opacity-65' : ''}`}
       >
         {message.attachment && <AttachmentBlock attachment={message.attachment} mine={mine} />}
         {message.body && <p className="leading-relaxed whitespace-pre-line">{message.body}</p>}
 
-        <p className={`mt-0.5 flex items-center gap-1 text-[10px] ${mine ? 'text-primary-100' : 'text-slate-400'}`}>
+        <p className={`mt-0.5 flex items-center gap-1 text-[10px] ${mine || failed ? 'text-primary-100' : 'text-slate-400'}`}>
           {formatTime(message.createdAt)}
-          {/* Read ticks only on your own messages — theirs are read by definition. */}
-          {mine && (message.readAt ? <CheckCheck size={12} /> : <Check size={12} />)}
+          {failed ? (
+            <TriangleAlert size={12} aria-label="Not sent" />
+          ) : pending ? (
+            <Loader2 size={12} className="animate-spin" aria-label="Sending" />
+          ) : (
+            /* Read ticks only on your own messages — theirs are read by definition. */
+            mine && (message.readAt ? <CheckCheck size={12} /> : <Check size={12} />)
+          )}
         </p>
       </div>
+
+      {failed && (
+        <div className="mt-1 flex items-center gap-2 text-[11px]">
+          <span className="text-red-600 dark:text-red-400">Not sent.</span>
+          <button
+            type="button"
+            onClick={() => onRetry(message.id)}
+            className="font-semibold text-primary-600 hover:underline dark:text-primary-400"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            onClick={() => onDiscard(message.id)}
+            className="font-semibold text-slate-500 hover:underline dark:text-slate-400"
+          >
+            Discard
+          </button>
+        </div>
+      )}
     </div>
   )
 }

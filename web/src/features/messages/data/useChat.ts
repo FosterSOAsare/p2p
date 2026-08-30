@@ -28,6 +28,10 @@ export interface ChatMessage {
   escrowId: string | null
   readAt: string | null
   createdAt: string
+  /** Client-only: on screen but not yet acknowledged by the server. */
+  pending?: boolean
+  /** Client-only: the send was refused; offer a retry rather than losing it. */
+  failed?: boolean
 }
 
 export interface ChatCounterparty {
@@ -52,11 +56,22 @@ interface HistoryResult {
 
 const TYPING_THROTTLE_MS = 2000
 
+/** Distinguishes an optimistic row from a persisted one. */
+const isTemp = (id: string) => id.startsWith('temp:')
+let tempSeq = 0
+
 /**
  * Live 1:1 chat with one counterparty, over the app socket.
  *
  * History arrives in the `conversation:open` ack rather than a REST call, and
  * on reconnect the same call gap-fills whatever was missed while offline.
+ *
+ * Sends are optimistic rather than ack-gated. The composer clears the moment
+ * you press send, so waiting for the round trip meant the message was nowhere
+ * at all until the server answered — the draft gone and the bubble not yet
+ * there, which reads as a dropped message on a slow link. The row goes up
+ * immediately and a refused send stays on screen as retryable instead of
+ * vanishing with the text in it.
  */
 export function useChat(username: string) {
   const { data: me } = useMe()
@@ -82,7 +97,9 @@ export function useChat(username: string) {
   // every frame while the reader sits at the top — it needs the current values,
   // not the ones captured when the callback was last built.
   const oldestMessageId = useRef<string | undefined>(undefined)
-  oldestMessageId.current = messages[0]?.id
+  // Skip optimistic rows: a `temp:` id means nothing to the server, and it is
+  // the oldest message in a thread whose first send is still in flight.
+  oldestMessageId.current = messages.find((m) => !isTemp(m.id))?.id
   const hasMoreRef = useRef(false)
   hasMoreRef.current = hasMore
   const loadingOlderRef = useRef(false)
@@ -119,8 +136,16 @@ export function useChat(username: string) {
           conversationId.current = res.data.conversationId
           setCounterparty(res.data.counterparty)
           // incremental = a gap-fill to append; otherwise it's the full history
-          // and our cursor was stale, so replace what we hold.
-          setMessages((prev) => (res.data.incremental ? [...prev, ...res.data.messages] : res.data.messages))
+          // and our cursor was stale, so replace what we hold. Either way the
+          // pending rows are ours and unacknowledged, so they survive both —
+          // dropping them on a reconnect would erase a message still in flight.
+          setMessages((prev) => {
+            const pending = prev.filter((m) => isTemp(m.id))
+            const settled = res.data.incremental
+              ? [...prev.filter((m) => !isTemp(m.id)), ...res.data.messages]
+              : res.data.messages
+            return [...settled, ...pending]
+          })
           // Only meaningful on a full load. A gap-fill answers "what did I miss
           // at the bottom", so its hasMore says nothing about the top and would
           // wrongly clear a `true` we're already holding.
@@ -224,16 +249,56 @@ export function useChat(username: string) {
     getSocket().emit('typing', { isTyping })
   }, [])
 
+  /**
+   * Put the message on screen now, then send it.
+   *
+   * The optimistic row carries a `temp:` id so it can be told apart from
+   * anything persisted — it is excluded from the history cursors, survives a
+   * reconnect, and is replaced (not duplicated) once the server's copy arrives.
+   */
   const send = useCallback(
     (payload: { body?: string; attachment?: Attachment }) => {
       window.clearTimeout(typingStopTimer.current)
       emitTyping(false)
+
+      const tempId = `temp:${Date.now()}:${tempSeq++}`
+      const optimistic: ChatMessage = {
+        id: tempId,
+        conversationId: conversationId.current ?? '',
+        senderId: meId.current ?? '',
+        senderUsername: me?.username ?? '',
+        type: payload.attachment ? 'file' : 'text',
+        body: payload.body ?? '',
+        attachment: payload.attachment ?? null,
+        escrowId: null,
+        readAt: null,
+        createdAt: new Date().toISOString(),
+        pending: true,
+      }
+      setMessages((prev) => [...prev, optimistic])
+
       getSocket().emit('message:send', { username, ...payload }, (res: Ack<ChatMessage>) => {
-        if (!res.ok) setError(res.error.message)
-        else appendMessage(res.data) // usually a no-op; the broadcast normally wins the race
+        if (!res.ok) {
+          // Keep it on screen, marked failed, so nothing typed is silently lost.
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...m, pending: false, failed: true } : m)),
+          )
+          setError(res.error.message)
+          return
+        }
+        // Swap the placeholder for the server's copy in one update, so the row
+        // never appears twice even if the broadcast beat this ack.
+        setMessages((prev) => {
+          const withoutTemp = prev.filter((m) => m.id !== tempId)
+          if (withoutTemp.some((m) => m.id === res.data.id)) return withoutTemp
+          return [...withoutTemp, res.data]
+        })
+        lastMessageId.current = res.data.id
       })
+
+      return tempId
     },
-    [username, appendMessage, emitTyping],
+    [username, emitTyping, me?.username],
   )
 
   const sendText = useCallback(
@@ -245,6 +310,23 @@ export function useChat(username: string) {
   )
 
   const sendFile = useCallback((attachment: Attachment) => send({ attachment }), [send])
+
+  /** Drop a failed row and send it again. */
+  const retry = useCallback(
+    (id: string) => {
+      const target = messages.find((m) => m.id === id)
+      if (!target) return
+      setMessages((prev) => prev.filter((m) => m.id !== id))
+      setError(null)
+      send(target.attachment ? { attachment: target.attachment } : { body: target.body })
+    },
+    [messages, send],
+  )
+
+  /** Give up on a failed row. */
+  const discard = useCallback((id: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== id))
+  }, [])
 
   const markRead = useCallback(() => {
     getSocket().emit('message:read', { username })
@@ -270,6 +352,8 @@ export function useChat(username: string) {
     loadOlder,
     sendText,
     sendFile,
+    retry,
+    discard,
     markRead,
     notifyTyping,
   }

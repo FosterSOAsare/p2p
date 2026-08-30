@@ -3,7 +3,7 @@
  * https://docs.expo.dev/guides/color-schemes/
  */
 
-import { Colors } from '@/constants/theme';
+import { Colors, Tones } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export function useTheme() {
@@ -13,4 +13,14 @@ export function useTheme() {
   const theme = scheme === 'dark' ? 'dark' : 'light';
 
   return Colors[theme];
+}
+
+/**
+ * The scheme's semantic surfaces — `tones.danger.surface`, `tones.warning.text`
+ * and so on. Use for a notice or callout that carries its own meaning; use
+ * `useTheme()` for ordinary chrome.
+ */
+export function useTones() {
+  const scheme = useColorScheme();
+  return Tones[scheme === 'dark' ? 'dark' : 'light'];
 }

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -8,12 +8,15 @@ import {
   FileText,
   LockKeyhole,
   ShieldCheck,
-  User,
 } from '@/components/icons';
 
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
+import { apiErrorMessage } from '@/features/shared/data/api';
+import type { CounterpartyMatch } from '@/features/user/data/usersApi';
+import { useCreateStandaloneEscrow } from '../data/dealsApi';
+import { CounterpartyPicker } from './CounterpartyPicker';
 
 /**
  * Standalone Off-Platform Contract — the phone version of the web's
@@ -24,10 +27,9 @@ import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/Keyb
  * `<select>` for currency and fee split; a phone gets segmented chips instead,
  * which is the native equivalent.
  *
- * No API yet — like the rest of the mobile app this is UI over mock state, so
- * submitting returns to My Deals without persisting. Wire
- * `useCreateStandaloneEscrow` (web `features/escrow/data/ordersApi`) when the
- * mobile API client lands; the web then routes on to the new deal's detail page.
+ * Live against `useCreateStandaloneEscrow`, and on success it routes straight to
+ * the new deal's detail page — where the share link lives for a deal created
+ * without a named counterparty.
  */
 
 type Role = 'buyer' | 'seller';
@@ -69,12 +71,23 @@ export function NewEscrowScreen() {
 
   const [role, setRole] = useState<Role>('buyer');
   const [title, setTitle] = useState('');
-  const [invitedUsername, setInvitedUsername] = useState('');
+  /*
+    The counterparty, in two parts — the same split the web keeps.
+
+    `counterparty` is a *confirmed* account and the only thing ever sent to the
+    server. `counterpartyQuery` is the raw text in the box, kept so the three
+    states stay distinguishable: blank (invite by link), picked, and typed but
+    unconfirmed. Only the last is an error, and collapsing it into a single
+    string is what let free text reach the server and fail a round trip later.
+  */
+  const [counterparty, setCounterparty] = useState<CounterpartyMatch | null>(null);
+  const [counterpartyQuery, setCounterpartyQuery] = useState('');
   const [amount, setAmount] = useState('500');
   const [currency, setCurrency] = useState<Currency>('GHS');
   const [feeSplit, setFeeSplit] = useState<FeeSplit>('BUYER');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const createEscrow = useCreateStandaloneEscrow();
 
   // The web binds a number input; a phone keyboard hands back a string, so parse
   // once here and treat anything unparseable as 0 for the preview.
@@ -93,20 +106,53 @@ export function NewEscrowScreen() {
         ? amountValue - estimatedFee / 2
         : amountValue;
 
+  /**
+   * Text was typed into the counterparty box but no account was picked from the
+   * list. Blocks submission — see the note on the state above.
+   */
+  const unresolvedCounterparty = !counterparty && counterpartyQuery.trim().length > 0;
+
   /** Mirrors the web's guard: a title and a positive amount are required. */
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError(null);
-    if (!title.trim()) {
-      setError('Give the contract a title.');
+    if (createEscrow.isPending) return;
+
+    // The server's minimum is 3 characters, so a one-character title used to
+    // pass here and come back as a validation error from the API.
+    if (title.trim().length < 3) {
+      setError('Give the contract a title of at least 3 characters.');
       return;
     }
     if (amountValue <= 0) {
       setError('Enter a deal amount greater than zero.');
       return;
     }
-    // TODO(api): POST the standalone escrow, then push the new deal's detail
-    // screen the way the web navigates to /escrow/:id.
-    goBack();
+    if (unresolvedCounterparty) {
+      setError(
+        `Pick @${counterpartyQuery.replace(/^@/, '').trim()} from the list, or clear the field to invite by link instead.`,
+      );
+      return;
+    }
+
+    try {
+      const deal = await createEscrow.mutateAsync({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        amount: amountValue,
+        currency,
+        // The chips carry uppercase labels; the server's schema is lowercase.
+        role,
+        // The chips carry uppercase labels; the server's schema is lowercase.
+        feeSplit: feeSplit.toLowerCase() as 'buyer' | 'seller' | 'split',
+        // Only a confirmed pick — never the raw text, which the guard above has
+        // already refused.
+        invitedUsername: counterparty?.username,
+      });
+      // Straight to the new deal, as the web does after creating one.
+      router.replace(`/escrow/${deal.id}`);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
   };
 
   /** Back to My Deals — falls back to the tab when there's nothing to pop. */
@@ -233,24 +279,14 @@ export function NewEscrowScreen() {
         {/* Counterparty */}
         <View ref={counterpartyRow} collapsable={false} style={styles.field}>
           {label('Counterparty Username', '(optional)')}
-          <View
-            style={[
-              styles.inputWrap,
-              { backgroundColor: theme.inputBackground, borderColor: theme.inputBorder },
-            ]}
-          >
-            <User size={16} color={theme.textTertiary} />
-            <TextInput
-              value={invitedUsername}
-              onChangeText={setInvitedUsername}
-              placeholder="e.g. kwame_dev or seller_username"
-              placeholderTextColor={theme.textTertiary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              onFocus={() => ensureVisible(counterpartyRow.current)}
-              style={[styles.input, { color: theme.text }]}
-            />
-          </View>
+          <CounterpartyPicker
+            value={counterparty}
+            onChange={setCounterparty}
+            query={counterpartyQuery}
+            onQueryChange={setCounterpartyQuery}
+            disabled={createEscrow.isPending}
+            onFocus={() => ensureVisible(counterpartyRow.current)}
+          />
           <Text style={[styles.hint, { color: theme.textTertiary }]}>
             Leave blank to generate a public invite link to share with anyone.
           </Text>
@@ -362,13 +398,22 @@ export function NewEscrowScreen() {
         {/* Submit */}
         <Pressable
           onPress={handleSubmit}
-          style={({ pressed }) => [
+          disabled={createEscrow.isPending}
+          accessibilityRole="button"
+          accessibilityState={{ busy: createEscrow.isPending }}
+          style={[
             styles.submit,
-            { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+            { backgroundColor: theme.primary, opacity: createEscrow.isPending ? 0.6 : 1 },
           ]}
         >
-          <ArrowRight size={16} color="#ffffff" />
-          <Text style={styles.submitText}>Create &amp; Launch Escrow Deal</Text>
+          {createEscrow.isPending ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <ArrowRight size={16} color="#ffffff" />
+          )}
+          <Text style={styles.submitText}>
+            {createEscrow.isPending ? 'Creating…' : 'Create & Launch Escrow Deal'}
+          </Text>
         </Pressable>
       </KeyboardAwareScroll>
     </SafeAreaView>

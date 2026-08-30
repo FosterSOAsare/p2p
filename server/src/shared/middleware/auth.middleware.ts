@@ -2,12 +2,16 @@ import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env";
 import { ApiError } from "../lib/errors";
-import { prisma } from "../lib/prisma";
+import { getAuthUser } from "../lib/auth-cache";
 import type { JwtPayload } from "../../features/auth/auth.model";
 
 /**
  * Reads the Bearer token from the Authorization header, verifies it,
- * then loads the user's details from the DB and attaches them as req.user.
+ * then loads the user's details and attaches them as req.user.
+ *
+ * The lookup goes through `auth-cache` rather than straight to Postgres. It was
+ * a full round trip on every authenticated request — the largest single fixed
+ * cost in the app on this connection. See that module for the staleness trade.
  */
 export async function auth(req: Request, _res: Response, next: NextFunction) {
   try {
@@ -24,12 +28,15 @@ export async function auth(req: Request, _res: Response, next: NextFunction) {
       throw ApiError.unauthorized("Invalid or expired token");
     }
 
-    // Get fresh user details from the DB — don't trust stale token claims.
-    const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+    // Don't trust stale token claims — but don't re-read Postgres for every
+    // request either; `getAuthUser` serves a few-second-old row.
+    const user = await getAuthUser(payload.sub);
     if (!user) throw ApiError.unauthorized("Account no longer exists");
     if (user.status === "suspended") throw ApiError.forbidden("Account suspended");
 
     req.user = { id: user.id, username: user.username, role: user.role };
+    // Stashed so requireSeller doesn't need a second lookup for the same fact.
+    req.authKycStatus = user.kycStatus;
 
     next();
   } catch (err) {
@@ -54,19 +61,20 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
   next();
 }
 
-/** Use after auth() on seller-only routes (listing management): admins pass, otherwise KYC must be verified. */
-export async function requireSeller(req: Request, _res: Response, next: NextFunction) {
-  try {
-    if (req.user?.role === "admin") return next();
-    const kyc = await prisma.kycProfile.findUnique({
-      where: { userId: req.user!.id },
-      select: { status: true },
-    });
-    if (kyc?.status !== "verified") {
-      throw ApiError.forbidden("Verified sellers only — complete seller verification to manage listings");
-    }
-    next();
-  } catch (err) {
-    next(err);
+/**
+ * Use after auth() on seller-only routes (listing management): admins pass,
+ * otherwise KYC must be verified.
+ *
+ * Synchronous now. `auth` already loaded the KYC status alongside the user, so
+ * this was a second full round trip for a fact the previous middleware had
+ * just had in its hands — it doubled the fixed cost of every seller route.
+ */
+export function requireSeller(req: Request, _res: Response, next: NextFunction) {
+  if (req.user?.role === "admin") return next();
+  if (req.authKycStatus !== "verified") {
+    return next(
+      ApiError.forbidden("Verified sellers only — complete seller verification to manage listings"),
+    );
   }
+  next();
 }

@@ -1,20 +1,19 @@
 /**
  * Auth context for the P2P mobile app.
  *
- * Sessions are real: `login` goes to `/api/auth/login`, stores the token pair
- * in the device keychain, and reads the account back from `/api/auth/me`. A
- * rejected login throws so the screen can say why.
+ * Sessions are real: `login` goes to `/api/auth/login`, which returns the token
+ * pair and the full profile together, and stores the tokens in the device
+ * keychain. A rejected login throws so the screen can say why.
  *
  * There used to be a mock fallback here — a failed sign-in quietly became a
  * fake `mockCurrentUser` session. It made every authenticated request 401 while
  * the app looked signed in, which reads as broken screens rather than a bad
- * password. Screens still on mock data don't need a session at all, so nothing
- * depended on it.
+ * password.
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { User } from '@/constants/mockData';
+import type { User } from '@/constants/appTypes';
 import { tokenStore } from '@/features/shared/data/tokenStore';
 import { api, setSessionExpiredHandler } from '@/features/shared/data/api';
 import { dashboardKeys, type DashboardResponse } from '@/features/dashboard/data/dashboardApi';
@@ -55,8 +54,9 @@ interface ServerMe {
  * `buyer | seller | admin`. A verified KYC profile is what makes someone a
  * seller — the same rule the web uses.
  *
- * Note this is why signing in takes two calls: `/api/auth/login` returns the
- * user but not `kycStatus`, and `kycStatus` is what decides the persona.
+ * `kycStatus` is the field that decides this, and login withholding it is why
+ * signing in used to cost two sequential calls. It comes back on the login
+ * response now, so this maps whichever of the two carried it.
  */
 function toAppUser(me: ServerMe): User {
   return {
@@ -104,10 +104,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (identifier: string, password: string) => {
     setState((s) => ({ ...s, isLoading: true }));
     try {
-      const { tokens } = await api<{ tokens: { accessToken: string; refreshToken: string } }>(
-        '/api/auth/login',
-        { method: 'POST', body: { identifier, password } },
-      );
+      const { user, tokens } = await api<{
+        user: ServerMe;
+        tokens: { accessToken: string; refreshToken: string };
+      }>('/api/auth/login', { method: 'POST', body: { identifier, password } });
       await tokenStore.set(tokens.accessToken, tokens.refreshToken);
 
       /**
@@ -147,10 +147,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         queryFn: () => api('/api/listings?limit=48'),
       });
 
-      // Second call on purpose: `me` carries kycStatus, which decides persona.
-      const me = await api<ServerMe>('/api/auth/me');
+      /*
+        No second `/me` call. Login used to withhold `kycStatus` — the field
+        that decides the persona — so signing in cost two sequential round
+        trips before the app knew which face to show. It returns the full
+        profile now, so this is the same information one request earlier.
+      */
       setState({
-        user: toAppUser(me),
+        user: toAppUser(user),
         isAuthenticated: true,
         isLoading: false,
         isRealSession: true,
@@ -171,7 +175,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // whoever signs in next.
     runTeardown();
     setState({ user: null, isAuthenticated: false, isLoading: false, isRealSession: false });
-    void tokenStore.clear();
+
+    /*
+      Revoke the session server-side, then drop the tokens locally.
+
+      Clearing the store alone only forgets the refresh token — it stays valid
+      in the `Session` table until it expires, so a copy lifted off the device
+      could still mint access tokens for an account that had signed out. The web
+      has always posted this; mobile never did.
+
+      Deliberately not awaited and deliberately swallowing errors: signing out
+      must not fail or hang because the network is down. The local half below
+      runs regardless, so the worst case is a server session that outlives the
+      sign-out — exactly today's behaviour — rather than a user stuck signed in.
+    */
+    void (async () => {
+      const refreshToken = await tokenStore.getRefresh().catch(() => null);
+      if (refreshToken) {
+        await api('/api/auth/logout', {
+          method: 'POST',
+          body: { refreshToken },
+        }).catch(() => undefined);
+      }
+      await tokenStore.clear();
+    })();
   }, [queryClient]);
 
   // A spent refresh token signs the user out rather than leaving screens

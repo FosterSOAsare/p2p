@@ -1,5 +1,6 @@
 import Joi from "joi";
 import type { RequestSchema } from "../../shared/middleware/validate.middleware";
+import { APP_SCHEME } from "./return-url";
 
 export const idParam: RequestSchema = {
   params: Joi.object({ id: Joi.string().guid().required() }),
@@ -89,6 +90,24 @@ export const review: RequestSchema = {
   body: Joi.object({
     rating: Joi.number().integer().min(1).max(5).required(),
     comment: Joi.string().trim().max(1000).allow("", null),
+  }),
+};
+
+export const cryptoStart: RequestSchema = {
+  params: Joi.object({ id: Joi.string().guid().required() }),
+  body: Joi.object({
+    // Where to send the buyer back to after the hosted invoice. Optional — the
+    // web omits it and gets its own callback route. The *value* is checked
+    // against an allowlist in return-url.ts; this only bounds its shape.
+    //
+    // The scheme is imported rather than repeated: this ran ahead of the
+    // allowlist with a stale `p2pm` and returned 400 for the exact URL
+    // return-url.ts was written to accept, which no test covered because Expo
+    // Go emits `exp://` and never exercised the app scheme at all.
+    returnUrl: Joi.string()
+      .uri({ scheme: [/https?/, APP_SCHEME, "exp"] })
+      .max(512)
+      .allow("", null),
   }),
 };
 

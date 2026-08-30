@@ -1,0 +1,15 @@
+-- Remember where an invoice sends the buyer back to.
+--
+-- `startDeposit` reuses a live invoice rather than opening a second one, which
+-- is right — two competing charges for one deal would be worse. But it decided
+-- "still good" from the amount alone, and the return destination is baked into
+-- the invoice at the provider, not into anything we could re-read. So an
+-- invoice created while WEB_ORIGIN was `http://localhost:5173` kept sending
+-- buyers to localhost forever, and a web invoice reused by the phone sent it
+-- into the web app instead of back into the app.
+--
+-- Nullable, and existing rows are left NULL on purpose: the service treats an
+-- unknown destination as stale, so the next attempt on any pre-existing invoice
+-- opens a fresh one pointed at the right place. That is the intended repair
+-- path for the rows already out there — no backfill, no data touched.
+ALTER TABLE "crypto_escrows" ADD COLUMN "returnUrl" TEXT;

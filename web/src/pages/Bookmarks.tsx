@@ -24,7 +24,14 @@ export function Bookmarks() {
   const isSeller = me.role !== 'admin' && me.kycStatus === 'verified'
   if (isSeller) return <Navigate to="/dashboard" replace />
 
-  const savedItems = savedQuery.data?.saved ?? []
+  /*
+    `title` filters out the optimistic stand-in a save writes into this cache
+    (see useSavedToggle): it carries only an id, enough to fill the heart on the
+    marketplace grid, and would render here as an empty card for the moment
+    before the refetch lands. Saving never starts from this page, so in practice
+    this only catches arriving here mid-flight from a product page.
+  */
+  const savedItems = (savedQuery.data?.saved ?? []).filter((item) => item.title)
 
   return (
     <div className="py-6 space-y-6">

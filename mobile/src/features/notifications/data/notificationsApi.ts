@@ -11,7 +11,22 @@ import { api } from '@/features/shared/data/api';
  * trip instead of several on a link where each costs real time.
  */
 
-export type NotificationCategory = 'deal' | 'listing' | 'dispute' | 'kyc' | 'wallet' | 'system';
+/**
+ * Must stay in step with the server's `NotificationCategory` — and with the
+ * web's copy of this union, which is the same list.
+ *
+ * `promotion` was missing here while the server was already sending it, so a
+ * spotlight notification arrived as a category the screen had no style for and
+ * crashed the list. See the fallback in `NotificationsScreen`.
+ */
+export type NotificationCategory =
+  | 'deal'
+  | 'listing'
+  | 'dispute'
+  | 'kyc'
+  | 'wallet'
+  | 'promotion'
+  | 'system';
 
 export interface AppNotification {
   id: string;
@@ -64,12 +79,53 @@ export function useUnreadNotifications(): number {
   return data?.unread ?? 0;
 }
 
+/**
+ * Marking read is optimistic — the row and the badge both settle before the
+ * server answers.
+ *
+ * This is the clearest case for it in the app: the write cannot meaningfully
+ * fail (it is idempotent and needs no permission beyond owning the row), the
+ * change is one boolean, and the alternative is tapping a notification and
+ * watching the unread dot sit there for the best part of a second. `onMutate`
+ * snapshots the page so a genuine failure rolls straight back.
+ */
+function patchNotifications(
+  qc: ReturnType<typeof useQueryClient>,
+  patch: (page: NotificationPage) => NotificationPage,
+) {
+  const previous = qc.getQueryData<NotificationPage>(notificationKeys.list());
+  if (previous) qc.setQueryData<NotificationPage>(notificationKeys.list(), patch(previous));
+  return previous;
+}
+
 export function useMarkNotificationRead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       api<{ ok: true }>(`/api/notifications/${id}/read`, { method: 'POST' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKeys.list() }),
+    onMutate: async (id) => {
+      // Stop an in-flight refetch from landing on top of the patch below.
+      await qc.cancelQueries({ queryKey: notificationKeys.list() });
+      const previous = patchNotifications(qc, (page) => {
+        const target = page.notifications.find((n) => n.id === id);
+        // Already read: leave the count alone rather than double-decrementing.
+        if (!target || target.readAt) return page;
+        return {
+          ...page,
+          unread: Math.max(0, page.unread - 1),
+          notifications: page.notifications.map((n) =>
+            n.id === id ? { ...n, readAt: new Date().toISOString() } : n,
+          ),
+        };
+      });
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) qc.setQueryData(notificationKeys.list(), context.previous);
+    },
+    // Reconcile against the server either way — the optimistic page is a guess
+    // about one row, not about what else may have arrived meanwhile.
+    onSettled: () => qc.invalidateQueries({ queryKey: notificationKeys.list() }),
   });
 }
 
@@ -78,6 +134,20 @@ export function useMarkAllNotificationsRead() {
   return useMutation({
     mutationFn: () =>
       api<{ ok: true; updated: number }>('/api/notifications/read-all', { method: 'POST' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKeys.list() }),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: notificationKeys.list() });
+      const previous = patchNotifications(qc, (page) => ({
+        ...page,
+        unread: 0,
+        notifications: page.notifications.map((n) =>
+          n.readAt ? n : { ...n, readAt: new Date().toISOString() },
+        ),
+      }));
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) qc.setQueryData(notificationKeys.list(), context.previous);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: notificationKeys.list() }),
   });
 }

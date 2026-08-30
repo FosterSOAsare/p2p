@@ -11,9 +11,9 @@ import { useAuth } from '@/context/AuthContext';
  *
  * Note the two data models this bridges. The server has only **two** roles,
  * `user` and `admin`; "seller" is not a role there, it's a user whose KYC was
- * approved. The mobile mock instead carries a literal `role: 'seller'`. Both
- * are accepted below, so wiring the real API changes this file and nothing
- * else — at which point the mock's `'seller'` role can go away.
+ * approved. `AuthContext.toAppUser` collapses that into the literal
+ * `role: 'seller'` this reads, so the mapping lives in one place and every
+ * screen can branch on a persona rather than re-deriving it from `kycStatus`.
  */
 
 export type Persona = 'buyer' | 'seller' | 'admin';

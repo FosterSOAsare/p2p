@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, tokenStore } from '../../shared/libs/api'
 import { authKeys, type AuthUser, type MeResponse } from '../../auth/data/authApi'
 
@@ -18,6 +18,42 @@ export function useUpdateProfile() {
 }
 
 // ---------- Public seller profile ----------
+
+// ---------- Counterparty search (escrow invite picker) ----------
+
+export interface CounterpartyMatch {
+  username: string
+  avatarUrl: string | null
+  storeName: string | null
+  verified: boolean
+}
+
+/**
+ * Who may be invited to a deal, for the counterparty picker.
+ *
+ * The server does the excluding — admins, yourself, suspended accounts — and it
+ * applies the same rules when the deal is actually created, so the picker can
+ * never offer someone the create call would then refuse.
+ *
+ * Disabled under two characters, matching the server, so an empty field costs
+ * nothing. `keepPreviousData` holds the last list on screen while the next one
+ * loads: without it the dropdown empties and re-fills on every keystroke, which
+ * on this connection is a list flickering under a moving cursor.
+ */
+export function useCounterpartySearch(query: string) {
+  const q = query.replace(/^@/, '').trim()
+  return useQuery({
+    queryKey: ['users', 'counterparty-search', q] as const,
+    queryFn: () =>
+      api<{ matches: CounterpartyMatch[] }>(`/api/users/search?q=${encodeURIComponent(q)}`).then(
+        (r) => r.matches,
+      ),
+    enabled: q.length >= 2,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    retry: false,
+  })
+}
 
 export interface PublicSellerProfile {
   username: string
@@ -121,11 +157,45 @@ export function useSavedListings() {
   })
 }
 
-export function useSaveListing() {
+interface SavedCache {
+  saved: SavedListingCard[]
+}
+
+/**
+ * Both halves of the bookmark toggle are optimistic — a heart that fills a
+ * round trip after the click reads as a click that didn't land, and invites a
+ * second one that then undoes the first.
+ *
+ * The marketplace grid only asks this list for ids (`savedIds.has(p.id)`), so
+ * flipping membership is enough to move every heart on screen. `onSettled`
+ * re-reads either way, which is what fills in the rest of the card for the
+ * Bookmarks page and corrects the count if the server disagreed.
+ */
+function useSavedToggle(method: 'POST' | 'DELETE') {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (listingId: string) => api(`/api/users/me/saved/${listingId}`, { method: 'POST' }),
-    onSuccess: () => {
+    mutationFn: (listingId: string) => api(`/api/users/me/saved/${listingId}`, { method }),
+    onMutate: async (listingId) => {
+      await queryClient.cancelQueries({ queryKey: userKeys.saved })
+      const previous = queryClient.getQueryData<SavedCache>(userKeys.saved)
+      queryClient.setQueryData<SavedCache>(userKeys.saved, (old) => {
+        const saved = old?.saved ?? []
+        if (method === 'DELETE') return { saved: saved.filter((s) => s.id !== listingId) }
+        if (saved.some((s) => s.id === listingId)) return { saved }
+        /*
+          A stand-in, not the listing. Only the id is read before the refetch
+          lands; the placeholder exists so the id is in the set at all. Bookmarks
+          renders the real cards, and a save is never initiated from there.
+        */
+        const placeholder = { id: listingId } as SavedListingCard
+        return { saved: [placeholder, ...saved] }
+      })
+      return { previous }
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(userKeys.saved, context.previous)
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: userKeys.saved })
       queryClient.invalidateQueries({ queryKey: authKeys.me }) // savedItemsCount stat
       queryClient.invalidateQueries({ queryKey: dashboardKeys.data })
@@ -133,16 +203,12 @@ export function useSaveListing() {
   })
 }
 
+export function useSaveListing() {
+  return useSavedToggle('POST')
+}
+
 export function useUnsaveListing() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (listingId: string) => api(`/api/users/me/saved/${listingId}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: userKeys.saved })
-      queryClient.invalidateQueries({ queryKey: authKeys.me })
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.data })
-    },
-  })
+  return useSavedToggle('DELETE')
 }
 
 export interface NotificationPrefs {

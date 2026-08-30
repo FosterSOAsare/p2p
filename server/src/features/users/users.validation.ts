@@ -1,6 +1,13 @@
 import Joi from "joi";
 import type { RequestSchema } from "../../shared/middleware/validate.middleware";
 
+export const counterpartySearch: RequestSchema = {
+  query: Joi.object({
+    // A leading "@" is accepted because people type it; the service strips it.
+    q: Joi.string().trim().max(40).allow("").default(""),
+  }),
+};
+
 export const updateMe: RequestSchema = {
   body: Joi.object({
     fullName: Joi.string().trim().min(2).max(100),

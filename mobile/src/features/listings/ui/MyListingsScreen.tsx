@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Image } from 'expo-image';
-import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ExternalLink, Package, Pencil, PlusCircle, Trash2 } from '@/components/icons';
+import { ExternalLink, Package, Pencil, PlusCircle, Sparkles, Trash2 } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { useTheme, useTones } from '@/hooks/use-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { SkeletonList } from '@/features/shared/ui/Skeleton';
@@ -72,6 +73,7 @@ function formatDate(iso: string) {
 
 export function MyListingsScreen() {
   const theme = useTheme();
+  const tones = useTones();
   const router = useRouter();
   const tabBarHeight = useTabBarHeight();
 
@@ -85,13 +87,28 @@ export function MyListingsScreen() {
   const listingsQuery = useMyListings();
   const deleteListing = useDeleteListing();
 
-  const listings = useMemo(() => {
-    const rows = listingsQuery.data?.listings ?? [];
-    return tab === 'all' ? rows : rows.filter((l) => l.status === tab);
-  }, [tab, listingsQuery.data]);
+  const rows = useMemo(() => listingsQuery.data?.listings ?? [], [listingsQuery.data]);
+  const listings = useMemo(
+    () => (tab === 'all' ? rows : rows.filter((l) => l.status === tab)),
+    [tab, rows],
+  );
 
   const notReady = listingsQuery.isLoading || listingsQuery.isError;
-  const total = listings.length;
+
+  /**
+   * The web asks the server once per tab and prints the count it answers with.
+   * One fetch filtered in memory can't do that, so the server's own total is
+   * the honest number on "All" and each tab reports what it is showing.
+   */
+  const serverTotal = listingsQuery.data?.total ?? 0;
+  const total = tab === 'all' ? serverTotal : listings.length;
+
+  /**
+   * `limit=48` is the server's own ceiling for this endpoint, so a big enough
+   * store has rows this screen never received. Better to say so than to let a
+   * seller count their listings here and come up short.
+   */
+  const truncated = rows.length < serverTotal;
 
   /**
    * Mirrors the web's `onSettled: () => setDeleteTarget(null)` — the dialog
@@ -117,6 +134,14 @@ export function MyListingsScreen() {
 
   const renderListing = ({ item }: { item: MyListing }) => {
     const badge = statusBadge(item.status);
+    /*
+      A takedown that can't be disputed — or whose dispute was rejected — is
+      final, so there's nothing left to edit. Same condition as the web, which
+      drops the button rather than disabling it.
+    */
+    const takedownIsFinal =
+      item.status === 'removed' && (!item.disputeAllowed || item.disputeStatus === 'rejected');
+    const canPromote = item.status === 'active';
 
     return (
       <View style={[styles.row, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
@@ -154,56 +179,98 @@ export function MyListingsScreen() {
               {formatMoney(item.price, item.currency)} · {item.category} · qty {item.quantity} ·
               listed {formatDate(item.createdAt)}
             </Text>
+
+            {/* The web's takedown line — why it went, in the row itself. */}
+            {item.removalReason ? (
+              <Text style={styles.removalReason} numberOfLines={2}>
+                Removed by an administrator — {item.removalReason}
+              </Text>
+            ) : null}
           </View>
         </View>
 
-        {/* View public page · Edit · Delete. The web sits these beside the row
-            as icon-only buttons with hover tooltips; a phone has no hover, so
-            they run along the bottom with their labels shown. */}
-        <View style={[styles.actions, { borderTopColor: theme.border }]}>
+        {/*
+          View · Edit · Promote · Delete, icon-only as on the web. The web sits
+          them inline to the right of the row; four 34pt targets plus a cover
+          leave a phone's title about a hundred points to live in, so they sit
+          right-aligned beneath it instead — same buttons, same order, room to
+          read the listing they belong to.
+        */}
+        <View style={styles.actions}>
+          {/*
+            Always live, as on the web — including for a removed listing, where
+            it lands on ProductDetailScreen's "Listing Not Found". That isn't a
+            dead end, it's the answer: the public page really is gone, and
+            seeing it is how a seller confirms the takedown took effect. The
+            row's own takedown line says why, and Edit still opens the appeal.
+          */}
           <Pressable
             onPress={() => router.push(`/marketplace/${item.id}`)}
             accessibilityRole="button"
             accessibilityLabel="View public page"
             style={({ pressed }) => [
-              styles.actionBtn,
+              styles.iconBtn,
               {
                 borderColor: theme.border,
                 backgroundColor: pressed ? theme.backgroundSelected : 'transparent',
               },
             ]}
           >
-            <ExternalLink size={14} color={theme.textSecondary} />
-            <Text style={[styles.actionText, { color: theme.textSecondary }]}>View</Text>
+            <ExternalLink size={15} color={theme.textSecondary} />
           </Pressable>
 
+          {!takedownIsFinal ? (
+            <Pressable
+              onPress={() => router.push(`/listings/${item.id}`)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit listing"
+              style={({ pressed }) => [
+                styles.iconBtn,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: pressed ? theme.backgroundSelected : 'transparent',
+                },
+              ]}
+            >
+              <Pencil size={15} color={theme.textSecondary} />
+            </Pressable>
+          ) : null}
+
+          {/* Only an active listing can be promoted; the web dims this rather
+              than dropping it, so the affordance stays discoverable. */}
           <Pressable
-            onPress={() => router.push(`/listings/${item.id}`)}
+            onPress={() => router.push(`/promotions/${item.id}`)}
+            disabled={!canPromote}
             accessibilityRole="button"
-            accessibilityLabel="Edit listing"
+            accessibilityLabel={
+              canPromote ? 'Promote listing' : 'Only active listings can be promoted'
+            }
             style={({ pressed }) => [
-              styles.actionBtn,
+              styles.iconBtn,
               {
                 borderColor: theme.border,
                 backgroundColor: pressed ? theme.backgroundSelected : 'transparent',
+                opacity: canPromote ? 1 : 0.4,
               },
             ]}
           >
-            <Pencil size={14} color={theme.textSecondary} />
-            <Text style={[styles.actionText, { color: theme.textSecondary }]}>Edit</Text>
+            <Sparkles size={15} color={canPromote ? '#d97706' : theme.textTertiary} />
           </Pressable>
+
 
           <Pressable
             onPress={() => setConfirmTarget(item)}
             accessibilityRole="button"
             accessibilityLabel="Delete listing"
             style={({ pressed }) => [
-              styles.actionBtn,
-              { borderColor: '#fecaca', backgroundColor: pressed ? '#fef2f2' : 'transparent' },
+              styles.iconBtn,
+              {
+                borderColor: tones.danger.border,
+                backgroundColor: pressed ? tones.danger.surface : 'transparent',
+              },
             ]}
           >
-            <Trash2 size={14} color="#e11d48" />
-            <Text style={[styles.actionText, { color: '#e11d48' }]}>Delete</Text>
+            <Trash2 size={15} color={tones.danger.icon} />
           </Pressable>
         </View>
       </View>
@@ -224,9 +291,14 @@ export function MyListingsScreen() {
                 list, after the dialog has closed. */}
             {deleteListing.isError ? (
               <View
-                style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}
+                style={[
+                  styles.apiError,
+                  { backgroundColor: tones.danger.surface, borderColor: tones.danger.border },
+                ]}
               >
-                <Text style={styles.apiErrorText}>{apiErrorMessage(deleteListing.error)}</Text>
+                <Text style={[styles.apiErrorText, { color: tones.danger.text }]}>
+                  {apiErrorMessage(deleteListing.error)}
+                </Text>
               </View>
             ) : null}
 
@@ -240,15 +312,48 @@ export function MyListingsScreen() {
               Manage your marketplace inventory. All sales settle through GH₵ escrow.
             </Text>
 
+            <View style={styles.headerActions}>
+              <Pressable
+                onPress={() => router.push('/listings/new')}
+                style={({ pressed }) => [
+                  styles.addBtn,
+                  { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <PlusCircle size={16} color="#ffffff" />
+                <Text style={styles.addBtnText}>Add New Listing</Text>
+              </Pressable>
+
+              {/* The web puts this beside "Add New Listing" too — the hub is
+                  where a seller manages every running spotlight at once. */}
+              <Pressable
+                onPress={() => router.push('/promotions')}
+                style={({ pressed }) => [
+                  styles.promoteBtn,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
+                  },
+                ]}
+              >
+                <Sparkles size={16} color={theme.primary} />
+                <Text style={[styles.promoteBtnText, { color: theme.text }]}>Promotions</Text>
+              </Pressable>
+            </View>
+
+            {/* The web's second header link — the promotions hub. */}
             <Pressable
-              onPress={() => router.push('/listings/new')}
+              onPress={() => router.push('/promotions')}
               style={({ pressed }) => [
-                styles.addBtn,
-                { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+                styles.promoBtn,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: pressed ? theme.backgroundSelected : theme.card,
+                },
               ]}
             >
-              <PlusCircle size={16} color="#ffffff" />
-              <Text style={styles.addBtnText}>Add New Listing</Text>
+              <Sparkles size={16} color={theme.text} />
+              <Text style={[styles.promoBtnText, { color: theme.text }]}>Promotions</Text>
             </Pressable>
 
             <ScrollView
@@ -284,6 +389,11 @@ export function MyListingsScreen() {
               <Text style={[styles.countText, { color: theme.textSecondary }]}>
                 {total} listing{total === 1 ? '' : 's'}
               </Text>
+              {truncated ? (
+                <Text style={[styles.countNote, { color: theme.textTertiary }]}>
+                  Showing the {rows.length} most recent
+                </Text>
+              ) : null}
             </View>
           </View>
         }
@@ -374,7 +484,7 @@ const styles = StyleSheet.create({
 
   header: { gap: Spacing.three, marginBottom: Spacing.four },
   apiError: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },
-  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600] },
   backRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -398,7 +508,9 @@ const styles = StyleSheet.create({
   title: { fontSize: 21, fontFamily: Fonts.display[700], letterSpacing: -0.4, marginTop: -Spacing.two },
   subtitle: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[400] },
 
+  headerActions: { flexDirection: 'row', gap: Spacing.two },
   addBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -408,9 +520,34 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     borderRadius: Radius.md,
   },
+  promoteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    minHeight: 46,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
+  promoteBtnText: { fontSize: 12.5, fontFamily: Fonts.sans[700] },
   // "Create your first listing" is the long one — it wraps inside the button
   // now instead of running past its edge on a narrow screen.
   addBtnText: { flexShrink: 1, fontSize: 13, fontFamily: Fonts.sans[700], color: '#ffffff' },
+
+  promoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    minHeight: 46,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.two,
+    borderRadius: Radius.md,
+  },
+  promoBtnText: { flexShrink: 1, fontSize: 13, fontFamily: Fonts.sans[700] },
 
   tabStrip: { gap: Spacing.two, paddingRight: Spacing.four },
   tab: {
@@ -423,6 +560,7 @@ const styles = StyleSheet.create({
 
   countRow: { borderTopWidth: 1, paddingTop: Spacing.three, alignItems: 'flex-end' },
   countText: { fontSize: 12, fontFamily: Fonts.sans[600] },
+  countNote: { fontSize: 10.5, fontFamily: Fonts.sans[400], marginTop: 2 },
 
   row: {
     borderWidth: 1,
@@ -441,31 +579,28 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.full },
   badgeText: { fontSize: 9, fontFamily: Fonts.sans[700] },
   rowMeta: { fontSize: 10.5, lineHeight: 14, fontFamily: Fonts.sans[400] },
-
-  actions: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    borderTopWidth: 1,
-    paddingTop: Spacing.three,
+  removalReason: {
+    fontSize: 10.5,
+    lineHeight: 14,
+    color: '#e11d48',
+    fontFamily: Fonts.sans[600],
   },
+
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.two },
   /**
-   * 44 minimum, not 38. Three buttons sharing a row on a phone were each under
-   * the 44pt/48dp minimum touch target both platforms specify, which is what
-   * made View / Edit / Delete feel like they needed a precise tap.
+   * 44 square, not the web's 32. The web's icon buttons are mouse targets; both
+   * mobile platforms specify 44pt/48dp as the minimum for a finger, and these
+   * having been under it is exactly what made View / Edit / Delete feel like
+   * they needed a precise tap.
    */
-  actionBtn: {
-    flex: 1,
-    flexDirection: 'row',
+  iconBtn: {
+    height: 44,
+    width: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    minHeight: 44,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
     borderWidth: 1,
     borderRadius: Radius.md,
   },
-  actionText: { flexShrink: 1, fontSize: 11.5, fontFamily: Fonts.sans[700] },
 
   empty: {
     borderWidth: 1,

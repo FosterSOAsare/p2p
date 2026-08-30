@@ -4,33 +4,38 @@ import * as DocumentPicker from 'expo-document-picker';
 import {
   ActivityIndicator,
   Linking,
-  Pressable,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
+  ArrowRight,
   Check,
   CheckCheck,
+  Clock,
   FileText,
   Lock,
   Paperclip,
+  RotateCcw,
   SendHorizonal,
   ShieldCheck,
+  TriangleAlert,
+  X,
 } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { useAuth } from '@/context/AuthContext';
 import { useKeyboard } from '@/hooks/use-keyboard';
 import { apiErrorMessage } from '@/features/shared/data/api';
-import { useMarkRead, useSendAttachment, useSendMessage, useThread } from '../data/messagesApi';
-import { useChatSocket } from '../data/useChatSocket';
+import { useChat } from '../data/useChat';
 import { useUploadFile } from '@/features/upload/data/uploadApi';
 
 /**
@@ -41,15 +46,17 @@ import { useUploadFile } from '@/features/upload/data/uploadApi';
  * here with `?redirect=/escrow/:id`, and Back honours it, exactly as the web's
  * back link does.
  *
- * Two transports, deliberately. Text goes over REST (`POST /api/messages/…`);
- * attachments go over the socket, because the REST endpoint has no attachment
- * field and the socket does. Photos and PDFs both, matching the web's
- * `accept="image/*,application/pdf"`. The socket also keeps the thread live, so
- * the other side's messages arrive without a refresh.
+ * Everything runs on the socket now (see `useChat`), where it previously used
+ * REST for history and text and treated the socket as a doorbell that triggered
+ * a refetch. That refetch is what made an incoming message take seconds to
+ * appear when it had already arrived over the wire.
  */
 
 /** The server's cap, mirrored so an oversized pick fails before uploading. */
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+/** Within this many px of the bottom still counts as being at the bottom. */
+const NEAR_BOTTOM_PX = 80;
 
 interface LocalMessage {
   id: string;
@@ -57,13 +64,23 @@ interface LocalMessage {
   mine: boolean;
   at: string;
   /**
+   * A deal-lifecycle notice written by the server, not by either party. Rendered
+   * as a centred chip rather than a bubble — it belongs to the conversation, not
+   * to a side of it, and aligning it left or right implies someone said it.
+   */
+  system: boolean;
+  /** Set on a system notice about a deal — makes the chip tappable. */
+  escrowId: string | null;
+  /**
    * Delivery state, shown only on your own messages.
    *
-   * Anything the thread returns has been persisted by the server, so its mere
-   * presence means delivered — one tick. `readAt` is stamped when the other
-   * party opens the thread, which is the second tick.
+   * A persisted message means delivered — one tick. `readAt` is stamped when the
+   * other party opens the thread, which is the second tick. `pending` is the
+   * step before either: on screen, not yet acknowledged.
    */
   readAt: string | null;
+  pending: boolean;
+  failed: boolean;
   /** Set when the message is a photo — rendered inline. */
   imageUri?: string;
   /**
@@ -83,7 +100,6 @@ const clockTime = (iso?: string) =>
 export function MessageThreadScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { user } = useAuth();
   const { username = '', redirect } = useLocalSearchParams<{
     username: string;
     redirect?: string;
@@ -98,32 +114,30 @@ export function MessageThreadScreen() {
   const { keyboardHeight } = useKeyboard();
 
   /**
-   * The real thread. `mine` is decided server-side, so the bubble alignment
-   * doesn't depend on comparing usernames here.
+   * The live thread. History, sends, read receipts and typing all ride the one
+   * socket connection; opening it is also what clears the unread badge, so
+   * there is no separate mark-read call here.
    */
-  const threadQuery = useThread(username);
-  const sendMessage = useSendMessage(username);
-  const sendAttachment = useSendAttachment(username);
-  const markRead = useMarkRead(username);
+  const chat = useChat(username);
   const uploadFile = useUploadFile();
 
-  /**
-   * Joins this thread's socket room, so the other party's messages — including
-   * their photos — land here without a pull-to-refresh.
-   */
-  useChatSocket(username);
-
   /** Covers both legs — the Cloudinary upload and the socket send. */
-  const attaching = uploadFile.isPending || sendAttachment.isPending;
+  const attaching = uploadFile.isPending;
 
   const messages = useMemo<LocalMessage[]>(
     () =>
-      (threadQuery.data?.messages ?? []).map((m) => ({
+      chat.messages.map((m) => ({
         id: m.id,
         body: m.body,
-        mine: m.mine,
+        // No server-sent `mine` on this transport: one payload is broadcast to
+        // both parties, so the side is derived from the sender, as the web does.
+        mine: m.senderId === chat.meId,
         at: clockTime(m.createdAt),
+        system: m.type === 'system',
+        escrowId: m.escrowId,
         readAt: m.readAt,
+        pending: Boolean(m.pending),
+        failed: Boolean(m.failed),
         // The URL lives on the attachment object, not on the message itself.
         // Images render inline; anything else becomes a tappable file chip.
         imageUri:
@@ -135,24 +149,56 @@ export function MessageThreadScreen() {
             ? { url: m.attachment.url, name: m.attachment.name }
             : undefined,
       })),
-    [threadQuery.data],
+    [chat.messages, chat.meId],
   );
 
-  /** Comes with the thread — no user directory lookup needed. */
-  const counterparty = threadQuery.data?.counterparty;
+  /** Comes with the `conversation:open` ack — no directory lookup needed. */
+  const counterparty = chat.counterparty;
 
-  // Opening the thread clears its unread badge, as on the web.
-  useEffect(() => {
-    if (threadQuery.data && username) markRead.mutate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadQuery.data?.counterparty.username]);
+  /*
+    Keep the newest message in view — on send, and when the keyboard opens and
+    steals the bottom of the thread.
 
-  // Keep the newest message in view — on send, and when the keyboard opens and
-  // steals the bottom of the thread.
+    Gated on `stick`, which tracks whether the reader is actually at the bottom.
+    Without it an arriving message drags someone reading back through the thread
+    down to the newest one, and the keyboard does the same on every focus.
+
+    `opening` makes the first scroll of a conversation instant. Animating it
+    means entering a thread visibly travels from the top, and the animation
+    targets the height measured when it starts — bubbles that size themselves
+    late leave it short of the true bottom, which is the web's version of this
+    bug. Images here are a fixed box (`bubbleImage`), so this is hardening
+    rather than a fix for something currently visible.
+  */
+  const stick = useRef(true);
+  const opening = useRef(true);
+
+  const onThreadScroll = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+    stick.current =
+      contentSize.height - contentOffset.y - layoutMeasurement.height < NEAR_BOTTOM_PX;
+  };
+
+  // A different conversation starts over — the previous thread's position says
+  // nothing about this one.
   useEffect(() => {
+    stick.current = true;
+    opening.current = true;
+  }, [username]);
+
+  const newestId = messages[messages.length - 1]?.id;
+  useEffect(() => {
+    if (!newestId || !stick.current) return;
+    if (opening.current) {
+      opening.current = false;
+      scrollRef.current?.scrollToEnd({ animated: false });
+      return;
+    }
+    // Still deferred a frame: the bubble has to be laid out before its height
+    // counts toward the end of the thread.
     const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
     return () => clearTimeout(t);
-  }, [messages.length, keyboardHeight]);
+  }, [newestId, keyboardHeight]);
 
   /** Back honours the `redirect` the caller passed, like the web's back link. */
   const goBack = () => {
@@ -161,18 +207,20 @@ export function MessageThreadScreen() {
     else router.replace('/marketplace');
   };
 
-  const send = async () => {
+  const send = () => {
     const body = draft.trim();
     if (!body) return;
-    // Cleared up front so the composer feels immediate; restored on failure so
-    // nothing typed is lost.
+    /*
+      Clear and send, without awaiting.
+
+      `sendText` puts the message in the thread immediately as a pending bubble
+      and reconciles it against the server's copy when the ack lands. A refused
+      send leaves that bubble marked failed with a retry beside it, so the text
+      is still recoverable — which is why the draft is not restored here as it
+      used to be. Restoring it as well would put the same message in two places.
+    */
     setDraft('');
-    try {
-      await sendMessage.mutateAsync(body);
-    } catch (err) {
-      setDraft(body);
-      setAttachError(apiErrorMessage(err));
-    }
+    chat.sendText(body);
   };
 
   /**
@@ -221,7 +269,9 @@ export function MessageThreadScreen() {
 
       try {
         const uploaded = await uploadFile.mutateAsync({ uri: picked.uri, name, type: mime });
-        await sendAttachment.mutateAsync({
+        // Only the upload is awaited. The send itself is optimistic — the file
+        // appears in the thread at once and marks itself failed if refused.
+        chat.sendFile({
           url: uploaded.url,
           // All four are required by the server's schema. Size comes from the
           // upload response — the bytes actually stored — falling back to the
@@ -300,6 +350,8 @@ export function MessageThreadScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
+            onScroll={onThreadScroll}
+            scrollEventThrottle={16}
           >
             <View style={[styles.lockNotice, { backgroundColor: theme.backgroundElement }]}>
               <Lock size={11} color={theme.textTertiary} />
@@ -315,17 +367,62 @@ export function MessageThreadScreen() {
               </Text>
             ) : null}
 
-            {messages.map((m) => (
+            {messages.map((m) =>
+              /*
+                A deal-lifecycle notice, written by the server rather than by
+                either party — centred, as the web's ChatPanel renders it. This
+                branch did not exist before, so these came out as ordinary
+                bubbles aligned to whichever side the server happened to have
+                recorded as the sender, reading as if a person had said them.
+              */
+              m.system ? (
+                <View key={m.id} style={styles.systemRow}>
+                  <Pressable
+                    disabled={!m.escrowId}
+                    onPress={() => m.escrowId && router.push(`/escrow/${m.escrowId}`)}
+                    accessibilityRole={m.escrowId ? 'button' : 'text'}
+                    style={({ pressed }) => [
+                      styles.systemChip,
+                      {
+                        backgroundColor:
+                          m.escrowId && pressed ? theme.backgroundSelected : theme.backgroundElement,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.systemText, { color: theme.textSecondary }]}>{m.body}</Text>
+                    {m.escrowId ? (
+                      <View style={styles.systemLink}>
+                        <Text style={[styles.systemLinkText, { color: theme.primary }]}>
+                          View deal
+                        </Text>
+                        <ArrowRight size={11} color={theme.primary} />
+                      </View>
+                    ) : null}
+                  </Pressable>
+                  <Text style={[styles.systemTime, { color: theme.textTertiary }]}>{m.at}</Text>
+                </View>
+              ) : (
               <View key={m.id} style={[styles.bubbleRow, m.mine ? styles.mineRow : styles.theirRow]}>
                 <View
                   style={[
                     styles.bubble,
                     m.mine
-                      ? [styles.mineBubble, { backgroundColor: theme.primary }]
+                      ? [
+                          styles.mineBubble,
+                          {
+                            backgroundColor: theme.primary,
+                            // A message still in flight sits back a little, so
+                            // "sent" and "sending" are distinguishable at a
+                            // glance without reading the tick.
+                            opacity: m.pending ? 0.65 : 1,
+                          },
+                        ]
                       : [
                           styles.theirBubble,
                           { backgroundColor: theme.card, borderColor: theme.cardBorder },
                         ],
+                    m.failed ? { backgroundColor: '#b91c1c' } : null,
                   ]}
                 >
                   {m.imageUri ? (
@@ -380,7 +477,15 @@ export function MessageThreadScreen() {
                       {m.at}
                     </Text>
                     {m.mine ? (
-                      m.readAt ? (
+                      m.failed ? (
+                        <TriangleAlert size={13} color="#ffffff" accessibilityLabel="Not sent" />
+                      ) : m.pending ? (
+                        <Clock
+                          size={13}
+                          color="rgba(255,255,255,0.75)"
+                          accessibilityLabel="Sending"
+                        />
+                      ) : m.readAt ? (
                         <CheckCheck size={13} color="#ffffff" accessibilityLabel="Read" />
                       ) : (
                         <Check
@@ -391,9 +496,52 @@ export function MessageThreadScreen() {
                       )
                     ) : null}
                   </View>
+
+                  {/* A refused send stays put with the two ways out, rather
+                      than disappearing and taking the text with it. */}
+                  {m.failed ? (
+                    <View style={styles.failedActions}>
+                      <Pressable
+                        onPress={() => chat.retry(m.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Retry sending"
+                        style={styles.failedBtn}
+                      >
+                        <RotateCcw size={12} color="#ffffff" />
+                        <Text style={styles.failedBtnText}>Retry</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => chat.discard(m.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Discard message"
+                        style={styles.failedBtn}
+                      >
+                        <X size={12} color="#ffffff" />
+                        <Text style={styles.failedBtnText}>Discard</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </View>
               </View>
-            ))}
+              ),
+            )}
+
+            {/* Live typing indicator — new; the REST thread had no way to know. */}
+            {chat.counterpartyTyping ? (
+              <View style={[styles.bubbleRow, styles.theirRow]}>
+                <View
+                  style={[
+                    styles.bubble,
+                    styles.theirBubble,
+                    { backgroundColor: theme.card, borderColor: theme.cardBorder },
+                  ]}
+                >
+                  <Text style={[styles.typingText, { color: theme.textTertiary }]}>
+                    @{username} is typing…
+                  </Text>
+                </View>
+              </View>
+            ) : null}
           </ScrollView>
 
           {attachError ? (
@@ -430,7 +578,11 @@ export function MessageThreadScreen() {
 
             <TextInput
               value={draft}
-              onChangeText={setDraft}
+              onChangeText={(text) => {
+                setDraft(text);
+                // Throttled inside the hook, with a trailing "stopped typing".
+                chat.notifyTyping();
+              }}
               placeholder={`Message @${username}...`}
               placeholderTextColor={theme.textTertiary}
               style={[
@@ -557,6 +709,34 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   bubbleTime: { fontSize: 9.5, fontFamily: Fonts.sans[500] },
+
+  // System notices: centred, full-width row so the chip can sit in the middle
+  // regardless of which account the server recorded as the sender.
+  systemRow: { alignItems: 'center', gap: 3, paddingVertical: Spacing.one },
+  systemChip: {
+    maxWidth: '85%',
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    alignItems: 'center',
+    gap: 3,
+  },
+  systemText: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: Fonts.sans[500],
+    textAlign: 'center',
+  },
+  systemLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  systemLinkText: { fontSize: 10.5, fontFamily: Fonts.sans[700] },
+  systemTime: { fontSize: 9.5, fontFamily: Fonts.sans[400] },
+
+  failedActions: { flexDirection: 'row', gap: Spacing.two, marginTop: 4 },
+  failedBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  failedBtnText: { fontSize: 10.5, fontFamily: Fonts.sans[700], color: '#ffffff' },
+
+  typingText: { fontSize: 11.5, fontFamily: Fonts.sans[500], fontStyle: 'italic' },
 
   attachError: {
     marginHorizontal: Spacing.four,

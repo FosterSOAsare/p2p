@@ -3,7 +3,6 @@ import { Image } from 'expo-image';
 import {
   ActivityIndicator,
   Dimensions,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +11,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -346,6 +346,9 @@ export function ProductDetailScreen() {
               ]}
             >
               <Store size={18} color={theme.background} />
+              {/* The web spells this "This is your listing — Manage in
+                  Listings". That sentence needs two lines on a phone, so the
+                  button keeps the short label. */}
               <Text style={[styles.primaryBtnText, { color: theme.background }]}>
                 Manage in Listings
               </Text>
@@ -401,7 +404,7 @@ export function ProductDetailScreen() {
                   ]}
                 >
                   <MessageCircle size={15} color={theme.text} />
-                  <Text style={[styles.secondaryText, { color: theme.text }]}>Message</Text>
+                  <Text style={[styles.secondaryText, { color: theme.text }]}>Message Vendor</Text>
                 </Pressable>
 
                 <Pressable
@@ -466,35 +469,41 @@ export function ProductDetailScreen() {
             </View>
           </View>
 
-          {/* Report / block */}
-          <View style={[styles.reportRow, { borderTopColor: theme.border }]}>
-            <Pressable
-              onPress={() => setReportOpen((v) => !v)}
-              // `product.reported` is the server's answer, so it survives a
-              // reload and can't be faked by local state as it used to be.
-              disabled={product.reported}
-              hitSlop={8}
-              style={styles.reportBtn}
-            >
-              <Flag size={13} color={product.reported ? '#059669' : theme.textTertiary} />
-              <Text
-                style={[
-                  styles.reportText,
-                  { color: product.reported ? '#059669' : theme.textTertiary },
-                ]}
+          {/* Report / block — neither means anything on your own listing, so
+              the whole row goes for the owner, exactly as the web does it.
+              This screen is where "View public page" lands a seller, so
+              without the gate they were offered the chance to report
+              themselves and block their own store. */}
+          {!isOwnListing ? (
+            <View style={[styles.reportRow, { borderTopColor: theme.border }]}>
+              <Pressable
+                onPress={() => setReportOpen((v) => !v)}
+                // `product.reported` is the server's answer, so it survives a
+                // reload and can't be faked by local state as it used to be.
+                disabled={product.reported}
+                hitSlop={8}
+                style={styles.reportBtn}
               >
-                {product.reported ? 'Listing Reported' : 'Report Listing'}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.push(`/seller/${product.vendor.username}`)}
-              hitSlop={8}
-              style={styles.reportBtn}
-            >
-              <UserX size={13} color={theme.textTertiary} />
-              <Text style={[styles.reportText, { color: theme.textTertiary }]}>Block Vendor</Text>
-            </Pressable>
-          </View>
+                <Flag size={13} color={product.reported ? '#059669' : theme.textTertiary} />
+                <Text
+                  style={[
+                    styles.reportText,
+                    { color: product.reported ? '#059669' : theme.textTertiary },
+                  ]}
+                >
+                  {product.reported ? 'Listing Reported' : 'Report Listing'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.push(`/seller/${product.vendor.username}`)}
+                hitSlop={8}
+                style={styles.reportBtn}
+              >
+                <UserX size={13} color={theme.textTertiary} />
+                <Text style={[styles.reportText, { color: theme.textTertiary }]}>Block Vendor</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           {/**
            * The report form, expanded in place.
@@ -503,7 +512,7 @@ export function ProductDetailScreen() {
            * — which is what the old button pretended to be, flipping its own
            * label and filing nothing.
            */}
-          {reportOpen && !product.reported ? (
+          {!isOwnListing && reportOpen && !product.reported ? (
             <View style={[styles.reportForm, { borderColor: theme.border }]}>
               <Text style={[styles.reportFormHead, { color: theme.textSecondary }]}>
                 Why are you reporting this listing?

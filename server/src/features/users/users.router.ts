@@ -6,6 +6,21 @@ import * as usersValidation from "./users.validation";
 
 export const usersRouter = Router();
 
+/**
+ * Counterparty autosuggest for the escrow form.
+ *
+ * Registered before `/:username` or the param route would swallow it — a search
+ * would be read as a request for the profile of a user called "search". Carries
+ * its own `auth` because it sits above the gate below: who you are decides what
+ * comes back (you are excluded from your own results).
+ */
+usersRouter.get(
+  "/search",
+  auth,
+  validate(usersValidation.counterpartySearch),
+  usersController.searchCounterparties,
+);
+
 // Public seller profile — registered BEFORE the auth gate.
 // ("me" can never collide: usernames are 3+ chars and this only matches GET.)
 usersRouter.get("/:username", validate(usersValidation.usernameParam), usersController.getPublicProfile);

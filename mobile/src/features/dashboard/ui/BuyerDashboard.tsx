@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Image } from 'expo-image';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { useRouter } from 'expo-router';
 import {
   AlertTriangle,
@@ -18,7 +19,7 @@ import {
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useSaved } from '@/context/SavedContext';
-import { type User } from '@/constants/mockData';
+import { type User } from '@/constants/appTypes';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { useDashboard } from '../data/dashboardApi';
 import { useReleaseDeal } from '@/features/escrow/data/dealsApi';

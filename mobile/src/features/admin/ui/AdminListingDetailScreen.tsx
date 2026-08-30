@@ -232,7 +232,7 @@ export function AdminListingDetailScreen() {
               <View style={styles.titleRow}>
                 <View style={styles.sectionHead}>
                   <Gavel size={14} color={theme.textSecondary} />
-                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Seller's appeal</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Seller&apos;s appeal</Text>
                 </View>
                 <StatusPill
                   label={listing.dispute.status}

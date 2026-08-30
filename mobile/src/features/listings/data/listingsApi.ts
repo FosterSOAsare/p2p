@@ -1,5 +1,4 @@
 import {
-  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -429,10 +428,35 @@ export function useSubmitListingDispute() {
   });
 }
 
+/**
+ * Delete a listing, taking the row off screen immediately.
+ *
+ * Optimistic because the confirmation dialog has already been through, and the
+ * only thing left is a round trip the seller has no reason to watch — the row
+ * used to sit there for the best part of a second after they confirmed, looking
+ * like the delete hadn't registered. A refusal puts it back and the screen shows
+ * why.
+ */
 export function useDeleteListing() {
+  const qc = useQueryClient();
   const invalidate = useInvalidateListings();
   return useMutation({
     mutationFn: (id: string) => api<void>(`/api/listings/${id}`, { method: 'DELETE' }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: listingKeys.mine() });
+      const previous = qc.getQueryData<MyListingsResponse>(listingKeys.mine());
+      if (previous) {
+        qc.setQueryData<MyListingsResponse>(listingKeys.mine(), {
+          ...previous,
+          listings: previous.listings.filter((l) => l.id !== id),
+          total: Math.max(0, previous.total - 1),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) qc.setQueryData(listingKeys.mine(), context.previous);
+    },
     onSuccess: invalidate,
   });
 }

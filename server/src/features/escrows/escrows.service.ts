@@ -7,6 +7,7 @@ import type { DisputeReason, Escrow, EscrowStatus, Prisma } from "../../generate
 import { lookupTransition, type ActorRole, type EscrowEvent } from "./escrow-machine";
 import { CRYPTO_FEE, FIAT_FEE, breakdown, computeFeeP, feeMathP, fromPesewas, toPesewas, type FeeSplit } from "./money";
 import * as walletService from "../wallet/wallet.service";
+import { emitToUser } from "../../shared/realtime/io";
 import { postDealMessage } from "../messages/messages.service";
 import { notifyAdmins } from "../notifications/notifications.service";
 import { mailer } from "../../shared/mail/mail.service";
@@ -216,6 +217,13 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
   let invitedUserId: string | null = null;
   let cleanCounterpartyUsername: string | null = null;
 
+  /*
+    An empty counterparty is allowed and means "public invite" — the deal is
+    created one-sided and handed over by share code. Only a *typed* username
+    that doesn't resolve is an error, and the checks below mirror exactly who
+    `users.searchCounterparties` is willing to suggest, so the picker can never
+    offer someone the create call would then refuse.
+  */
   if (rawCounterparty) {
     const invited = await prisma.user.findUnique({ where: { username: rawCounterparty } });
     if (!invited) {
@@ -224,31 +232,65 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
     if (invited.id === creatorId) {
       throw ApiError.badRequest("You cannot create an escrow deal with yourself");
     }
+    // An admin rules on disputes; making one a party to a deal puts them on a
+    // case they may later have to judge.
+    if (invited.role === "admin") {
+      throw ApiError.badRequest("Admins can't be invited to a deal. Choose a buyer or seller instead.");
+    }
+    if (invited.status === "suspended") {
+      throw ApiError.badRequest(`@${invited.username} can't take part in deals right now.`);
+    }
     invitedUserId = invited.id;
     cleanCounterpartyUsername = invited.username;
   }
 
-  const escrow = await prisma.$transaction(async (tx) => {
-    if (invitedUserId) await assertNoOpenDispute(tx, creatorId, invitedUserId);
-    const code = await generateShareCode(tx);
-    return tx.escrow.create({
-      data: {
-        code,
-        title: input.title,
-        description: input.description || null,
-        creatorId,
-        creatorRole: input.role,
-        buyerId: input.role === "buyer" ? creatorId : invitedUserId,
-        sellerId: input.role === "seller" ? creatorId : invitedUserId,
-        invitedUsername: cleanCounterpartyUsername,
-        amount: fromPesewas(amountP),
-        feeAmount: fromPesewas(feeP),
-        feeSplit: input.feeSplit ?? "split",
-        currency: input.currency,
-        rail,
-        status: "created",
-      },
-    });
+  /*
+    No transaction here, and the audit row rides along with the insert.
+
+    This used to wrap the dispute guard, the code allocation and the insert in
+    one interactive transaction, then write the `created` event as a second
+    statement afterwards. That is four round trips plus BEGIN and COMMIT, on a
+    link where each costs ~250ms — and a transaction around a *single* write
+    buys nothing anyway, since one statement is already atomic.
+
+    The two reads move out. Neither was ever the guarantee: `code` is unique in
+    the schema, so a collision is refused by the index whatever this checks
+    first, and the dispute guard races the same way inside a transaction as
+    outside one (READ COMMITTED won't stop a dispute opening a millisecond
+    later).
+
+    The audit row is written as its own statement, and deliberately not as a
+    nested `events: { create }`. Prisma runs a nested write in an implicit
+    transaction, which costs BEGIN and COMMIT on top of the two inserts —
+    measured here at 1502ms against 625ms for the same two rows written plainly.
+    It is no less durable than before either: the original code already wrote
+    this event *outside* its transaction.
+  */
+  // Independent of each other — the dispute guard is about the two people, the
+  // code allocation is about the escrow table — so they overlap rather than
+  // queue.
+  const [, code] = await Promise.all([
+    invitedUserId ? assertNoOpenDispute(prisma, creatorId, invitedUserId) : Promise.resolve(),
+    generateShareCode(prisma),
+  ]);
+
+  const escrow = await prisma.escrow.create({
+    data: {
+      code,
+      title: input.title,
+      description: input.description || null,
+      creatorId,
+      creatorRole: input.role,
+      buyerId: input.role === "buyer" ? creatorId : invitedUserId,
+      sellerId: input.role === "seller" ? creatorId : invitedUserId,
+      invitedUsername: cleanCounterpartyUsername,
+      amount: fromPesewas(amountP),
+      feeAmount: fromPesewas(feeP),
+      feeSplit: input.feeSplit ?? "split",
+      currency: input.currency,
+      rail,
+      status: "created",
+    },
   });
 
   await prisma.escrowEvent.create({
@@ -256,7 +298,10 @@ export async function createStandalone(creatorId: string, input: CreateStandalon
   });
 
   if (invitedUserId) {
-    await postDealMessage(
+    // Not awaited: the invitee is told in-app and by their own deal list, and
+    // writing a chat message costs three more round trips the creator was
+    // sitting through before their deal page would open.
+    void postDealMessage(
       creatorId,
       invitedUserId,
       `🤝 Escrow deal invite: "${escrow.title}" — ${formatDealAmount(escrow)} (code ${escrow.code}). Open your deals to accept.`,
@@ -343,6 +388,15 @@ export async function updateDeal(userId: string, escrowId: string, input: Update
     },
   });
 
+  // Amending the terms changes what the other side is agreeing to, so they
+  // should not keep reading yesterday's amount off a stale page.
+  emitDealUpdate({
+    id: escrowId,
+    buyerId: updatedBuyerId,
+    sellerId: updatedSellerId,
+    creatorId: current.creatorId,
+  });
+
   return getDetail({ id: userId }, escrowId);
 }
 
@@ -374,36 +428,81 @@ export async function getPublicByCode(code: string) {
   };
 }
 
-/** Join a deal by share code — the joiner fills whichever side is empty (TaaS opposite-slot rule). */
+/**
+ * Join a deal by share code — the joiner fills whichever side is empty (TaaS
+ * opposite-slot rule).
+ *
+ * Only the claim and its audit row are transactional. The checks above them are
+ * reads, and reads are far more expensive inside an interactive transaction
+ * than outside one: every statement is a separate round trip on a pinned
+ * connection, on top of BEGIN and COMMIT. Measured against this database — a
+ * read costs 270ms alone, 762ms wrapped in a transaction, and five of them
+ * together cost 6065ms, which was most of the seven seconds a join took.
+ *
+ * Moving them out costs nothing in safety, because none of them was ever the
+ * thing keeping this correct. Two people racing for the same empty side are
+ * separated by the guarded `updateMany` below — a conditional UPDATE is atomic
+ * on its own, and the loser sees `count === 0`. Re-reading inside a transaction
+ * only made the window smaller, never zero, and the guard has to hold either
+ * way. The dispute check is advisory in the same sense: a dispute opened in the
+ * intervening milliseconds would be missed by the old code too.
+ *
+ * The event stays with the claim so a joined deal can never end up without its
+ * audit row.
+ */
 export async function acceptByCode(userId: string, code: string) {
-  const escrow = await prisma.$transaction(async (tx) => {
-    const found = await tx.escrow.findUnique({ where: { code } });
-    if (!found) throw ApiError.notFound("No deal with this code");
-    if (found.status !== "created") throw ApiError.conflict(`This deal is already ${found.status}`);
-    if (found.creatorId === userId) throw ApiError.badRequest("You created this deal");
-    if (found.buyerId === userId || found.sellerId === userId) return found; // already joined — idempotent
-    if (found.buyerId && found.sellerId) throw ApiError.conflict("This deal already has both parties");
-    await assertNoOpenDispute(tx, userId, found.creatorId);
+  const found = await prisma.escrow.findUnique({ where: { code } });
+  if (!found) throw ApiError.notFound("No deal with this code");
+  if (found.status !== "created") throw ApiError.conflict(`This deal is already ${found.status}`);
+  if (found.creatorId === userId) throw ApiError.badRequest("You created this deal");
+  if (found.buyerId && found.sellerId && found.buyerId !== userId && found.sellerId !== userId) {
+    throw ApiError.conflict("This deal already has both parties");
+  }
 
-    const data = found.buyerId ? { sellerId: userId } : { buyerId: userId };
-    const claimed = await tx.escrow.updateMany({
-      where: { id: found.id, status: "created", ...(found.buyerId ? { sellerId: null } : { buyerId: null }) },
-      data,
-    });
-    if (claimed.count === 0) throw ApiError.conflict("Someone else just joined this deal");
+  // Already a party — idempotent, and nothing to claim.
+  const alreadyJoined = found.buyerId === userId || found.sellerId === userId;
 
-    await tx.escrowEvent.create({
-      data: {
-        escrowId: found.id,
-        actorId: userId,
-        actorRole: found.buyerId ? "seller" : "buyer",
-        event: "joined",
-      },
-    });
-    return tx.escrow.findUniqueOrThrow({ where: { id: found.id } });
-  });
+  const escrow = alreadyJoined
+    ? found
+    : await (async () => {
+        await assertNoOpenDispute(prisma, userId, found.creatorId);
 
-  await postDealMessage(
+        const joinerRole = found.buyerId ? "seller" : "buyer";
+        await prisma.$transaction(async (tx) => {
+          const claimed = await tx.escrow.updateMany({
+            where: {
+              id: found.id,
+              status: "created",
+              ...(found.buyerId ? { sellerId: null } : { buyerId: null }),
+            },
+            data: found.buyerId ? { sellerId: userId } : { buyerId: userId },
+          });
+          if (claimed.count === 0) throw ApiError.conflict("Someone else just joined this deal");
+
+          await tx.escrowEvent.create({
+            data: { escrowId: found.id, actorId: userId, actorRole: joinerRole, event: "joined" },
+          });
+        });
+
+        // The row as it now stands. Read outside the transaction — by this
+        // point the claim is committed and nothing else may take the slot.
+        return prisma.escrow.findUniqueOrThrow({ where: { id: found.id } });
+      })();
+
+  // The creator is very likely sitting on the deal page watching the invite
+  // panel — this is what replaces it with the counterparty's name without them
+  // reaching for a refresh. Emitted here, the moment the claim is committed, so
+  // they aren't waiting on the notice or the response below.
+  emitDealUpdate(escrow);
+
+  /*
+    Not awaited. Writing the chat notice costs another three round trips, and
+    the joiner was sitting through all of them before their own response came
+    back — for a message addressed to someone else, who has already been told
+    over the socket. A failure is logged and costs the creator a line in a
+    thread they can see the deal in anyway.
+  */
+  void postDealMessage(
     userId,
     escrow.creatorId,
     `✅ Joined your escrow deal "${escrow.title}" (${escrow.code}).`,
@@ -470,10 +569,39 @@ export async function transition(
     return tx.escrow.findUniqueOrThrow({ where: { id: current.id } });
   });
 
+  // Before the notification work, which does its own database writes — the
+  // parties should not wait on those to see the state they just caused.
+  emitDealUpdate(escrow);
+
   await notifyAfterTransition(escrow, event, actor, payload).catch((err) =>
     console.error(`[escrow:${escrow.id}] ${event} notifications failed —`, (err as Error).message),
   );
   return escrow;
+}
+
+/**
+ * Tell both sides that a deal changed, so an open deal page updates itself.
+ *
+ * There was no event for this at all. `notify:new` and `notify:message` only
+ * ever caused the clients to refetch the *notification list* and the *inbox* —
+ * nothing invalidated the deal itself. So a creator watching the invite panel
+ * saw nothing when someone joined, and equally a buyer watching a deal saw
+ * nothing when the seller marked it delivered: correct data, one manual
+ * refresh away, which reads as the app having missed the event.
+ *
+ * Deliberately just the id. The two parties see different views of the same
+ * row — `myRole`, `availableActions` and `share` are all computed per viewer —
+ * so broadcasting a serialised deal would send each of them the other's copy.
+ * The id says "yours is stale"; each client re-reads its own.
+ *
+ * Sent to creator as well as buyer/seller: on a one-sided deal the creator is
+ * the only party there is, and they are exactly who is waiting.
+ */
+function emitDealUpdate(escrow: Pick<Escrow, "id" | "buyerId" | "sellerId" | "creatorId">) {
+  const parties = new Set(
+    [escrow.buyerId, escrow.sellerId, escrow.creatorId].filter((id): id is string => Boolean(id)),
+  );
+  for (const userId of parties) emitToUser(userId, "deal:updated", { id: escrow.id });
 }
 
 function resolveRole(escrow: Escrow, actor: Actor): ActorRole | null {

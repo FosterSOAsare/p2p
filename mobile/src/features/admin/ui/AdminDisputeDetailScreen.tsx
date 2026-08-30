@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Image, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Gavel, MessageSquare, Paperclip } from '@/components/icons';
 
@@ -11,6 +12,7 @@ import {
   type DisputeMessage,
 } from '../data/adminDisputesApi';
 import { apiErrorMessage } from '@/features/shared/data/api';
+import { useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import {
   AdminButton,
   AdminCard,
@@ -59,6 +61,11 @@ export function AdminDisputeDetailScreen() {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [buyerRefund, setBuyerRefund] = useState('');
   const [note, setNote] = useState('');
+
+  // The refund amount sits well down the ruling form, where the keyboard used
+  // to cover it. AdminScreen scrolls to whatever asks to be visible on focus.
+  const ensureVisible = useEnsureVisible();
+  const refundRow = useRef<View>(null);
 
   const dispute = query.data;
   const escrow = dispute?.escrow;
@@ -191,13 +198,14 @@ export function AdminDisputeDetailScreen() {
               })}
 
               {outcome === 'split' ? (
-                <View style={styles.field}>
+                <View style={styles.field} ref={refundRow}>
                   <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
                     Refund to buyer (max {money(fundingTotal, escrow.currency)})
                   </Text>
                   <TextInput
                     value={buyerRefund}
                     onChangeText={setBuyerRefund}
+                    onFocus={() => ensureVisible(refundRow.current)}
                     keyboardType="decimal-pad"
                     editable={!resolve.isPending}
                     placeholder="0.00"

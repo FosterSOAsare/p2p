@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -10,6 +11,7 @@ import {
   Package,
   Scale,
   ShieldCheck,
+  Sparkles,
   Wallet,
 } from '@/components/icons';
 
@@ -49,8 +51,23 @@ const CATEGORY_STYLE: Record<
   dispute: { Icon: Scale, bg: '#ffe4e6', fg: '#e11d48' },
   kyc: { Icon: ShieldCheck, bg: '#d1fae5', fg: '#047857' },
   wallet: { Icon: Wallet, bg: '#e0f2fe', fg: '#0369a1' },
+  // Purple, as on the web's panel.
+  promotion: { Icon: Sparkles, bg: '#f3e8ff', fg: '#9333ea' },
   system: { Icon: Bell, bg: '#e5e7eb', fg: '#4b5563' },
 };
+
+/**
+ * Never let an unrecognised category take the screen down.
+ *
+ * This map used to be indexed and destructured straight away, so a category the
+ * client didn't know about — `promotion`, which the server had been sending all
+ * along — read as `undefined` and threw on destructuring, blanking the whole
+ * list rather than one row. Falling back to `system` keeps the screen up if the
+ * server ever adds another.
+ */
+function categoryStyle(category: NotificationCategory) {
+  return CATEGORY_STYLE[category] ?? CATEGORY_STYLE.system;
+}
 
 /**
  * The server writes `link` for the web's routes, and the two apps agree on all
@@ -126,7 +143,7 @@ export function NotificationsScreen() {
   const markAllRead = () => markAll.mutate();
 
   const renderRow = ({ item }: { item: AppNotification }) => {
-    const { Icon, bg, fg } = CATEGORY_STYLE[item.category];
+    const { Icon, bg, fg } = categoryStyle(item.category);
     const isUnread = item.readAt === null;
 
     return (

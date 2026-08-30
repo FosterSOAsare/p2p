@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useRef,
+  type ReactElement,
   type ReactNode,
 } from 'react';
 import {
@@ -13,6 +14,7 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type RefreshControlProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -53,6 +55,9 @@ export interface KeyboardAwareScrollProps {
   contentContainerStyle?: StyleProp<ViewStyle>;
   /** Layout used only while the keyboard is closed (e.g. vertical centring). */
   restingContentStyle?: StyleProp<ViewStyle>;
+  /** Pull-to-refresh, for screens that own a refreshable list. */
+  refreshControl?: ReactElement<RefreshControlProps>;
+  showsVerticalScrollIndicator?: boolean;
 }
 
 export function KeyboardAwareScroll({
@@ -60,6 +65,8 @@ export function KeyboardAwareScroll({
   style,
   contentContainerStyle,
   restingContentStyle,
+  refreshControl,
+  showsVerticalScrollIndicator = false,
 }: KeyboardAwareScrollProps) {
   const scrollRef = useRef<ScrollView>(null);
   const offset = useRef(0);
@@ -70,9 +77,21 @@ export function KeyboardAwareScroll({
   const heightRef = useRef(0);
   heightRef.current = keyboardHeight;
 
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+  /*
+    The only consumer of this is `ensureVisible`, which runs once on focus and
+    reads whatever the last value was. At `scrollEventThrottle={16}` this fired
+    a JS callback on every frame of every scroll — 60 a second, on every screen
+    this wraps, to keep a number that is read at most once per keyboard open.
+    That is a real cost now the admin console, the seller home and the deal
+    screen all scroll through here.
+
+    200ms is plenty: the offset only needs to be roughly right when a field is
+    tapped, and a tap can't follow a fling closely enough for the difference to
+    show. `useCallback` because this is a prop on a scrolling list.
+  */
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     offset.current = e.nativeEvent.contentOffset.y;
-  };
+  }, []);
 
   const ensureVisible = useCallback<EnsureVisible>((node) => {
     if (!node) return;
@@ -108,7 +127,7 @@ export function KeyboardAwareScroll({
         <ScrollView
           ref={scrollRef}
           onScroll={onScroll}
-          scrollEventThrottle={16}
+          scrollEventThrottle={200}
           contentContainerStyle={[
             contentContainerStyle,
             // Centring is only right when the keyboard is down; with it up we
@@ -117,7 +136,8 @@ export function KeyboardAwareScroll({
           ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+          refreshControl={refreshControl}
         >
           {children}
         </ScrollView>

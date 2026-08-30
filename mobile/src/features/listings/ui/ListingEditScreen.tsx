@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Image } from 'expo-image';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, ExternalLink, Layers, Package, Star, Tag, Trash2 } from '@/components/icons';
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { useTheme, useTones } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
@@ -55,6 +56,7 @@ function statusLabel(status: ListingStatus) {
 
 export function ListingEditScreen() {
   const theme = useTheme();
+  const tones = useTones();
   const router = useRouter();
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -233,10 +235,13 @@ export function ListingEditScreen() {
                 accessibilityLabel="Delete listing"
                 style={({ pressed }) => [
                   styles.iconBtn,
-                  { borderColor: '#fecaca', backgroundColor: pressed ? '#fef2f2' : 'transparent' },
+                  {
+                    borderColor: tones.danger.border,
+                    backgroundColor: pressed ? tones.danger.surface : 'transparent',
+                  },
                 ]}
               >
-                <Trash2 size={14} color="#e11d48" />
+                <Trash2 size={14} color={tones.danger.icon} />
               </Pressable>
             </View>
           </View>
@@ -259,8 +264,13 @@ export function ListingEditScreen() {
             like a successful one that hadn't navigated. The web shows the same
             box in the same spot, between the header and the form. */}
         {saveError ? (
-          <View style={[styles.apiError, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
-            <Text style={styles.apiErrorText}>{saveError}</Text>
+          <View
+            style={[
+              styles.apiError,
+              { backgroundColor: tones.danger.surface, borderColor: tones.danger.border },
+            ]}
+          >
+            <Text style={[styles.apiErrorText, { color: tones.danger.text }]}>{saveError}</Text>
           </View>
         ) : null}
 
@@ -458,7 +468,7 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 14, fontFamily: Fonts.sans[700] },
 
   apiError: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },
-  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600], color: '#b91c1c' },
+  apiErrorText: { fontSize: 12, lineHeight: 17, fontFamily: Fonts.sans[600] },
 
   lockedWrap: { gap: Spacing.three },
   lockedNotice: { borderWidth: 1, borderRadius: Radius.md, padding: Spacing.three },

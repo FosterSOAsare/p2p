@@ -78,8 +78,9 @@ const styles = StyleSheet.create({
     borderColor: '#d1d5db',
   },
   toggleButtonActive: {
-    backgroundColor: '#0f766e',
-    borderColor: '#0f766e',
+    // emerald-600, as on the web. Was teal-700, which the web never uses.
+    backgroundColor: '#059669',
+    borderColor: '#059669',
   },
   toggleText: {
     color: '#374151',

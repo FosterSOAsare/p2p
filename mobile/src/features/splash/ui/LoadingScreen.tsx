@@ -10,15 +10,17 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { Handshake } from '@/components/icons';
+import { LogoMark } from '@/components/brand/logo-mark';
 
 import { Fonts, Primary } from '@/constants/theme';
 
 /**
  * Loading screen — the first thing the app shows.
  *
- * Mirrors the web app's brand mark (Handshake icon in a green rounded square)
- * on the dark canvas the rest of the app boots on. Purely presentational for
+ * Shows the web app's actual brand mark — the same artwork, ported path for
+ * path in `@/components/brand/logo-mark` — on the dark canvas the rest of the
+ * app boots on. The web footer sits the same mark on an even darker slate-950,
+ * so it reads fine here without a plate behind it. Purely presentational for
  * now: it animates in, holds, then hands off to /login. When auth is wired,
  * the hand-off becomes "wait for the session check, then route accordingly".
  *
@@ -123,9 +125,7 @@ export function LoadingScreen() {
     <View style={styles.container}>
       <View style={styles.center}>
         <Animated.View style={[styles.logoWrap, logoStyle]}>
-          <View style={styles.logo}>
-            <Handshake size={38} color="#ffffff" strokeWidth={2.2} />
-          </View>
+          <LogoMark height={96} />
         </Animated.View>
 
         <Animated.View style={[styles.copy, textStyle]}>
@@ -156,26 +156,13 @@ const styles = StyleSheet.create({
   logoWrap: {
     alignItems: 'center',
   },
-  logo: {
-    height: 88,
-    width: 88,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Primary[600],
-    // Green bloom under the mark — the "trust" cue from the web hero.
-    shadowColor: Primary[500],
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.55,
-    shadowRadius: 26,
-    elevation: 14,
-  },
   copy: {
-    marginTop: 28,
+    marginTop: 24,
     alignItems: 'center',
   },
-  // Brand heading — the web's `font-display` (Space Grotesk), whose heaviest
-  // cut is 700, so this drops from the old 800.
+  // The wordmark under the logo. `LogoMark` is the symbol only — it carries no
+  // text — so without this the splash shows the mark and a tagline with the
+  // product's name nowhere on it.
   title: {
     fontSize: 22,
     fontFamily: Fonts.display[700],
@@ -183,7 +170,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   subtitle: {
-    marginTop: 8,
     fontSize: 14,
     lineHeight: 22,
     fontFamily: Fonts.sans[400],

@@ -1,15 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import {
   AlertCircle,
   AlertTriangle,
@@ -41,6 +36,12 @@ import {
 import { useWallet } from '@/features/wallet/data/walletApi';
 import { useTopUp, type PayMethod } from '@/features/wallet/data/paymentsApi';
 import { PaymentSheet } from '@/features/wallet/ui/PaymentSheet';
+import {
+  KeyboardAwareScroll,
+  useEnsureVisible,
+} from '@/features/shared/ui/KeyboardAwareScroll';
+import { useCheckCryptoDeposit, useCryptoDeposit, useStartCryptoDeposit } from '../data/cryptoApi';
+import { CryptoDepositPanel } from './CryptoDepositPanel';
 import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
 
 /**
@@ -234,6 +235,30 @@ export function EscrowDetailScreen() {
   const [fundError, setFundError] = useState<string | null>(null);
   /** Funding isn't idempotent either — see the same guard in CheckoutScreen. */
   const funding = useRef(false);
+
+  /*
+    Crypto rail. The deposit query is only meaningful for a TRX deal, so it
+    stays disabled everywhere else rather than 400-ing on every fiat deal.
+    Read off `dealQuery.data` rather than the memoised `deal` because these are
+    hooks — they run before the loading and not-found returns below.
+  */
+  const isCryptoDeal = dealQuery.data?.rail === 'crypto';
+  const depositQuery = useCryptoDeposit(id ?? '', Boolean(isCryptoDeal));
+  const startCrypto = useStartCryptoDeposit();
+  const checkCrypto = useCheckCryptoDeposit();
+  /** Sending the buyer out to the hosted invoice and waiting for them back. */
+  const [redirecting, setRedirecting] = useState(false);
+
+  /*
+    The edit form expands inline rather than in a popup, so the fields sit well
+    down a long page and the keyboard opens straight over them. Focusing one
+    asks the scroll view to lift it clear — the same wiring the auth, listing
+    and wallet forms already use.
+  */
+  const ensureVisible = useEnsureVisible();
+  const editTitleRow = useRef<View>(null);
+  const editAmountRow = useRef<View>(null);
+  const editDescRow = useRef<View>(null);
   const disputeDeal = useDisputeDeal();
   const updateEscrow = useUpdateEscrow();
 
@@ -330,7 +355,8 @@ export function EscrowDetailScreen() {
     cancelDeal.isPending ||
     disputeDeal.isPending ||
     fundDeal.isPending ||
-    topUp.isPending;
+    topUp.isPending ||
+    redirecting;
 
   const actionError =
     deliverDeal.error ?? releaseDeal.error ?? cancelDeal.error ?? disputeDeal.error;
@@ -383,9 +409,57 @@ export function EscrowDetailScreen() {
     }
   };
 
+  /*
+    TRX deals never touch the wallet — the buyer pays the provider directly and
+    the server funds the deal when the deposit confirms. Opening the invoice is
+    re-entrant, so a buyer who comes back gets the same one rather than a second.
+
+    `openAuthSessionAsync`, the call the fiat top-up already uses, because the
+    server honours a `returnUrl` — so the redirect after paying lands back in the
+    app rather than on the web origin a phone never sees. That matters more than
+    it looks: `NP_id` on that redirect is the only place NOWPayments discloses
+    the payment id before an IPN has landed, and a dev server no webhook can
+    reach has nothing else to go on. Without it the buyer pays and the deal sits
+    on "waiting" indefinitely.
+
+    A dismissed sheet still checks, because the buyer may well have paid and then
+    swiped the provider's page away rather than tapping through it. A TRX
+    transfer rarely confirms in the seconds that takes either way, so a
+    still-pending answer here is the norm, not a failure — the panel polls on
+    from whatever this returns.
+  */
+  const payWithCrypto = async () => {
+    if (redirecting) return;
+    setRedirecting(true);
+    setFundError(null);
+    try {
+      // Resolved rather than hard-coded: a dev client, Expo Go and a store build
+      // all carry different schemes.
+      const returnUrl = Linking.createURL(`/escrow/${deal.id}/crypto/callback`);
+      const deposit = await startCrypto.mutateAsync({ escrowId: deal.id, returnUrl });
+      setFundOpen(false);
+      if (!deposit.invoiceUrl) return;
+
+      const result = await WebBrowser.openAuthSessionAsync(deposit.invoiceUrl, returnUrl);
+
+      // `NP_id` identifies the payment even when no IPN has landed yet. Absent
+      // on a dismissed sheet, where the server falls back to the id on file.
+      const paymentId =
+        result.type === 'success'
+          ? (Linking.parse(result.url).queryParams?.NP_id as string | undefined)
+          : undefined;
+
+      await checkCrypto.mutateAsync({ escrowId: deal.id, paymentId }).catch(() => null);
+    } catch (err) {
+      setFundError(apiErrorMessage(err));
+    } finally {
+      setRedirecting(false);
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScroll contentContainerStyle={styles.scroll}>
         {backButton}
 
         {/* Header */}
@@ -519,40 +593,51 @@ export function EscrowDetailScreen() {
             <View style={[styles.formBox, { borderColor: theme.border }]}>
               <Text style={[styles.formHead, { color: theme.textSecondary }]}>Edit Deal Terms</Text>
 
+              {/* The web puts the failure above the form, not beside the button. */}
+              {updateEscrow.error ? (
+                <Text style={styles.errorText}>{apiErrorMessage(updateEscrow.error)}</Text>
+              ) : null}
+
               <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Title</Text>
-              <TextInput
-                value={editTitle}
-                onChangeText={setEditTitle}
-                placeholder="What is this deal for?"
-                placeholderTextColor={theme.textTertiary}
-                style={[
-                  styles.input,
-                  {
-                    color: theme.text,
-                    backgroundColor: theme.inputBackground,
-                    borderColor: theme.inputBorder,
-                  },
-                ]}
-              />
+              <View ref={editTitleRow}>
+                <TextInput
+                  value={editTitle}
+                  onChangeText={setEditTitle}
+                  onFocus={() => ensureVisible(editTitleRow.current)}
+                  placeholder="What is this deal for?"
+                  placeholderTextColor={theme.textTertiary}
+                  style={[
+                    styles.input,
+                    {
+                      color: theme.text,
+                      backgroundColor: theme.inputBackground,
+                      borderColor: theme.inputBorder,
+                    },
+                  ]}
+                />
+              </View>
 
               <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
                 Amount ({deal.currency})
               </Text>
-              <TextInput
-                value={editAmount}
-                onChangeText={setEditAmount}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={theme.textTertiary}
-                style={[
-                  styles.input,
-                  {
-                    color: theme.text,
-                    backgroundColor: theme.inputBackground,
-                    borderColor: theme.inputBorder,
-                  },
-                ]}
-              />
+              <View ref={editAmountRow}>
+                <TextInput
+                  value={editAmount}
+                  onChangeText={setEditAmount}
+                  onFocus={() => ensureVisible(editAmountRow.current)}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={theme.textTertiary}
+                  style={[
+                    styles.input,
+                    {
+                      color: theme.text,
+                      backgroundColor: theme.inputBackground,
+                      borderColor: theme.inputBorder,
+                    },
+                  ]}
+                />
+              </View>
 
               <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Your Side</Text>
               <View style={styles.roleRow}>
@@ -562,6 +647,8 @@ export function EscrowDetailScreen() {
                     <Pressable
                       key={role}
                       onPress={() => setEditRole(role)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: on }}
                       style={[
                         styles.roleBtn,
                         {
@@ -571,10 +658,7 @@ export function EscrowDetailScreen() {
                       ]}
                     >
                       <Text
-                        style={[
-                          styles.roleText,
-                          { color: on ? theme.primary : theme.textSecondary },
-                        ]}
+                        style={[styles.roleText, { color: on ? theme.primary : theme.textSecondary }]}
                       >
                         I&apos;m the {role}
                       </Text>
@@ -584,35 +668,33 @@ export function EscrowDetailScreen() {
               </View>
 
               <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Description</Text>
-              <TextInput
-                value={editDesc}
-                onChangeText={setEditDesc}
-                placeholder="Terms, condition, delivery expectations..."
-                placeholderTextColor={theme.textTertiary}
-                multiline
-                textAlignVertical="top"
-                style={[
-                  styles.textarea,
-                  {
-                    color: theme.text,
-                    backgroundColor: theme.inputBackground,
-                    borderColor: theme.inputBorder,
-                    minHeight: 64,
-                  },
-                ]}
-              />
+              <View ref={editDescRow}>
+                <TextInput
+                  value={editDesc}
+                  onChangeText={setEditDesc}
+                  onFocus={() => ensureVisible(editDescRow.current)}
+                  placeholder="Terms, condition, delivery expectations..."
+                  placeholderTextColor={theme.textTertiary}
+                  multiline
+                  textAlignVertical="top"
+                  style={[
+                    styles.textarea,
+                    {
+                      color: theme.text,
+                      backgroundColor: theme.inputBackground,
+                      borderColor: theme.inputBorder,
+                      minHeight: 64,
+                    },
+                  ]}
+                />
+              </View>
 
-              {updateEscrow.error ? (
-                <Text style={styles.errorText}>{apiErrorMessage(updateEscrow.error)}</Text>
-              ) : null}
-
-              <View style={styles.formActions}>
-                <Pressable
-                  onPress={() => setEditOpen(false)}
-                  style={[styles.cancelBtn, { borderColor: theme.border }]}
-                >
-                  <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancel</Text>
-                </Pressable>
+              {/*
+                Button order is the web's, and deliberately not the platform
+                default: Save Terms fills the row on the left, Cancel is the
+                narrow outline button on its right.
+              */}
+              <View style={styles.editActions}>
                 <Pressable
                   onPress={() => {
                     // Same guard as the web: a blank title or a non-positive
@@ -631,12 +713,10 @@ export function EscrowDetailScreen() {
                     );
                   }}
                   disabled={updateEscrow.isPending}
-                  style={({ pressed }) => [
+                  accessibilityRole="button"
+                  style={[
                     styles.submitBtn,
-                    {
-                      backgroundColor: theme.primary,
-                      opacity: updateEscrow.isPending ? 0.6 : pressed ? 0.85 : 1,
-                    },
+                    { backgroundColor: theme.primary, opacity: updateEscrow.isPending ? 0.6 : 1 },
                   ]}
                 >
                   {updateEscrow.isPending ? (
@@ -645,6 +725,22 @@ export function EscrowDetailScreen() {
                     <Pencil size={14} color="#ffffff" />
                   )}
                   <Text style={styles.submitBtnText}>Save Terms</Text>
+                </Pressable>
+
+                {/* Outline, no fill — the web's cancel. */}
+                <Pressable
+                  onPress={() => setEditOpen(false)}
+                  disabled={updateEscrow.isPending}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.editCancel,
+                    {
+                      borderColor: theme.border,
+                      backgroundColor: pressed ? theme.backgroundSelected : 'transparent',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.editCancelText, { color: theme.text }]}>Cancel</Text>
                 </Pressable>
               </View>
             </View>
@@ -782,7 +878,27 @@ export function EscrowDetailScreen() {
             marketplace checkout, so the wallet-plus-shortfall split behaves
             identically wherever money is taken.
           */}
-          {has('FUND') ? (
+          {/* Crypto rail: once an invoice exists the panel IS the funding UI —
+              the deal moves itself when the deposit confirms, so a "Fund
+              Escrow" button on top of it would promise something it can't do. */}
+          {isCryptoDeal && depositQuery.data?.invoiceUrl ? (
+            <CryptoDepositPanel
+              deposit={depositQuery.data}
+              isChecking={checkCrypto.isPending}
+              isReopening={startCrypto.isPending || redirecting}
+              errorMessage={
+                checkCrypto.isError
+                  ? apiErrorMessage(checkCrypto.error)
+                  : startCrypto.isError
+                    ? apiErrorMessage(startCrypto.error)
+                    : null
+              }
+              onCheck={() => checkCrypto.mutate({ escrowId: deal.id })}
+              onReopen={payWithCrypto}
+            />
+          ) : null}
+
+          {has('FUND') && !(isCryptoDeal && depositQuery.data?.invoiceUrl) ? (
             <>
               <Pressable
                 onPress={() => {
@@ -861,6 +977,13 @@ export function EscrowDetailScreen() {
             </View>
           ) : null}
 
+          {/*
+            Rose-tinted, not neutral — the web's trigger is
+            `border-rose-200 bg-rose-50 text-rose-700`, which reads as
+            destructive before you tap it. Only the confirm below is solid
+            rose-600. Fixed hexes because a status colour that inverts in dark
+            mode stops signalling anything, the same call the badges make.
+          */}
           {has('CANCEL') && !cancelOpen ? (
             <Pressable
               onPress={() => setCancelOpen(true)}
@@ -868,14 +991,14 @@ export function EscrowDetailScreen() {
               style={({ pressed }) => [
                 styles.outlineBtn,
                 {
-                  backgroundColor: pressed ? theme.backgroundSelected : theme.backgroundElement,
-                  borderColor: theme.border,
+                  backgroundColor: pressed ? '#ffe4e6' : '#fff1f2',
+                  borderColor: '#fecdd3',
                   opacity: busy ? 0.5 : 1,
                 },
               ]}
             >
-              <Ban size={15} color={theme.text} />
-              <Text style={[styles.outlineBtnText, { color: theme.text }]}>
+              <Ban size={15} color="#be123c" />
+              <Text style={[styles.outlineBtnText, { color: '#be123c' }]}>
                 {cancelRefunds ? 'Cancel Order & Refund Buyer' : 'Cancel Deal'}
               </Text>
             </Pressable>
@@ -1164,7 +1287,8 @@ export function EscrowDetailScreen() {
           })}
         </View>
 
-      </ScrollView>
+      </KeyboardAwareScroll>
+
 
       <PaymentSheet
         open={fundOpen}
@@ -1172,13 +1296,14 @@ export function EscrowDetailScreen() {
         balance={walletBalance}
         rail={deal.rail === 'crypto' ? 'crypto' : 'fiat'}
         currency={deal.currency === 'TRX' ? 'TRX' : 'GHS'}
-        isPending={fundDeal.isPending || topUp.isPending}
+        isPending={fundDeal.isPending || topUp.isPending || startCrypto.isPending || redirecting}
         errorMessage={fundError}
         onClose={() => {
           if (!busy) setFundOpen(false);
         }}
         onPayFromWallet={payFromWallet}
         onPayWithProvider={payWithProvider}
+        onPayWithCrypto={payWithCrypto}
       />
     </SafeAreaView>
   );
@@ -1310,6 +1435,18 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans[400],
     outlineStyle: 'none',
   } as never,
+  /* Edit Deal Terms — inline form actions */
+  editActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  editCancel: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.four,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+  },
+  editCancelText: { fontSize: 12.5, fontFamily: Fonts.sans[600] },
+
   formActions: { flexDirection: 'row', gap: Spacing.two, marginTop: 2 },
   submitBtn: {
     flex: 1,

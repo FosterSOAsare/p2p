@@ -93,8 +93,16 @@ export function useWalletTransactions() {
 export function useWithdraw() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (amount: number) =>
-      api<{ ok: true }>('/api/wallet/withdraw', { method: 'POST', body: { amount } }),
+    /**
+     * `destination` is the Mobile Money number the payout goes to. The server
+     * requires it (`wallet.validation.ts`) and rejects the request without it,
+     * so sending only the amount meant every withdrawal failed validation.
+     */
+    mutationFn: ({ amount, destination }: { amount: number; destination: string }) =>
+      api<{ ok: true }>('/api/wallet/withdraw', {
+        method: 'POST',
+        body: { amount, destination },
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: walletKeys.all });
       // The dashboard shows the same payout figure.
