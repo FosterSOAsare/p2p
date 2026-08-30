@@ -12,6 +12,7 @@ import {
   FileText,
   WifiOff,
   ArrowRight,
+  TriangleAlert,
 } from 'lucide-react'
 import { useUploadSingleFile } from '../../upload/data/uploadApi'
 import { useChat, type ChatMessage } from '../data/useChat'
@@ -273,7 +274,13 @@ export function ChatPanel({ username, onBack }: { username: string; onBack?: () 
         )}
 
         {chat.messages.map((m) => (
-          <MessageRow key={m.id} message={m} mine={m.senderId === chat.meId} />
+          <MessageRow
+            key={m.id}
+            message={m}
+            mine={m.senderId === chat.meId}
+            onRetry={chat.retry}
+            onDiscard={chat.discard}
+          />
         ))}
 
         {chat.counterpartyTyping && (
@@ -335,7 +342,17 @@ export function ChatPanel({ username, onBack }: { username: string; onBack?: () 
 }
 
 /** One message — a system chip, a file card, or a chat bubble. */
-function MessageRow({ message, mine }: { message: ChatMessage; mine: boolean }) {
+function MessageRow({
+  message,
+  mine,
+  onRetry,
+  onDiscard,
+}: {
+  message: ChatMessage
+  mine: boolean
+  onRetry: (id: string) => void
+  onDiscard: (id: string) => void
+}) {
   // Deal lifecycle notice: centered, and a link into the deal it refers to.
   if (message.type === 'system') {
     const chipClass =
@@ -362,24 +379,61 @@ function MessageRow({ message, mine }: { message: ChatMessage; mine: boolean }) 
     )
   }
 
+  /*
+    Three delivery states, and they read differently on purpose. `pending` is
+    dimmed with a spinner — on screen, not yet the server's. `failed` turns the
+    bubble red and offers the two things worth doing with it: send it again, or
+    give up. Nothing is ever removed silently, because the composer has already
+    been cleared and this bubble holds the only copy of what was typed.
+  */
+  const { pending, failed } = message
+
   return (
-    <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
       <div
-        className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm shadow-sm ${
-          mine
-            ? 'bg-primary-600 text-white rounded-br-md'
-            : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-md'
-        }`}
+        className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm shadow-sm transition-opacity ${
+          failed
+            ? 'bg-red-700 text-white rounded-br-md'
+            : mine
+              ? 'bg-primary-600 text-white rounded-br-md'
+              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-md'
+        } ${pending ? 'opacity-65' : ''}`}
       >
         {message.attachment && <AttachmentBlock attachment={message.attachment} mine={mine} />}
         {message.body && <p className="leading-relaxed whitespace-pre-line">{message.body}</p>}
 
-        <p className={`mt-0.5 flex items-center gap-1 text-[10px] ${mine ? 'text-primary-100' : 'text-slate-400'}`}>
+        <p className={`mt-0.5 flex items-center gap-1 text-[10px] ${mine || failed ? 'text-primary-100' : 'text-slate-400'}`}>
           {formatTime(message.createdAt)}
-          {/* Read ticks only on your own messages — theirs are read by definition. */}
-          {mine && (message.readAt ? <CheckCheck size={12} /> : <Check size={12} />)}
+          {failed ? (
+            <TriangleAlert size={12} aria-label="Not sent" />
+          ) : pending ? (
+            <Loader2 size={12} className="animate-spin" aria-label="Sending" />
+          ) : (
+            /* Read ticks only on your own messages — theirs are read by definition. */
+            mine && (message.readAt ? <CheckCheck size={12} /> : <Check size={12} />)
+          )}
         </p>
       </div>
+
+      {failed && (
+        <div className="mt-1 flex items-center gap-2 text-[11px]">
+          <span className="text-red-600 dark:text-red-400">Not sent.</span>
+          <button
+            type="button"
+            onClick={() => onRetry(message.id)}
+            className="font-semibold text-primary-600 hover:underline dark:text-primary-400"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            onClick={() => onDiscard(message.id)}
+            className="font-semibold text-slate-500 hover:underline dark:text-slate-400"
+          >
+            Discard
+          </button>
+        </div>
+      )}
     </div>
   )
 }
