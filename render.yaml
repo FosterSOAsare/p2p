@@ -87,11 +87,21 @@ services:
       - key: NOWPAYMENTS_BASE_URL
         value: https://api-sandbox.nowpayments.io/v1
 
-      # Sandbox-only escape hatch: funds a crypto deal on provider status alone,
-      # ignoring the amount received. env.ts refuses to honour it unless the
-      # base URL above is a sandbox one, but it should still be off by default.
+      # Funds a crypto deal on provider status alone, ignoring the amount
+      # received. Required against the sandbox, which reports `actually_paid: 0`
+      # for every payment however it was made — without this a settled deposit
+      # credits nothing and the deal cannot fund.
+      #
+      # On by default here, and safe to be, because the guard is in code rather
+      # than in this value: `nowpaymentsTrustStatus()` requires the base URL
+      # above to be a sandbox one, so pointing this service at live keys
+      # restores the amount check by itself with nothing to remember.
+      #
+      # It was "false" first, on the reasoning that an escape hatch should be
+      # off by default. That reasoning was wrong twice over — it ignores the
+      # guard, and it broke the one flow it was protecting.
       - key: NOWPAYMENTS_TRUST_STATUS
-        value: "false"
+        value: "true"
 
       # ---- email ----
       # "simulated" logs instead of sending. Switch to "smtp" and fill the rest

@@ -284,37 +284,75 @@ async function applySnapshot(
 
   if (!settled) return updated;
 
-  // Claim the settlement. `settledAt` is the idempotency key: the IPN and the
-  // buyer's poll race routinely, and only one of them may credit the wallet.
-  // The FUND below is separately protected by the state machine's status guard,
-  // but a double credit would have no such guard — hence claiming first.
-  const claim = await prisma.cryptoEscrow.updateMany({
-    where: { id: row.id, settledAt: null },
-    data: { settledAt: new Date() },
-  });
+  /*
+    Claim the settlement and credit the deposit, together.
 
-  if (claim.count > 0 && escrow.buyerId) {
+    `settledAt` is the idempotency key: the IPN and the buyer's poll race
+    routinely, and only one of them may credit the wallet. The FUND below is
+    separately protected by the state machine's status guard, but a double
+    credit would have no such guard — hence claiming first.
+
+    Both in one transaction, and that is the whole reason there is one. Claimed
+    separately, a credit that failed left the row marked settled with no money
+    behind it — and because the claim only fires on `settledAt: null`, every
+    retry then found it already claimed, skipped the credit, and failed the FUND
+    again. A buyer who had genuinely paid could never fund the deal, and nothing
+    short of editing the row by hand would recover it. That is not theoretical:
+    it happened in production the first time a deposit settled with the sandbox
+    trust flag off, stranding deal CJXJFAUN.
+
+    The credit still lands outside the FUND transition on purpose — if the
+    transition fails, the buyer keeps a TRX balance they genuinely paid for and
+    can retry, rather than the deposit vanishing with the failed deal.
+  */
+  /*
+    Refuse to claim a settlement worth nothing.
+
+    `received` is zero when the provider reports no amount and the sandbox trust
+    flag is not in effect. Claiming anyway would burn the one-shot `settledAt`
+    on a credit of 0, and every retry afterwards would find it already claimed —
+    so a buyer who had genuinely paid could never fund the deal, whatever was
+    fixed later. Leaving it unclaimed makes the failure self-healing: correct the
+    configuration and the next poll or IPN settles it properly.
+
+    Said out loud because the symptom is otherwise "Insufficient wallet balance"
+    on a deposit that was actually paid, which points nowhere near the cause.
+  */
+  if (settled && received <= 0) {
+    console.warn(
+      `[crypto:${escrow.id}] settled as "${snapshot.status}" but the amount received is 0, ` +
+        `so nothing was credited and the deal was left unsettled to retry. ` +
+        `The provider reported no amount and NOWPAYMENTS_TRUST_STATUS is not in effect — ` +
+        `it must be "true" AND NOWPAYMENTS_BASE_URL must be a sandbox URL.`,
+    );
+    return updated;
+  }
+
+  const credited = await prisma.$transaction(async (tx) => {
+    const claim = await tx.cryptoEscrow.updateMany({
+      where: { id: row.id, settledAt: null },
+      data: { settledAt: new Date() },
+    });
+    if (claim.count === 0 || !escrow.buyerId) return false;
+
     // The confirmed deposit is the buyer's money, so it lands in the buyer's
     // TRX wallet as a deposit — the same shape Paystack produces on the fiat
     // side. The FUND that follows debits it straight back out into the deal, so
     // the pair nets to zero and the ledger reads deposit → escrow_fund exactly
     // as it does for GHS.
-    //
-    // Credited outside the FUND transaction on purpose: if the transition fails,
-    // the buyer keeps a TRX balance they genuinely paid for and can retry,
-    // rather than the deposit vanishing with the failed deal.
-    await prisma.$transaction((tx) =>
-      walletService.credit(
-        tx,
-        escrow.buyerId!,
-        "TRX",
-        received,
-        "deposit",
-        `TRX deposit via NOWPayments (${row.orderRef})`,
-        escrow.id,
-      ),
+    await walletService.credit(
+      tx,
+      escrow.buyerId,
+      "TRX",
+      received,
+      "deposit",
+      `TRX deposit via NOWPayments (${row.orderRef})`,
+      escrow.id,
     );
-  }
+    return true;
+  });
+
+  void credited;
 
   if (escrow.status === "created") {
     try {
