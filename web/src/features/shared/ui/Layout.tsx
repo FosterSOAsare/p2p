@@ -6,6 +6,7 @@ import { useUnreadTotal } from '../../messages/data/messagesApi'
 import { useNotificationEvents } from '../../notifications/data/useNotificationEvents'
 import { useUnreadNotifications } from '../../notifications/data/notificationsApi'
 import { NotificationPanel } from '../../notifications/ui/NotificationPanel'
+import { MobileTabBar } from './MobileTabBar'
 import type { LucideIcon } from 'lucide-react'
 import {
   Handshake,
@@ -386,8 +387,17 @@ export function Layout() {
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t p-4 animate-fade-in border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            {/*
+              The primary destinations moved to the bottom bar, so listing them
+              again here would be the same four links twice on one screen. What
+              stays is everything the bar has no room for — wallet, messages,
+              orders, settings, sign out — which is the drawer's job now.
+
+              Admins and signed-out visitors have no bottom bar, so for them this
+              is still the only menu and it keeps the full set.
+            */}
             <nav className="space-y-1">
-              {primaryNavItems.map(({ to, label, icon: Icon, badge }) => (
+              {(!isLoggedIn || isAdmin ? primaryNavItems : []).map(({ to, label, icon: Icon, badge }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -441,9 +451,13 @@ export function Layout() {
 
                 {!isAdmin && (
                   <>
-                    <Link to="/dashboard" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
-                      <LayoutDashboard size={16} /> Dashboard
-                    </Link>
+                    {/* Dashboard is the bottom bar's Home tab for anyone signed
+                        in, so it only earns a drawer row when there is no bar. */}
+                    {!isLoggedIn && (
+                      <Link to="/dashboard" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
+                        <LayoutDashboard size={16} /> Dashboard
+                      </Link>
+                    )}
                     <Link to="/wallet" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                       <Wallet size={16} /> Payout Wallet
                     </Link>
@@ -477,9 +491,13 @@ export function Layout() {
                 )}
                 {isSeller && (
                   <>
-                    <Link to="/listings" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
-                      <Package size={16} /> My Listings
-                    </Link>
+                    {/* Also a bottom-bar tab for a signed-in seller. Promotions
+                        below is not, so it stays either way. */}
+                    {!isLoggedIn && (
+                      <Link to="/listings" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
+                        <Package size={16} /> My Listings
+                      </Link>
+                    )}
                     <Link to="/promotions" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                       <Sparkles size={16} /> Promotions
                     </Link>
@@ -554,6 +572,17 @@ export function Layout() {
         )}
       </main>
       {!isChatPage && <Footer />}
+
+      {/*
+        The phone's primary navigation. It decides its own visibility — signed
+        out, admin, and the inbox all get nothing — so there is no condition to
+        keep in step here. The spacer below reserves its height so the last row
+        of any page, and the footer, clear it rather than sitting underneath.
+      */}
+      <MobileTabBar />
+      {!isChatPage && isLoggedIn && !isAdmin && (
+        <div className="md:hidden" style={{ height: 'calc(56px + env(safe-area-inset-bottom))' }} />
+      )}
 
       {isLoggedIn && (
         <NotificationPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
