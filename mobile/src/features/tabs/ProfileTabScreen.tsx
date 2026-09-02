@@ -21,7 +21,7 @@ import {
   XCircle,
 } from '@/components/icons';
 
-import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Fonts, ReadingWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { usePersona } from '@/hooks/use-persona';
 import { useAuth } from '@/context/AuthContext';
@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     gap: Spacing.three,
     width: '100%',
-    maxWidth: MaxContentWidth,
+    maxWidth: ReadingWidth,
     alignSelf: 'center',
   },
 

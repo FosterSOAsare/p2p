@@ -14,7 +14,7 @@ import {
   UserX,
 } from '@/components/icons';
 
-import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Fonts, ReadingWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme, useTones } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocked } from '@/context/BlockedContext';
@@ -469,7 +469,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.eight,
     gap: Spacing.three,
     width: '100%',
-    maxWidth: MaxContentWidth,
+    maxWidth: ReadingWidth,
     alignSelf: 'center',
   },
 

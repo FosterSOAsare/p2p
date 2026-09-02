@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowRight, ShieldAlert, Store } from '@/components/icons';
 
-import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Fonts, ReadingWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { usePersona } from '@/hooks/use-persona';
 
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingHorizontal: Spacing.five,
     width: '100%',
-    maxWidth: MaxContentWidth,
+    maxWidth: ReadingWidth,
     alignSelf: 'center',
   },
   badge: {

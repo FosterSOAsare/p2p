@@ -28,7 +28,7 @@ import {
   UserX,
 } from '@/components/icons';
 
-import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Fonts, ReadingWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useResponsive } from '@/hooks/use-responsive';
 import { useAuth } from '@/context/AuthContext';
@@ -701,7 +701,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.eight,
     gap: Spacing.three,
     width: '100%',
-    maxWidth: MaxContentWidth,
+    maxWidth: ReadingWidth,
     alignSelf: 'center',
   },
 

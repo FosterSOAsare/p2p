@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock, ShieldCheck, Store } from '@/components/icons';
 
-import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Fonts, ReadingWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme, useTones } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
@@ -719,7 +719,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.eight,
     gap: Spacing.three,
     width: '100%',
-    maxWidth: MaxContentWidth,
+    maxWidth: ReadingWidth,
     alignSelf: 'center',
   },
 

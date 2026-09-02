@@ -20,7 +20,7 @@ import {
   Truck,
 } from '@/components/icons';
 
-import { Accent, Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Accent, Fonts, ReadingWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import {
@@ -1326,7 +1326,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.eight,
     gap: Spacing.three,
     width: '100%',
-    maxWidth: MaxContentWidth,
+    maxWidth: ReadingWidth,
     alignSelf: 'center',
   },
 

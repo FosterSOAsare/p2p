@@ -260,7 +260,29 @@ export const Shadow = {
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;
+
+/**
+ * Cap for lists, grids and dashboards — the screens where a wide row is fine.
+ *
+ * Was 800, which is narrower than a tablet in landscape (a Xiaomi Pad 6S Pro is
+ * ~1016dp) and so drew a gutter down both sides of every list. Raised to a value
+ * no phone or tablet reaches, so those screens simply fill the width; it still
+ * exists as a backstop for a desktop-sized window, where a single list running
+ * 2000dp wide would be absurd.
+ *
+ * No effect on phones. A Note 20 is ~412dp portrait and ~915dp landscape, both
+ * already under the old 800 in the dimension that matters — this only changes
+ * what happens above it.
+ */
+export const MaxContentWidth = 1400;
+
+/**
+ * Cap for forms and prose, where the constraint is the eye rather than the
+ * screen. A text field or a paragraph running the full width of a tablet is
+ * hard to read and hard to scan, so those screens keep the old 800 and use the
+ * room a tablet gives them for more per row instead of wider rows.
+ */
+export const ReadingWidth = 800;
 
 /* ── Bottom tab bar ───────────────────────────────────────────── */
 /**

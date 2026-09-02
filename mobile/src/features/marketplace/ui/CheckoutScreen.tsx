@@ -14,7 +14,7 @@ import {
   Wallet,
 } from '@/components/icons';
 
-import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Fonts, ReadingWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { apiErrorMessage } from '@/features/shared/data/api';
@@ -434,7 +434,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.eight,
     gap: Spacing.three,
     width: '100%',
-    maxWidth: MaxContentWidth,
+    maxWidth: ReadingWidth,
     alignSelf: 'center',
   },
 
