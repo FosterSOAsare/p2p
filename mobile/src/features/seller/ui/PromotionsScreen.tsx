@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   BadgeDollarSign,
   Check,
+  Clock,
   PauseCircle,
   PlayCircle,
   Search,
@@ -69,6 +70,27 @@ function formatDate(iso: string) {
     month: 'short',
     year: 'numeric',
   });
+}
+
+/**
+ * How much of a run is left, in the words a seller actually wants.
+ *
+ * The card only ever showed the end date, which makes you do the arithmetic —
+ * and "ends 14 Sep" tells you nothing at a glance about whether that is
+ * tomorrow or next month. This is the number the question "how long have I got?"
+ * is really asking for.
+ *
+ * Rounded up, so a run with eight hours left reads "1 day left" rather than
+ * "0 days left" while it is still running. Under an hour gets its own wording:
+ * "1 day left" on something expiring within the hour would be a lie.
+ */
+function timeLeft(endsAt: string | null): string | null {
+  if (!endsAt) return null;
+  const ms = new Date(endsAt).getTime() - Date.now();
+  if (Number.isNaN(ms) || ms <= 0) return null;
+  if (ms < 60 * 60 * 1000) return 'ends within the hour';
+  const days = Math.ceil(ms / (24 * 60 * 60 * 1000));
+  return days === 1 ? '1 day left' : `${days} days left`;
 }
 
 function statusBadge(status: PromotionStatus) {
@@ -194,6 +216,23 @@ export function PromotionsScreen() {
                 <Text style={[styles.badgeText, { color: badge.text }]}>{badge.label}</Text>
               </View>
             </View>
+
+            {/*
+              Beside the status, not buried in the grey meta line below — "how
+              long is left" is the thing a seller opens this screen to find out,
+              and the end date alone makes them work it out.
+
+              Only while a run is live. On a paused or expired promotion a
+              countdown would be describing a clock that is not running.
+            */}
+            {promotion.status === 'active' && timeLeft(promotion.endsAt) ? (
+              <View style={[styles.daysLeft, { backgroundColor: theme.primaryLight }]}>
+                <Clock size={11} color={theme.primary} />
+                <Text style={[styles.daysLeftText, { color: theme.primary }]}>
+                  {timeLeft(promotion.endsAt)}
+                </Text>
+              </View>
+            ) : null}
 
             <Text style={[styles.meta, { color: theme.textSecondary }]}>
               {promotion.category} · boost {promotion.priority} · paid {formatMoney(promotion.amount)}
@@ -573,6 +612,16 @@ const styles = StyleSheet.create({
   meta: { fontSize: 11, lineHeight: 16, fontFamily: Fonts.sans[400] },
   badge: { borderRadius: Radius.full, paddingHorizontal: Spacing.two, paddingVertical: 2 },
   badgeText: { fontSize: 9.5, fontFamily: Fonts.sans[700] },
+  daysLeft: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 3,
+  },
+  daysLeftText: { fontSize: 10.5, fontFamily: Fonts.sans[700] },
   planPill: {
     alignSelf: 'flex-start',
     borderWidth: 1,

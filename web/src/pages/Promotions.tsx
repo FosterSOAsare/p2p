@@ -6,6 +6,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Loader2,
   PauseCircle,
   PlayCircle,
@@ -28,6 +29,28 @@ import {
   type Promotion,
   type PromotionStatus,
 } from '../features/seller/data/promotions'
+
+/**
+ * How much of a run is left, in the words a seller actually wants.
+ *
+ * The card only ever showed the end date, which makes you do the arithmetic —
+ * "ends 14 Sep" says nothing at a glance about whether that is tomorrow or next
+ * month. Kept identical to the phone's copy in
+ * `mobile/src/features/seller/ui/PromotionsScreen.tsx`, so the same run does not
+ * describe itself two different ways on two devices.
+ *
+ * Rounded up, so a run with eight hours left reads "1 day left" rather than
+ * "0 days left" while it is still going. Under an hour gets its own wording:
+ * "1 day left" on something expiring within the hour would be a lie.
+ */
+function timeLeft(endsAt: string | null): string | null {
+  if (!endsAt) return null
+  const ms = new Date(endsAt).getTime() - Date.now()
+  if (Number.isNaN(ms) || ms <= 0) return null
+  if (ms < 60 * 60 * 1000) return 'ends within the hour'
+  const days = Math.ceil(ms / (24 * 60 * 60 * 1000))
+  return days === 1 ? '1 day left' : `${days} days left`
+}
 
 function StatusBadge({ status }: { status: PromotionStatus }) {
   if (status === 'active') {
@@ -86,6 +109,20 @@ function PromotionCard({
               {promotion.listingTitle}
             </Link>
             <StatusBadge status={promotion.status} />
+            {/*
+              Beside the status, not in the grey meta line below — "how long is
+              left" is what a seller opens this page to find out, and the end
+              date alone makes them work it out.
+
+              Only while a run is live: on a paused or expired promotion a
+              countdown would be describing a clock that is not running.
+            */}
+            {promotion.status === 'active' && timeLeft(promotion.endsAt) && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-bold text-primary-700 dark:bg-primary-950/60 dark:text-primary-300">
+                <Clock3 size={11} />
+                {timeLeft(promotion.endsAt)}
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
             {promotion.category} · boost {promotion.priority} · paid {formatMoney(promotion.amount)}
