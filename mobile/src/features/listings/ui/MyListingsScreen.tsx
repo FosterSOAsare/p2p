@@ -341,20 +341,11 @@ export function MyListingsScreen() {
               </Pressable>
             </View>
 
-            {/* The web's second header link — the promotions hub. */}
-            <Pressable
-              onPress={() => router.push('/promotions')}
-              style={({ pressed }) => [
-                styles.promoBtn,
-                {
-                  borderColor: theme.border,
-                  backgroundColor: pressed ? theme.backgroundSelected : theme.card,
-                },
-              ]}
-            >
-              <Sparkles size={16} color={theme.text} />
-              <Text style={[styles.promoBtnText, { color: theme.text }]}>Promotions</Text>
-            </Pressable>
+            {/* A second "Promotions" button used to sit here, with the same
+                icon, the same label and the same destination as the one beside
+                "Add New Listing" above. Two identical buttons a few pixels apart
+                read as a mistake, and the paired one is better placed — the two
+                things a seller does from this header are add and promote. */}
 
             <ScrollView
               horizontal
@@ -536,18 +527,6 @@ const styles = StyleSheet.create({
   // now instead of running past its edge on a narrow screen.
   addBtnText: { flexShrink: 1, fontSize: 13, fontFamily: Fonts.sans[700], color: '#ffffff' },
 
-  promoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.two,
-    minHeight: 46,
-    borderWidth: 1,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Radius.md,
-  },
-  promoBtnText: { flexShrink: 1, fontSize: 13, fontFamily: Fonts.sans[700] },
 
   tabStrip: { gap: Spacing.two, paddingRight: Spacing.four },
   tab: {

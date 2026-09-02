@@ -361,9 +361,30 @@ const styles = StyleSheet.create({
 
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four, gap: Spacing.three },
 
-  pill: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: Radius.full },
+  pill: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+    // Belt and braces with the text metrics below — centres the glyph box
+    // itself, not just the line inside it.
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pillText: {
     fontSize: 10.5,
+    /*
+      Both of these are the fix, and both are needed.
+
+      Android adds font padding above and below the glyphs by default, and it is
+      not symmetric — so a label in a pill this short sat visibly low, which is
+      what made the status chips look off-centre next to a listing title. Turning
+      it off removes the extra space; giving the line an explicit height stops
+      the box collapsing to the glyph bounds once it is gone, which would move
+      the text the other way.
+    */
+    lineHeight: 14,
+    includeFontPadding: false,
+    textAlign: 'center',
     fontFamily: Fonts.sans[700],
     textTransform: 'capitalize',
     letterSpacing: 0.2,

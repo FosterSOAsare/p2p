@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { ActivityIndicator, Modal, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, View } from 'react-native';
 import { Pressable } from '@/components/ui/pressable';
 import { useRouter } from 'expo-router';
 import {
@@ -22,11 +22,9 @@ import {
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { apiErrorMessage } from '@/features/shared/data/api';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { type User } from '@/constants/appTypes';
 import { useDeleteListing } from '@/features/listings/data/listingsApi';
-import { useDeliverDeal } from '@/features/escrow/data/dealsApi';
-import { useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { useConversations } from '@/features/messages/data/messagesApi';
 import { useUnreadNotifications } from '@/features/notifications/data/notificationsApi';
 import { useDashboard, type SellerSaleOrder } from '../data/dashboardApi';
@@ -144,41 +142,16 @@ export function SellerDashboard({ user }: { user: User }) {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   /*
-    Dispatch, done here rather than by sending the seller to the deal screen —
-    the web marks an order shipped straight from the dashboard, and the row's
-    "Enter Tracking" control was a plain View, so it looked like a button and
-    did nothing at all when pressed.
+    The dispatch form used to live on this screen, expanding inside the sales
+    card. It has moved to the deal screen, which already carried the identical
+    three fields behind its DELIVER action.
+
+    Having both was the actual problem: the card offered "Enter Tracking &
+    Dispatch", and tapping the row to read the order took you somewhere that
+    looked like it could not do it. One place, reachable from everywhere,
+    beats two places where only one of them is where you happen to be.
   */
-  const deliverDeal = useDeliverDeal();
-  const [shippingOrderId, setShippingOrderId] = useState<string | null>(null);
-  const [carrierInput, setCarrierInput] = useState('');
-  const [trackingInput, setTrackingInput] = useState('');
-  const [noteInput, setNoteInput] = useState('');
-  // The form expands on a card partway down the list, so a focused field has
-  // to ask the surrounding scroll view to lift it above the keyboard.
-  const ensureVisible = useEnsureVisible();
-  const dispatchRow = useRef<View>(null);
 
-  const closeDispatch = () => {
-    setShippingOrderId(null);
-    setCarrierInput('');
-    setTrackingInput('');
-    setNoteInput('');
-  };
-
-  /** All three fields are optional, exactly as on the web and on the server. */
-  const submitDispatch = () => {
-    if (!shippingOrderId) return;
-    deliverDeal.mutate(
-      {
-        id: shippingOrderId,
-        carrier: carrierInput || undefined,
-        trackingNumber: trackingInput || undefined,
-        note: noteInput || undefined,
-      },
-      { onSuccess: closeDispatch },
-    );
-  };
   /**
    * Resolved by id rather than storing the row, so the dialog can't go on
    * naming a listing that has already been deleted underneath it.
@@ -554,11 +527,8 @@ export function SellerDashboard({ user }: { user: User }) {
                     order.status === 'awaiting_shipment' ||
                     order.rawStatus === 'funded' ? (
                     <Pressable
-                      onPress={() =>
-                        setShippingOrderId((open) => (open === order.id ? null : order.id))
-                      }
+                      onPress={() => router.push(`/escrow/${order.id}`)}
                       accessibilityRole="button"
-                      accessibilityState={{ expanded: shippingOrderId === order.id }}
                       accessibilityLabel={`Enter tracking and dispatch ${order.code}`}
                       style={[styles.dispatchBtn, { backgroundColor: theme.text }]}
                     >
@@ -600,120 +570,13 @@ export function SellerDashboard({ user }: { user: User }) {
               </View>
 
               {/*
-                Dispatch & Delivery Details — expands inside the card the button
-                belongs to, rather than opening over the screen. Three optional
-                fields and "Confirm Delivery", the web's copy; the phone just
-                doesn't need a dialog for a form this short.
+                Dispatch is not done here any more. The button above opens the
+                deal, which already carries the same three fields behind its
+                DELIVER action — and unlike this card, it is reachable whether the
+                seller arrives from the dashboard or from anywhere else. Having
+                it in both places meant the one you reached by tapping the row
+                could not do the thing the row had just offered.
               */}
-              {shippingOrderId === order.id ? (
-                <View style={[styles.dispatchForm, { borderTopColor: theme.border }]}>
-                  <Text style={[styles.dispatchLabel, { color: theme.textSecondary }]}>
-                    SHIPPING CARRIER / METHOD
-                  </Text>
-                  <TextInput
-                    value={carrierInput}
-                    onChangeText={setCarrierInput}
-                    onFocus={() => ensureVisible(dispatchRow.current)}
-                    editable={!deliverDeal.isPending}
-                    placeholder="e.g. DHL Express, FedEx, Local Rider, Online"
-                    placeholderTextColor={theme.textTertiary}
-                    style={[
-                      styles.dispatchInput,
-                      {
-                        backgroundColor: theme.inputBackground,
-                        borderColor: theme.inputBorder,
-                        color: theme.text,
-                      },
-                    ]}
-                  />
-
-                  <Text style={[styles.dispatchLabel, { color: theme.textSecondary }]}>
-                    TRACKING CODE / PHONE NUMBER
-                  </Text>
-                  <TextInput
-                    value={trackingInput}
-                    onChangeText={setTrackingInput}
-                    onFocus={() => ensureVisible(dispatchRow.current)}
-                    editable={!deliverDeal.isPending}
-                    autoCapitalize="characters"
-                    placeholder="e.g. DHL-GH-99201 or Courier Phone"
-                    placeholderTextColor={theme.textTertiary}
-                    style={[
-                      styles.dispatchInput,
-                      styles.dispatchMono,
-                      {
-                        backgroundColor: theme.inputBackground,
-                        borderColor: theme.inputBorder,
-                        color: theme.text,
-                      },
-                    ]}
-                  />
-
-                  <Text style={[styles.dispatchLabel, { color: theme.textSecondary }]}>
-                    DELIVERY NOTE &amp; INSTRUCTIONS (OPTIONAL)
-                  </Text>
-                  <View ref={dispatchRow} collapsable={false}>
-                    <TextInput
-                      value={noteInput}
-                      onChangeText={setNoteInput}
-                      onFocus={() => ensureVisible(dispatchRow.current)}
-                      editable={!deliverDeal.isPending}
-                      multiline
-                      textAlignVertical="top"
-                      placeholder="e.g. Courier contact name, rider phone number, or digital item instructions"
-                      placeholderTextColor={theme.textTertiary}
-                      style={[
-                        styles.dispatchInput,
-                        styles.dispatchMultiline,
-                        {
-                          backgroundColor: theme.inputBackground,
-                          borderColor: theme.inputBorder,
-                          color: theme.text,
-                        },
-                      ]}
-                    />
-                  </View>
-
-                  {deliverDeal.isError ? (
-                    <Text style={styles.dialogError}>{apiErrorMessage(deliverDeal.error)}</Text>
-                  ) : null}
-
-                  <View style={styles.dispatchActions}>
-                    <Pressable
-                      onPress={submitDispatch}
-                      disabled={deliverDeal.isPending}
-                      accessibilityRole="button"
-                      style={[
-                        styles.dispatchConfirm,
-                        { backgroundColor: theme.primary, opacity: deliverDeal.isPending ? 0.6 : 1 },
-                      ]}
-                    >
-                      {deliverDeal.isPending ? (
-                        <ActivityIndicator size="small" color="#ffffff" />
-                      ) : (
-                        <Truck size={14} color="#ffffff" />
-                      )}
-                      <Text style={styles.dialogDeleteText}>
-                        {deliverDeal.isPending ? 'Sending…' : 'Confirm Delivery'}
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={closeDispatch}
-                      disabled={deliverDeal.isPending}
-                      accessibilityRole="button"
-                      style={({ pressed }) => [
-                        styles.dispatchCancel,
-                        {
-                          borderColor: theme.border,
-                          backgroundColor: pressed ? theme.backgroundSelected : 'transparent',
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.dialogCancelText, { color: theme.text }]}>Cancel</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : null}
             </View>
           );
         })
@@ -1225,37 +1088,4 @@ const styles = StyleSheet.create({
   },
 
   /* Dispatch & Delivery Details modal */
-  dispatchForm: { gap: Spacing.one, borderTopWidth: 1, paddingTop: Spacing.three },
-  dispatchActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginTop: Spacing.two },
-  dispatchCancel: {
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
-    borderWidth: 1,
-    borderRadius: Radius.md,
-  },
-  dispatchLabel: { fontSize: 10, letterSpacing: 0.4, fontFamily: Fonts.sans[700] },
-  dispatchInput: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 13,
-    fontFamily: Fonts.sans[400],
-  },
-  dispatchMono: { fontFamily: Fonts.mono },
-  dispatchMultiline: { minHeight: 68, textAlignVertical: 'top' },
-  dispatchConfirm: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 6,
-    minHeight: 44,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.md,
-  },
 });
