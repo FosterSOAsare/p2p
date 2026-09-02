@@ -9,7 +9,6 @@
       "distribution": "internal"
     },
 
-    "//": "preview is the one to use for a presentation: an installable APK.",
     "preview": {
       "distribution": "internal",
       "android": {
