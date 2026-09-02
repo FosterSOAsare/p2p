@@ -527,7 +527,15 @@ export function SellerDashboard({ user }: { user: User }) {
                     order.status === 'awaiting_shipment' ||
                     order.rawStatus === 'funded' ? (
                     <Pressable
-                      onPress={() => router.push(`/escrow/${order.id}`)}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/escrow/[id]',
+                          // Opens the deal with its dispatch panel already
+                          // expanded, so the tap lands on the form rather than
+                          // on a screen the seller has to hunt through.
+                          params: { id: order.id, deliver: '1' },
+                        })
+                      }
                       accessibilityRole="button"
                       accessibilityLabel={`Enter tracking and dispatch ${order.code}`}
                       style={[styles.dispatchBtn, { backgroundColor: theme.text }]}

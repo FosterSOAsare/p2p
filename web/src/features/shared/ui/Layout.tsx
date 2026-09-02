@@ -417,7 +417,7 @@ export function Layout() {
                 </NavLink>
               ))}
 
-              {!isAdmin && (
+              {isLoggedIn && !isAdmin && (
                 <Link
                   to="/escrow/new"
                   onClick={() => setMobileMenuOpen(false)}
@@ -449,15 +449,22 @@ export function Layout() {
                   </div>
                 )}
 
-                {!isAdmin && (
+                {/*
+                  Everything in here belongs to an account, so all of it is
+                  gated on being signed in. It was gated on `!isAdmin` alone,
+                  which let a signed-out visitor see Payout Wallet and My Orders
+                  in the drawer — links to pages that would only bounce them to
+                  the login screen.
+
+                  Dashboard used to sit at the top of this group behind
+                  `!isLoggedIn`, which was backwards: it hid the row from the
+                  only people who could use it and showed it to everyone else.
+                  It is gone rather than inverted — the bottom bar's Home tab is
+                  the dashboard for every signed-in non-admin, so a drawer row
+                  would just be the same destination twice.
+                */}
+                {isLoggedIn && !isAdmin && (
                   <>
-                    {/* Dashboard is the bottom bar's Home tab for anyone signed
-                        in, so it only earns a drawer row when there is no bar. */}
-                    {!isLoggedIn && (
-                      <Link to="/dashboard" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
-                        <LayoutDashboard size={16} /> Dashboard
-                      </Link>
-                    )}
                     <Link to="/wallet" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                       <Wallet size={16} /> Payout Wallet
                     </Link>
@@ -484,26 +491,21 @@ export function Layout() {
                     {unreadTotal > 0 && <UnreadDot count={unreadTotal} />}
                   </Link>
                 )}
-                {!isSeller && !isAdmin && (
+                {isLoggedIn && !isSeller && !isAdmin && (
                   <Link to="/bookmarks" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                     <Heart size={16} className="text-rose-500" /> My Bookmarks
                   </Link>
                 )}
                 {isSeller && (
                   <>
-                    {/* Also a bottom-bar tab for a signed-in seller. Promotions
-                        below is not, so it stays either way. */}
-                    {!isLoggedIn && (
-                      <Link to="/listings" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
-                        <Package size={16} /> My Listings
-                      </Link>
-                    )}
+                    {/* My Listings is the seller's fourth bottom-bar tab, so it
+                        gets no row here. Promotions is not a tab, so it does. */}
                     <Link to="/promotions" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                       <Sparkles size={16} /> Promotions
                     </Link>
                   </>
                 )}
-                {!isAdmin && (
+                {isLoggedIn && !isAdmin && (
                   <Link to="/deals?tab=disputed" onClick={() => setMobileMenuOpen(false)} className={drawerLinkClass}>
                     <AlertTriangle size={16} /> Disputes
                   </Link>

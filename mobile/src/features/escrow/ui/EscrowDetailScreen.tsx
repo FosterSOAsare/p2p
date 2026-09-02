@@ -132,7 +132,13 @@ function formatStamp(iso: string) {
 export function EscrowDetailScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  /**
+   * `deliver=1` arrives from the seller dashboard's "Enter Tracking & Dispatch".
+   * That button used to expand a form in place; it now opens this screen, and
+   * landing on a collapsed panel would make the tap feel like it had done
+   * nothing. The form is open on arrival instead.
+   */
+  const { id, deliver } = useLocalSearchParams<{ id: string; deliver?: string }>();
 
   const dealQuery = useDeal(id ?? '');
 
@@ -204,7 +210,10 @@ export function EscrowDetailScreen() {
   const [disputeDesc, setDisputeDesc] = useState('');
 
   // Dispatch form — all three optional, matching the web and the server.
-  const [deliverOpen, setDeliverOpen] = useState(false);
+  // Initial state, not an effect: the panel should be open on first paint
+  // rather than appearing a frame later. Safe when DELIVER isn't offered — the
+  // panel is gated on `has('DELIVER')` regardless of this flag.
+  const [deliverOpen, setDeliverOpen] = useState(deliver === '1');
   const [carrier, setCarrier] = useState('');
   const [tracking, setTracking] = useState('');
   const [deliveryNote, setDeliveryNote] = useState('');
