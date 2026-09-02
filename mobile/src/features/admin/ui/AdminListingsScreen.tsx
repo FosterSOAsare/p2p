@@ -210,11 +210,6 @@ export function AdminListingsScreen() {
                       <Text style={styles.reportBadgeText}>{l.openReportCount}</Text>
                     </Pressable>
                   ) : null}
-                  <StatusPill
-                    label={STATUS_PILL[l.status].label}
-                    bg={STATUS_PILL[l.status].bg}
-                    fg={STATUS_PILL[l.status].fg}
-                  />
                 </View>
                 <Text style={[styles.meta, { color: theme.textSecondary }]} numberOfLines={1}>
                   {money(l.price, l.currency)} · {l.category} · @{l.seller.username}
@@ -238,25 +233,41 @@ export function AdminListingsScreen() {
               </View>
 
               {/*
-                Always occupies the same width, even with nothing in it. A removed
-                listing has no Remove button, and if the slot collapsed the status
-                pill beside it would slide right on exactly those rows.
+                Status and action, on one line and centred against the card.
+
+                The pill used to sit on the title line inside the body, which put
+                it level with the first line of text rather than with the button
+                it belongs beside — so on a two-line card it floated well above
+                the delete control. The row is `alignItems: center`, so pairing
+                them here lines both up on the card's middle, whatever the title
+                does.
+
+                The slot keeps its fixed width even when empty: a removed listing
+                has no Remove button, and letting it collapse would slide the
+                pill right on exactly those rows.
               */}
-              <View style={styles.actionSlot}>
-                {l.status !== 'removed' ? (
-                  <Pressable
-                    onPress={() => setRemoveTarget(l)}
-                    hitSlop={8}
-                    style={({ pressed }) => [
-                      styles.removeBtn,
-                      { backgroundColor: '#ef4444', opacity: pressed ? 0.8 : 1 },
-                    ]}
-                  >
-                    <Trash2 size={14} color="#ffffff" />
-                  </Pressable>
-                ) : (
-                  <ChevronRight size={16} color={theme.textTertiary} />
-                )}
+              <View style={styles.statusRail}>
+                <StatusPill
+                  label={STATUS_PILL[l.status].label}
+                  bg={STATUS_PILL[l.status].bg}
+                  fg={STATUS_PILL[l.status].fg}
+                />
+                <View style={styles.actionSlot}>
+                  {l.status !== 'removed' ? (
+                    <Pressable
+                      onPress={() => setRemoveTarget(l)}
+                      hitSlop={8}
+                      style={({ pressed }) => [
+                        styles.removeBtn,
+                        { backgroundColor: '#ef4444', opacity: pressed ? 0.8 : 1 },
+                      ]}
+                    >
+                      <Trash2 size={14} color="#ffffff" />
+                    </Pressable>
+                  ) : (
+                    <ChevronRight size={16} color={theme.textTertiary} />
+                  )}
+                </View>
               </View>
             </Pressable>
           ))}
@@ -316,6 +327,9 @@ const styles = StyleSheet.create({
   removed: { fontSize: 11, lineHeight: 15, fontFamily: Fonts.sans[600] },
   date: { fontSize: 11, fontFamily: Fonts.sans[400] },
 
+  // Status and action on one line, centred against the card rather than against
+  // the first line of the title.
+  statusRail: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   actionSlot: { width: 34, alignItems: 'center', justifyContent: 'center' },
   removeBtn: { width: 34, height: 34, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
 });
