@@ -110,7 +110,18 @@ function PromotionCard({
             </Link>
             <StatusBadge status={promotion.status} />
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          {/*
+            Hidden on phones, shown from `sm` up. These are four facts a seller
+            rarely needs — category, boost weight, what was paid, the exact end
+            date — and on a narrow screen they crowd out the two that matter:
+            which listing, and how long is left. A tablet or a desktop has the
+            room, so it keeps them.
+
+            `sm` (640px) rather than the `md` this app usually switches at: `md`
+            is where the nav hands off to the drawer, but a tablet in portrait
+            sits between the two and should show this.
+          */}
+          <p className="hidden sm:block text-[11px] text-slate-500 dark:text-slate-400">
             {promotion.category} · boost {promotion.priority} · paid {formatMoney(promotion.amount)}
             {promotion.endsAt ? ` · ends ${formatDate(promotion.endsAt)}` : ''}
           </p>

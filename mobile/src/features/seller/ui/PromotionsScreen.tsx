@@ -28,6 +28,7 @@ import {
 } from '@/components/icons';
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme, useTones } from '@/hooks/use-theme';
+import { useResponsive } from '@/hooks/use-responsive';
 import { useMyListings } from '@/features/listings/data/listingsApi';
 import {
   getPromotionStatusLabel,
@@ -103,6 +104,7 @@ function statusBadge(status: PromotionStatus) {
 export function PromotionsScreen() {
   const theme = useTheme();
   const tones = useTones();
+  const { isTablet } = useResponsive();
   const router = useRouter();
 
   /*
@@ -217,10 +219,22 @@ export function PromotionsScreen() {
               </View>
             </View>
 
-            <Text style={[styles.meta, { color: theme.textSecondary }]}>
-              {promotion.category} · boost {promotion.priority} · paid {formatMoney(promotion.amount)}
-              {promotion.endsAt ? ` · ends ${formatDate(promotion.endsAt)}` : ''}
-            </Text>
+            {/*
+              Tablets only. On a phone this line is four facts a seller rarely
+              needs — category, boost weight, what was paid, the exact end date —
+              competing with the two that matter on the card: which listing, and
+              how long is left. A tablet has the room, so it keeps them.
+
+              Nothing is lost on a phone: the studio screen behind this card
+              shows all of it.
+            */}
+            {isTablet ? (
+              <Text style={[styles.meta, { color: theme.textSecondary }]}>
+                {promotion.category} · boost {promotion.priority} · paid{' '}
+                {formatMoney(promotion.amount)}
+                {promotion.endsAt ? ` · ends ${formatDate(promotion.endsAt)}` : ''}
+              </Text>
+            ) : null}
 
             {/*
               Plan and time remaining share a row. They answer the same question
