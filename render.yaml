@@ -1,0 +1,93 @@
+# Render Blueprint for the VeriTrust API.
+#
+# Region is the load-bearing line here. The database is a Neon project in
+# eu-central-1 (Frankfurt), and every request this API serves is several round
+# trips to it — measured at 129ms from Frankfurt against 224ms from us-east-2,
+# and the dashboard alone is two of those. Deploying to Render's default Oregon
+# region would put an ocean between the API and its database and undo the whole
+# reason the database was moved. If the database ever moves, move this with it.
+#
+# Secrets are `sync: false`: Render prompts for them once in the dashboard and
+# keeps them out of the repo. The three the server refuses to boot without are
+# DATABASE_URL, JWT_ACCESS_SECRET and JWT_REFRESH_SECRET (see shared/config/env.ts).
+services:
+  - type: web
+    name: p2p-api
+    runtime: node
+    region: frankfurt
+    plan: free
+    rootDir: server
+
+    # `prisma generate` is not optional: src/generated/ is gitignored, so the
+    # client does not exist in a fresh checkout. `migrate deploy` applies any
+    # pending migration before the new code that expects it starts serving.
+    buildCommand: npm ci && npx prisma generate && npx prisma migrate deploy && npm run build
+    startCommand: npm run start
+
+    # Cheap and unauthenticated — see features/health. Note the path is /health,
+    # not /api/health.
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # PORT is deliberately absent. Render injects it and expects the process
+      # to bind whatever it says; hardcoding one is how a service ends up
+      # listening where nothing is routed.
+
+      # ---- required: the server throws on boot without these ----
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+
+      # ---- origins ----
+      # WEB_ORIGIN builds links in outgoing email. CORS_ORIGINS is the allowlist
+      # for both the REST API and the WebSocket handshake — in production
+      # nothing else is accepted, so the deployed web URL must be in it.
+      # SERVER_ORIGIN is this service's own public URL, which is where
+      # NOWPayments posts its IPN; without it crypto deposits can only settle
+      # from the buyer's redirect.
+      - key: WEB_ORIGIN
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SERVER_ORIGIN
+        sync: false
+
+      # ---- uploads ----
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+      # ---- payments (test keys only; see env.ts on why live keys are refused) ----
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: NOWPAYMENTS_API_KEY
+        sync: false
+      - key: NOWPAYMENTS_IPN_SECRET
+        sync: false
+      - key: NOWPAYMENTS_BASE_URL
+        value: https://api-sandbox.nowpayments.io/v1
+
+      # Sandbox-only escape hatch: funds a crypto deal on provider status alone,
+      # ignoring the amount received. env.ts refuses to honour it unless the
+      # base URL above is a sandbox one, but it should still be off by default.
+      - key: NOWPAYMENTS_TRUST_STATUS
+        value: "false"
+
+      # ---- email ----
+      # "simulated" logs instead of sending. Switch to "smtp" and fill the rest
+      # in the dashboard when there is a real mailbox to send from.
+      - key: MAIL_DRIVER
+        value: simulated
+      - key: MAIL_FROM
+        value: VeriTrust <no-reply@veritrust.app>
