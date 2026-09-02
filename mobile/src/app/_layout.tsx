@@ -1,6 +1,8 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -44,9 +46,37 @@ const AppLightTheme = {
   colors: { ...DefaultTheme.colors, background: Colors.light.background },
 };
 
+/**
+ * Keep the native splash up until we have decided what to render.
+ *
+ * Without this the splash hides as soon as the first frame is ready, which is
+ * before the stored session has been checked — so the login screen paints and
+ * is then replaced. Held here, the check happens behind the splash instead.
+ */
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Already hidden, or no splash on this platform — nothing to hold.
+});
+
 /** Split out so it can read auth state — it must render inside AuthProvider. */
 function RootNavigator() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isBooting } = useAuth();
+
+  /*
+    Hide the splash only once the session is known, and from an effect so it
+    happens after the first real frame has been committed — hiding while the
+    tree is still empty would show a blank screen between the two.
+  */
+  useEffect(() => {
+    if (!isBooting) SplashScreen.hideAsync().catch(() => {});
+  }, [isBooting]);
+
+  /*
+    Render nothing while the stored session is being checked. `isAuthenticated`
+    is false during that window whether or not a session exists, so the guards
+    below would route a returning user to the login screen and then bounce them
+    off it. The splash covers this.
+  */
+  if (isBooting) return null;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -83,8 +113,9 @@ export default function RootLayout() {
 
   // Hold the tree back for the one frame it takes to register the families, so
   // no screen paints in the system font and then reflows. The native splash is
-  // still up at this point and hides itself once the root view is ready —
-  // nothing here calls `preventAutoHideAsync`, so nothing has to un-hide it.
+  // still up at this point — it is pinned above and stays until `RootNavigator`
+  // knows whether there is a session to restore, so this returns into the
+  // splash rather than into a blank screen.
   // On a font error we render anyway rather than trapping the user on a blank
   // screen; the system font is a survivable fallback.
   if (!fontsLoaded && !fontError) return null;

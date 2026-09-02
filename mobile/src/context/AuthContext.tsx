@@ -28,6 +28,16 @@ interface AuthState {
    * Every session is server-backed now, so this tracks `isAuthenticated`.
    */
   isRealSession: boolean;
+  /**
+   * True from launch until the stored session has been checked. Distinct from
+   * `isLoading`, which covers a sign-in the user is watching.
+   *
+   * Nothing may branch on `isAuthenticated` while this is true: it is `false`
+   * during the check, and a router that acts on it sends the user to the login
+   * screen a moment before the restore signs them back in. Hold the splash
+   * instead — see `RootNavigator`.
+   */
+  isBooting: boolean;
 }
 
 interface AuthContextValue extends AuthState {
@@ -35,6 +45,14 @@ interface AuthContextValue extends AuthState {
   login: (identifier: string, password: string) => Promise<void>;
   logout: () => void;
 }
+
+/**
+ * How long the splash may cover the session check before we give up and show
+ * the app. Generous, because a warm DB-backed request already costs 1–4.5s —
+ * but bounded, because a sleeping server would otherwise hold the splash for
+ * the best part of a minute, which reads as a failed launch.
+ */
+const RESTORE_TIMEOUT_MS = 10_000;
 
 /** Shape of `/api/auth/me` — the fields the app actually consumes. */
 interface ServerMe {
@@ -72,6 +90,47 @@ function toAppUser(me: ServerMe): User {
   };
 }
 
+/**
+ * Warm every tab NOW, rather than letting each screen start its own fetch when
+ * you first tap it.
+ *
+ * A single DB-backed request against this database costs 1–4.5 seconds measured
+ * *on the server*, before the phone's network is involved at all. Fetched lazily
+ * that is a multi-second stall the first time you open each tab, which is
+ * exactly what "the tabs take time to show up" is. Started here they overlap
+ * with each other and with the rest of sign-in, so by the time a tab is tapped
+ * its data is usually already in cache and the screen paints immediately.
+ *
+ * Deliberately NOT awaited: reaching the app must not block on any of them, and
+ * a failure is harmless — each screen's own query retries it. They are also
+ * fired together rather than in sequence, since the cost here is latency, not
+ * bandwidth.
+ *
+ * Called from both ways into a session — signing in, and restoring one on
+ * launch — because the cold cache is identical in both cases.
+ */
+function prefetchTabs(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.prefetchQuery({
+    queryKey: dashboardKeys.data,
+    queryFn: () => api<DashboardResponse>('/api/users/me/dashboard'),
+  });
+  // My Deals
+  void queryClient.prefetchQuery({
+    queryKey: ['deals', 'list', 'all'],
+    queryFn: () => api('/api/escrows?limit=48'),
+  });
+  // My Listings
+  void queryClient.prefetchQuery({
+    queryKey: ['listings', 'mine'],
+    queryFn: () => api('/api/listings/mine?limit=48'),
+  });
+  // Marketplace — the unfiltered first page, which is what it opens on.
+  void queryClient.prefetchQuery({
+    queryKey: ['listings', 'browse', '', ''],
+    queryFn: () => api('/api/listings?limit=48'),
+  });
+}
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 
@@ -82,24 +141,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: false,
     isLoading: false,
     isRealSession: false,
+    isBooting: true,
   });
 
   /**
-   * The app always starts signed out. Credentials are required every launch.
+   * Restore the session from the keychain on cold start, so a launch lands on
+   * the app rather than the login screen.
    *
-   * This used to restore a session from the keychain on cold start, which is
-   * the usual convenience — but it meant the login screen appeared and then
-   * signed itself in a few seconds later, with nobody typing anything. That
-   * behaviour is not wanted here, so any leftover tokens are dropped on
-   * startup rather than used: no token can outlive the process.
+   * This deliberately reverses the previous behaviour, which cleared the tokens
+   * here and required credentials every launch. The reason it was written that
+   * way is real and worth keeping in mind: restoring naively makes the login
+   * screen appear and then sign itself in a second later, with nobody typing —
+   * which looks broken. But the flash was the complaint, not persistence, and
+   * the flash is a rendering problem, not a reason to throw the session away.
    *
-   * Tokens are still written during a session — `api()` needs them to
-   * authenticate requests and to refresh on a 401 — they simply don't survive a
-   * restart.
+   * It is fixed by holding the native splash over this check: `isBooting` stays
+   * true until we know the answer, `RootNavigator` renders nothing while it is,
+   * and the splash hides on the far side. The user sees the splash, then the
+   * app — never a login screen they were about to skip past.
+   *
+   * `api()` transparently refreshes an expired access token, so this survives a
+   * device sitting unused for longer than an access token lives. A rejection —
+   * spent refresh token, revoked session, deleted account — clears the tokens
+   * and lands signed out, which is the same place the old code always started.
+   * A timeout is treated differently; see the catch.
    */
   useEffect(() => {
-    void tokenStore.clear();
-  }, []);
+    let cancelled = false;
+
+    void (async () => {
+      const access = await tokenStore.getAccess().catch(() => null);
+      if (!access) {
+        // Never signed in on this device, or signed out last time.
+        if (!cancelled) setState((s) => ({ ...s, isBooting: false }));
+        return;
+      }
+
+      try {
+        const me = await Promise.race([
+          api<ServerMe>('/api/auth/me'),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('restore-timeout')), RESTORE_TIMEOUT_MS),
+          ),
+        ]);
+        if (cancelled) return;
+        // Same warming as sign-in — this lands on the tabs just as directly.
+        prefetchTabs(queryClient);
+        setState({
+          user: toAppUser(me),
+          isAuthenticated: true,
+          isLoading: false,
+          isRealSession: true,
+          isBooting: false,
+        });
+      } catch (err) {
+        /*
+          A timeout is not a dead session. The API sleeps when idle on the free
+          tier and its first request can take far longer than the 1–4.5s a warm
+          DB-backed call costs, so keep the tokens and let the next launch try
+          again — only a real rejection is grounds for throwing them away.
+        */
+        const timedOut = err instanceof Error && err.message === 'restore-timeout';
+        if (!timedOut) await tokenStore.clear();
+        if (cancelled) return;
+        setState({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          isRealSession: false,
+          isBooting: false,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [queryClient]);
 
   const login = useCallback(async (identifier: string, password: string) => {
     setState((s) => ({ ...s, isLoading: true }));
@@ -110,42 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }>('/api/auth/login', { method: 'POST', body: { identifier, password } });
       await tokenStore.set(tokens.accessToken, tokens.refreshToken);
 
-      /**
-       * Warm every tab NOW, in parallel with `/me`, rather than letting each
-       * screen start its own fetch when you first tap it.
-       *
-       * A single DB-backed request against this database costs 1–4.5 seconds
-       * measured *on the server*, before the phone's network is involved at all.
-       * Fetched lazily that is a multi-second stall the first time you open each
-       * tab, which is exactly what "the tabs take time to show up" is. Started
-       * here they overlap with each other and with the rest of sign-in, so by the
-       * time a tab is tapped its data is usually already in cache and the screen
-       * paints immediately.
-       *
-       * Deliberately NOT awaited: sign-in must not block on any of them, and a
-       * failure is harmless — each screen's own query retries it. They are also
-       * fired together rather than in sequence, since the cost here is latency,
-       * not bandwidth.
-       */
-      void queryClient.prefetchQuery({
-        queryKey: dashboardKeys.data,
-        queryFn: () => api<DashboardResponse>('/api/users/me/dashboard'),
-      });
-      // My Deals
-      void queryClient.prefetchQuery({
-        queryKey: ['deals', 'list', 'all'],
-        queryFn: () => api('/api/escrows?limit=48'),
-      });
-      // My Listings
-      void queryClient.prefetchQuery({
-        queryKey: ['listings', 'mine'],
-        queryFn: () => api('/api/listings/mine?limit=48'),
-      });
-      // Marketplace — the unfiltered first page, which is what it opens on.
-      void queryClient.prefetchQuery({
-        queryKey: ['listings', 'browse', '', ''],
-        queryFn: () => api('/api/listings?limit=48'),
-      });
+      prefetchTabs(queryClient);
 
       /*
         No second `/me` call. Login used to withhold `kycStatus` — the field
@@ -158,14 +241,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: true,
         isLoading: false,
         isRealSession: true,
+        isBooting: false,
       });
     } catch (err) {
       // Leave no half-session behind before handing the error to the screen.
       await tokenStore.clear();
-      setState({ user: null, isAuthenticated: false, isLoading: false, isRealSession: false });
+      setState({ user: null, isAuthenticated: false, isLoading: false, isRealSession: false, isBooting: false });
       throw err;
     }
-  }, []);
+  }, [queryClient]);
 
   const logout = useCallback(() => {
     queryClient.clear(); // never show one account's data to the next
@@ -174,7 +258,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // connected it would keep delivering the previous account's messages to
     // whoever signs in next.
     runTeardown();
-    setState({ user: null, isAuthenticated: false, isLoading: false, isRealSession: false });
+    setState({ user: null, isAuthenticated: false, isLoading: false, isRealSession: false, isBooting: false });
 
     /*
       Revoke the session server-side, then drop the tokens locally.
