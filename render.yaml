@@ -18,10 +18,19 @@ services:
     plan: free
     rootDir: server
 
-    # `prisma generate` is not optional: src/generated/ is gitignored, so the
-    # client does not exist in a fresh checkout. `migrate deploy` applies any
+    # `--include=dev --include=optional` is load bearing. NODE_ENV=production is
+    # set below (CORS needs it — isAllowedOrigin only refuses LAN origins in
+    # production), and npm reads NODE_ENV too: it omits devDependencies. But
+    # TypeScript is a devDependency and is needed to build, and TypeScript 7 is
+    # the native compiler, so it resolves a per-platform binary
+    # (@typescript/typescript-linux-x64) that the lockfile records as both dev
+    # and optional. Omit either and `tsc` installs but dies at startup with
+    # "Unable to resolve @typescript/typescript-linux-x64".
+    #
+    # `prisma generate` is not optional either: src/generated/ is gitignored, so
+    # the client does not exist in a fresh checkout. `migrate deploy` applies any
     # pending migration before the new code that expects it starts serving.
-    buildCommand: npm ci && npx prisma generate && npx prisma migrate deploy && npm run build
+    buildCommand: npm ci --include=dev --include=optional && npx prisma generate && npx prisma migrate deploy && npm run build
     startCommand: npm run start
 
     # Cheap and unauthenticated — see features/health. Note the path is /health,
