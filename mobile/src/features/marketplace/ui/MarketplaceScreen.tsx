@@ -10,6 +10,7 @@ import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { SkeletonCard } from '@/features/shared/ui/Skeleton';
 import { useTheme } from '@/hooks/use-theme';
+import { useResponsive } from '@/hooks/use-responsive';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { useAuth } from '@/context/AuthContext';
 import { useSaved } from '@/context/SavedContext';
@@ -78,6 +79,7 @@ function formatMoney(amount: number, currency = 'GH₵') {
 
 export function MarketplaceScreen() {
   const theme = useTheme();
+  const { columns } = useResponsive();
   const router = useRouter();
   const tabBarHeight = useTabBarHeight();
   // Mirrors the web's `isBuyer = !me || (!isAdmin && !isSeller)`. Saving is a
@@ -159,25 +161,32 @@ export function MarketplaceScreen() {
   const hasFilters = category !== 'All' || search.trim().length > 0;
 
   /**
-   * Pads an odd result count with one invisible cell.
+   * Pads the last row out to a full set of columns with invisible cells.
    *
-   * With `numColumns={2}` a lone card in the last row has no sibling to share
-   * the width with, and `flex: 1` makes it span the whole row — so it appears
-   * double-width whenever the count is odd. A spacer gives it a partner to
-   * split against, keeping every card identical.
+   * A card is `flex: 1`, so a short final row stretches its cards to fill the
+   * width and they render wider than every other card on screen. Spacers give
+   * them partners to split against.
+   *
+   * The count follows `columns`, which is 2 on a phone and 3 or 4 on a tablet
+   * depending on orientation — so this has to be a remainder rather than the
+   * odd/even test it used to be, or a tablet's last row goes back to stretching.
    */
   const SPACER = '__spacer__';
-  const grid = useMemo(
-    () =>
-      results.length % 2 === 1
-        ? [...results, { id: SPACER } as MarketplaceListing]
-        : results,
-    [results],
-  );
+  const grid = useMemo(() => {
+    const short = (columns - (results.length % columns)) % columns;
+    if (short === 0) return results;
+    // Distinct ids: `keyExtractor` reads `id`, and duplicate keys in the same
+    // list would collapse the spacers into one cell.
+    const fillers = Array.from(
+      { length: short },
+      (_, i) => ({ id: `${SPACER}${i}` }) as MarketplaceListing,
+    );
+    return [...results, ...fillers];
+  }, [results, columns]);
 
   const renderCard = ({ item }: { item: MarketplaceListing }) => {
-    // The padding cell: occupies a column, draws nothing.
-    if (item.id === SPACER) {
+    // A padding cell: occupies a column, draws nothing.
+    if (item.id.startsWith(SPACER)) {
       return <View style={styles.spacerCard} />;
     }
 
@@ -319,7 +328,14 @@ export function MarketplaceScreen() {
         data={grid}
         renderItem={renderCard}
         keyExtractor={(item) => item.id}
-        numColumns={2}
+        numColumns={columns}
+        /*
+          React Native cannot change `numColumns` on a mounted list — it throws
+          rather than reflowing. Keying the list on the count remounts it when
+          the device rotates into a different column count, which is the
+          supported way to do this.
+        */
+        key={columns}
         columnWrapperStyle={styles.column}
         contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + Spacing.four }]}
         showsVerticalScrollIndicator={false}

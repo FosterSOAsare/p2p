@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Image } from 'expo-image';
 import {
   ActivityIndicator,
-  Dimensions,
   ScrollView,
   StyleSheet,
   Text,
@@ -31,6 +30,7 @@ import {
 
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useResponsive } from '@/hooks/use-responsive';
 import { useAuth } from '@/context/AuthContext';
 import { useSaved } from '@/context/SavedContext';
 import { useBlocked } from '@/context/BlockedContext';
@@ -55,7 +55,15 @@ import {
  * reporting the listing for admin review.
  */
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+/*
+  Screen width is read per render through `useResponsive`, not captured here.
+
+  `Dimensions.get('window')` at module scope runs once, when the file is first
+  imported, and never again — so after a rotation the gallery went on sizing its
+  slides to the old width and paged to the wrong offsets. That was invisible
+  while the app was locked to portrait and would have surfaced the moment it
+  wasn't.
+*/
 
 function formatMoney(amount: number, currency = 'GH₵') {
   return `${currency} ${amount.toLocaleString('en-GH', {
@@ -70,6 +78,7 @@ function formatDate(iso: string) {
 
 export function ProductDetailScreen() {
   const theme = useTheme();
+  const { width, readingWidth } = useResponsive();
   const router = useRouter();
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -121,8 +130,9 @@ export function ProductDetailScreen() {
     else router.replace('/marketplace');
   };
 
-  // Gallery width: the screen minus the horizontal gutters on both sides.
-  const galleryWidth = Math.min(SCREEN_WIDTH, MaxContentWidth) - Spacing.four * 2;
+  // Gallery width: the screen minus the horizontal gutters on both sides, and
+  // never wider than the column the page is laid out in.
+  const galleryWidth = Math.min(width, readingWidth ?? width) - Spacing.four * 2;
 
   const onGalleryScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     setSlide(Math.round(e.nativeEvent.contentOffset.x / galleryWidth));
