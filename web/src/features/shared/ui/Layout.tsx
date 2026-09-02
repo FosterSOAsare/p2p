@@ -32,7 +32,10 @@ import {
   Bell,
   Sparkles,
   Banknote,
+  Sun,
+  Moon,
 } from 'lucide-react'
+import { applyTheme, onThemeChange, preferredTheme } from '../libs/theme'
 import { Footer } from './Footer'
 import logo from '../../../assets/logo.svg'
 
@@ -102,11 +105,19 @@ export function Layout() {
           : [{ to: '/sell', label: 'Sell Goods', icon: Store }]),
       ]
 
-  // Apply saved (or system-preferred) theme on first mount
+  /*
+    Theme, owned here because the header renders the toggle.
+
+    Applied on first mount from the saved choice or the OS preference, and kept
+    in step with the settings page through the shared module's event — otherwise
+    changing it there would leave this icon showing the opposite of reality.
+  */
+  const [dark, setDark] = useState(false)
   useEffect(() => {
-    const saved = localStorage.getItem('p2p_theme')
-    const dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
-    document.documentElement.classList.toggle('dark', dark)
+    const initial = preferredTheme()
+    setDark(initial)
+    applyTheme(initial)
+    return onThemeChange(setDark)
   }, [])
 
   const location = useLocation()
@@ -163,6 +174,22 @@ export function Layout() {
 
           {/* Action Links, Theme Toggle & Profile Dropdown */}
           <div className="flex items-center gap-2">
+            {/*
+              Outside the `hidden md:flex` cluster below, and gated on nothing.
+              It used to exist only on the settings page, which is behind auth —
+              so a signed-out visitor could not change the theme at all, and on a
+              phone nobody could without going and finding the page.
+            */}
+            <button
+              type="button"
+              onClick={() => applyTheme(!dark)}
+              aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+              title={dark ? 'Light mode' : 'Dark mode'}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-sm"
+            >
+              {dark ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+
             {/* Hands off to the drawer at exactly the width the hamburger
                 appears (`md`). At `sm` it left a 640–768px band where this
                 cluster was hidden but the drawer hadn't taken over its

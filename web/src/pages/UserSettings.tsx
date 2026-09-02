@@ -28,10 +28,10 @@ import { useUploadSingleFile } from '../features/upload/data/uploadApi'
 import { profileSchema, type ProfileForm } from '../features/user/data/schemas'
 import { apiErrorMessage } from '../features/shared/libs/api'
 
-function applyTheme(dark: boolean) {
-  document.documentElement.classList.toggle('dark', dark)
-  localStorage.setItem('p2p_theme', dark ? 'dark' : 'light')
-}
+// Shared with the header's toggle. Kept in one module so the two controls
+// cannot disagree about what "dark" means or where it is stored — and so
+// changing it here updates the header icon, via the event that module fires.
+import { applyTheme } from '../features/shared/libs/theme'
 
 const inputClass =
   'w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 py-2.5 pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-white focus:border-primary-500 focus:outline-none'
