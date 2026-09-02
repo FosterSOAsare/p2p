@@ -217,32 +217,35 @@ export function PromotionsScreen() {
               </View>
             </View>
 
-            {/*
-              Beside the status, not buried in the grey meta line below — "how
-              long is left" is the thing a seller opens this screen to find out,
-              and the end date alone makes them work it out.
-
-              Only while a run is live. On a paused or expired promotion a
-              countdown would be describing a clock that is not running.
-            */}
-            {promotion.status === 'active' && timeLeft(promotion.endsAt) ? (
-              <View style={[styles.daysLeft, { backgroundColor: theme.primaryLight }]}>
-                <Clock size={11} color={theme.primary} />
-                <Text style={[styles.daysLeftText, { color: theme.primary }]}>
-                  {timeLeft(promotion.endsAt)}
-                </Text>
-              </View>
-            ) : null}
-
             <Text style={[styles.meta, { color: theme.textSecondary }]}>
               {promotion.category} · boost {promotion.priority} · paid {formatMoney(promotion.amount)}
               {promotion.endsAt ? ` · ends ${formatDate(promotion.endsAt)}` : ''}
             </Text>
 
-            <View style={[styles.planPill, { backgroundColor: theme.primaryLight, borderColor: theme.primary }]}>
-              <Text style={[styles.planPillText, { color: theme.primary }]}>
-                Plan: {promotion.planLabel}
-              </Text>
+            {/*
+              Plan and time remaining share a row. They answer the same question
+              from two sides — what was bought, and how much of it is left — and
+              putting the countdown up beside the status badge instead made that
+              row a column wider on a card that has no width to spare.
+
+              The countdown only appears while a run is live: on a paused or
+              expired promotion it would be describing a clock that is stopped.
+            */}
+            <View style={styles.planRow}>
+              <View style={[styles.planPill, { backgroundColor: theme.primaryLight, borderColor: theme.primary }]}>
+                <Text style={[styles.planPillText, { color: theme.primary }]}>
+                  Plan: {promotion.planLabel}
+                </Text>
+              </View>
+
+              {promotion.status === 'active' && timeLeft(promotion.endsAt) ? (
+                <View style={styles.daysLeft}>
+                  <Clock size={11} color={theme.textSecondary} />
+                  <Text style={[styles.daysLeftText, { color: theme.textSecondary }]}>
+                    {timeLeft(promotion.endsAt)}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </View>
@@ -612,16 +615,13 @@ const styles = StyleSheet.create({
   meta: { fontSize: 11, lineHeight: 16, fontFamily: Fonts.sans[400] },
   badge: { borderRadius: Radius.full, paddingHorizontal: Spacing.two, paddingVertical: 2 },
   badgeText: { fontSize: 9.5, fontFamily: Fonts.sans[700] },
-  daysLeft: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: 3,
-  },
-  daysLeftText: { fontSize: 10.5, fontFamily: Fonts.sans[700] },
+  // Wraps rather than overflowing: a long plan label next to "14 days left" can
+  // exceed a phone's width, and a clipped countdown is worse than a second line.
+  planRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: Spacing.two },
+  // No pill of its own — two filled chips side by side compete, and the plan is
+  // the one that should read as the label here.
+  daysLeft: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  daysLeftText: { fontSize: 10.5, fontFamily: Fonts.sans[600] },
   planPill: {
     alignSelf: 'flex-start',
     borderWidth: 1,

@@ -109,28 +109,34 @@ function PromotionCard({
               {promotion.listingTitle}
             </Link>
             <StatusBadge status={promotion.status} />
-            {/*
-              Beside the status, not in the grey meta line below — "how long is
-              left" is what a seller opens this page to find out, and the end
-              date alone makes them work it out.
-
-              Only while a run is live: on a paused or expired promotion a
-              countdown would be describing a clock that is not running.
-            */}
-            {promotion.status === 'active' && timeLeft(promotion.endsAt) && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-bold text-primary-700 dark:bg-primary-950/60 dark:text-primary-300">
-                <Clock3 size={11} />
-                {timeLeft(promotion.endsAt)}
-              </span>
-            )}
           </div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
             {promotion.category} · boost {promotion.priority} · paid {formatMoney(promotion.amount)}
             {promotion.endsAt ? ` · ends ${formatDate(promotion.endsAt)}` : ''}
           </p>
-          <span className="inline-block text-[10px] font-semibold text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-950/60 px-2 py-0.5 rounded-md border border-primary-200 dark:border-primary-800">
-            Plan: {promotion.planLabel}
-          </span>
+          {/*
+            Plan and time remaining share a row. They answer the same question
+            from two sides — what was bought, and how much of it is left — and
+            beside the status badge the countdown made that row a column wider
+            for no gain. Wraps, because a long plan label next to "14 days left"
+            can outrun a narrow card.
+
+            Only while a run is live: on a paused or expired promotion it would
+            be describing a clock that is stopped.
+          */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-block text-[10px] font-semibold text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-950/60 px-2 py-0.5 rounded-md border border-primary-200 dark:border-primary-800">
+              Plan: {promotion.planLabel}
+            </span>
+            {promotion.status === 'active' && timeLeft(promotion.endsAt) && (
+              /* Unfilled on purpose — two chips side by side compete, and the
+                 plan is the one that should read as the label. */
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                <Clock3 size={11} />
+                {timeLeft(promotion.endsAt)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
