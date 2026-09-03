@@ -40,6 +40,7 @@ import {
   KeyboardAwareScroll,
   useEnsureVisible,
 } from '@/features/shared/ui/KeyboardAwareScroll';
+import { ConfirmDialog } from '@/features/shared/ui/ConfirmDialog';
 import { useCheckCryptoDeposit, useCryptoDeposit, useStartCryptoDeposit } from '../data/cryptoApi';
 import { CryptoDepositPanel } from './CryptoDepositPanel';
 import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
@@ -186,6 +187,9 @@ export function EscrowDetailScreen() {
       availableActions: d.availableActions,
       /** Distinguishes "cancel and refund" from "cancel, nothing has moved". */
       fundedAt: d.fundedAt,
+      /** Whether the seller ticked "delivered" — decides how hard the release
+       *  confirmation pushes back, now that releasing from `funded` is allowed. */
+      deliveredAt: d.deliveredAt,
       tracking: d.trackingNumber
         ? { carrier: d.carrier ?? 'Carrier', code: d.trackingNumber }
         : undefined,
@@ -357,6 +361,15 @@ export function EscrowDetailScreen() {
   const isDone = deal.status === 'disbursed';
   /** Pre-funding cancels move no money, so the copy must drop the refund claim. */
   const cancelRefunds = Boolean(deal.fundedAt);
+  /**
+   * Whether the seller has actually ticked "delivered", which decides how hard
+   * the release confirmation pushes back.
+   *
+   * Read off the timestamp rather than `status === 'delivered'`: the buyer can
+   * now release straight from `funded`, so status alone cannot distinguish
+   * "seller said it shipped" from "nobody has said anything".
+   */
+  const sellerMarkedDelivered = Boolean(deal.deliveredAt);
 
   const busy =
     deliverDeal.isPending ||
@@ -932,7 +945,7 @@ export function EscrowDetailScreen() {
             </>
           ) : null}
 
-          {has('RELEASE') && !confirmRelease ? (
+          {has('RELEASE') ? (
             <Pressable
               onPress={() => setConfirmRelease(true)}
               disabled={busy}
@@ -946,45 +959,39 @@ export function EscrowDetailScreen() {
             </Pressable>
           ) : null}
 
-          {has('RELEASE') && confirmRelease ? (
-            <View style={[styles.formBox, { borderColor: theme.border }]}>
-              <Text style={[styles.formHead, { color: theme.textSecondary }]}>
-                Release the escrow?
-              </Text>
-              <Text style={[styles.body, { color: theme.textSecondary }]}>
-                {formatMoney(deal.sellerPayout, deal.currency)} goes to @{deal.sellerUsername}.
-                This confirms you received what you paid for and can&apos;t be undone.
-              </Text>
-              <View style={styles.formActions}>
-                <Pressable
-                  onPress={() => setConfirmRelease(false)}
-                  style={[styles.cancelBtn, { borderColor: theme.border }]}
-                >
-                  <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Not yet</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() =>
-                    releaseDeal.mutate(deal.id, { onSettled: () => setConfirmRelease(false) })
-                  }
-                  disabled={releaseDeal.isPending}
-                  style={({ pressed }) => [
-                    styles.submitBtn,
-                    {
-                      backgroundColor: theme.primary,
-                      opacity: releaseDeal.isPending ? 0.6 : pressed ? 0.85 : 1,
-                    },
-                  ]}
-                >
-                  {releaseDeal.isPending ? (
-                    <ActivityIndicator size="small" color="#ffffff" />
-                  ) : (
-                    <CheckCircle2 size={14} color="#ffffff" />
-                  )}
-                  <Text style={styles.submitBtnText}>Release Funds</Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : null}
+          {/*
+            Two different questions, so two different dialogs.
+
+            Once the seller has marked delivery, confirming receipt agrees with
+            a claim already on the record. Before that, the buyer is asserting
+            something no one else has — that the goods arrived — and releasing
+            the money on the strength of it. The second is a bigger step and is
+            worded as one.
+          */}
+          <ConfirmDialog
+            open={confirmRelease}
+            tone={sellerMarkedDelivered ? 'primary' : 'danger'}
+            title={
+              sellerMarkedDelivered ? 'Release the escrow?' : 'Release without a delivery update?'
+            }
+            description={
+              sellerMarkedDelivered
+                ? `@${deal.sellerUsername} has marked this as delivered. Confirming says you received it.`
+                : `@${deal.sellerUsername} has not marked this as delivered. You are confirming, on your own, that the item reached you.`
+            }
+            consequence={
+              sellerMarkedDelivered
+                ? `${formatMoney(deal.sellerPayout, deal.currency)} is paid to @${deal.sellerUsername}. This cannot be undone.`
+                : `${formatMoney(deal.sellerPayout, deal.currency)} is paid to @${deal.sellerUsername} even though delivery is still pending. Only continue if you actually have the item — this cannot be undone.`
+            }
+            confirmLabel="Release Funds"
+            cancelLabel="Not yet"
+            isPending={releaseDeal.isPending}
+            onCancel={() => setConfirmRelease(false)}
+            onConfirm={() =>
+              releaseDeal.mutate(deal.id, { onSettled: () => setConfirmRelease(false) })
+            }
+          />
 
           {/*
             Rose-tinted, not neutral — the web's trigger is

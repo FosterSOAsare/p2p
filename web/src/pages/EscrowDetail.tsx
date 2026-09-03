@@ -155,6 +155,16 @@ export function EscrowDetail() {
   const canInvite = deal.status === 'created' && (!deal.buyer || !deal.seller)
   const actions = deal.availableActions
   const has = (a: EscrowAction) => actions.includes(a)
+  /**
+   * Whether the seller has actually ticked "delivered", which decides how hard
+   * the release confirmation pushes back.
+   *
+   * Read off the timestamp rather than `status === 'delivered'`: the buyer can
+   * now release straight from `funded`, so status alone cannot distinguish
+   * "seller said it shipped" from "nobody has said anything".
+   */
+  const sellerMarkedDelivered = Boolean(deal.deliveredAt)
+  const sellerName = deal.seller?.username ?? 'the seller'
   const busy = fund.isPending || deliver.isPending || release.isPending || cancelDeal.isPending || dispute.isPending
   const actionError = fund.error ?? deliver.error ?? release.error ?? cancelDeal.error ?? dispute.error
   const counterparty = deal.myRole === 'buyer' ? deal.seller : deal.buyer
@@ -936,12 +946,32 @@ export function EscrowDetail() {
         </div>
       )}
 
+      {/*
+        Two different questions, so two different dialogs — the same split the
+        mobile deal screen makes.
+
+        Once the seller has marked delivery, confirming receipt agrees with a
+        claim already on the record. Before that, the buyer is asserting
+        something no one else has — that the goods arrived — and releasing the
+        money on the strength of it. The second is a bigger step and is worded
+        as one.
+      */}
       <ConfirmDialog
         open={confirmRelease}
-        tone="primary"
-        title="Release funds to the seller?"
-        description={`${formatMoney(deal.sellerPayout, deal.currency)} will be paid to @${deal.seller?.username ?? 'the seller'}. This confirms you received the item and can't be undone.`}
+        tone={sellerMarkedDelivered ? 'primary' : 'danger'}
+        title={sellerMarkedDelivered ? 'Release funds to the seller?' : 'Release without a delivery update?'}
+        description={
+          sellerMarkedDelivered
+            ? `@${sellerName} has marked this as delivered. Confirming says you received it.`
+            : `@${sellerName} has not marked this as delivered. You are confirming, on your own, that the item reached you.`
+        }
+        consequence={
+          sellerMarkedDelivered
+            ? `${formatMoney(deal.sellerPayout, deal.currency)} is paid to @${sellerName}. This cannot be undone.`
+            : `${formatMoney(deal.sellerPayout, deal.currency)} is paid to @${sellerName} even though delivery is still pending. Only continue if you actually have the item — this cannot be undone.`
+        }
         confirmLabel="Release Funds"
+        cancelLabel="Not yet"
         isPending={release.isPending}
         onConfirm={() => release.mutate(id, { onSettled: () => setConfirmRelease(false) })}
         onCancel={() => setConfirmRelease(false)}
