@@ -25,6 +25,7 @@ import { useDashboard, type DashboardOrder } from '../data/dashboardApi';
 import { useReleaseDeal } from '@/features/escrow/data/dealsApi';
 import { AppBar } from '@/features/shared/ui/AppBar';
 import { ConfirmDialog } from '@/features/shared/ui/ConfirmDialog';
+import { formatMoney } from '@/features/shared/libs/currency';
 import { StatCard } from './StatCard';
 
 /**
@@ -104,6 +105,10 @@ export function BuyerDashboard({ user }: { user: User }) {
     'funded' is exactly that distinction.
   */
   const releaseDelivered = pendingRelease?.status === 'delivered';
+  /** Net of fees, matching the deal screen — not the gross escrow amount. */
+  const releaseAmount = pendingRelease
+    ? formatMoney(pendingRelease.sellerPayout, pendingRelease.currency)
+    : '';
 
   const joined = new Date(user.createdAt).toLocaleDateString('en-GB', {
     month: 'short',
@@ -402,8 +407,8 @@ export function BuyerDashboard({ user }: { user: User }) {
         }
         consequence={
           releaseDelivered
-            ? 'The escrow is paid out to the seller. This cannot be undone.'
-            : 'The escrow is paid out to the seller even though delivery is still pending. Only continue if you actually have the item — this cannot be undone.'
+            ? `${releaseAmount} is released to the seller. This cannot be undone.`
+            : `${releaseAmount} is released to the seller even though delivery is still pending. Only continue if you actually have the item — this cannot be undone.`
         }
         confirmLabel="Release Funds"
         cancelLabel="Not yet"

@@ -67,6 +67,8 @@ export interface DashboardOrder {
   vendorName: string;
   title: string;
   price: number;
+  /** What the seller receives, fees deducted — the figure the release dialog quotes. */
+  sellerPayout: number;
   currency: 'GHS' | 'TRX';
   imageUrl: string | null;
   /** Absent for a standalone escrow with no marketplace listing behind it. */

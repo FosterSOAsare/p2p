@@ -3,7 +3,7 @@ import { ApiError } from "../../shared/lib/errors";
 import { publicUser } from "../auth/auth.service";
 import type { PublicUser } from "../auth/auth.model";
 import type { NotificationPrefsInput, SavedListingCard, UpdateProfileInput } from "./users.model";
-import { feeMathP, toPesewas, fromPesewas } from "../escrows/money";
+import { breakdown, feeMathP, toPesewas, fromPesewas } from "../escrows/money";
 
 // ---------- Counterparty search ----------
 
@@ -357,6 +357,16 @@ export async function getDashboard(userId: string) {
       vendorName: ord.seller?.username ?? ord.invitedUsername ?? "Seller",
       title: ord.title,
       price: Number(ord.amount),
+      /**
+       * What the seller actually receives, fees deducted — the same figure the
+       * deal detail page shows.
+       *
+       * `price` is the gross escrow amount, so a release dialog quoting it
+       * would name a larger number than the one the seller is paid, and a
+       * different number from the one the detail page quotes for the very same
+       * action.
+       */
+      sellerPayout: breakdown(Number(ord.amount), Number(ord.feeAmount), ord.feeSplit).sellerPayout,
       currency: ord.currency,
       imageUrl: ord.listing?.images[0] ?? "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500&auto=format&fit=crop&q=60",
       productId: ord.listingId ?? undefined,

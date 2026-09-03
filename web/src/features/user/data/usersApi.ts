@@ -239,6 +239,8 @@ export interface DashboardOrder {
   vendorName: string
   title: string
   price: number
+  /** What the seller receives, fees deducted — the figure the release dialog quotes. */
+  sellerPayout: number
   currency: string
   imageUrl: string
   productId?: string

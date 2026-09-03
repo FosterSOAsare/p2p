@@ -1034,8 +1034,8 @@ export function EscrowDetailScreen() {
             }
             consequence={
               sellerMarkedDelivered
-                ? `${formatMoney(deal.sellerPayout, deal.currency)} is paid to @${deal.sellerUsername}. This cannot be undone.`
-                : `${formatMoney(deal.sellerPayout, deal.currency)} is paid to @${deal.sellerUsername} even though delivery is still pending. Only continue if you actually have the item — this cannot be undone.`
+                ? `${formatMoney(deal.sellerPayout, deal.currency)} is released to @${deal.sellerUsername}. This cannot be undone.`
+                : `${formatMoney(deal.sellerPayout, deal.currency)} is released to @${deal.sellerUsername} even though delivery is still pending. Only continue if you actually have the item — this cannot be undone.`
             }
             confirmLabel="Release Funds"
             cancelLabel="Not yet"

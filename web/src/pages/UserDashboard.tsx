@@ -64,6 +64,10 @@ export function UserDashboard({ dashboardData }: { dashboardData?: DashboardResp
   */
   const releaseDelivered =
     pendingRelease?.status === 'delivered' || pendingRelease?.status === 'shipped'
+  /** Net of fees, matching the deal page — not the gross escrow amount. */
+  const releaseAmount = pendingRelease
+    ? formatMoney(pendingRelease.sellerPayout, pendingRelease.currency)
+    : ''
 
   return (
     <div className="py-4 sm:py-6 space-y-6 sm:space-y-8">
@@ -317,8 +321,8 @@ export function UserDashboard({ dashboardData }: { dashboardData?: DashboardResp
         }
         consequence={
           releaseDelivered
-            ? 'The escrow is paid out to the seller. This cannot be undone.'
-            : 'The escrow is paid out to the seller even though delivery is still pending. Only continue if you actually have the item — this cannot be undone.'
+            ? `${releaseAmount} is released to the seller. This cannot be undone.`
+            : `${releaseAmount} is released to the seller even though delivery is still pending. Only continue if you actually have the item — this cannot be undone.`
         }
         confirmLabel="Release Funds"
         cancelLabel="Not yet"
