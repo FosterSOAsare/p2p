@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ShieldCheck,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useDashboard, type DashboardResponse } from '../features/user/data/usersApi'
 import { useReleaseDeal } from '../features/escrow/data/ordersApi'
+import { ConfirmDialog } from '../features/shared/ui/ConfirmDialog'
 import { Badge } from '../features/shared/ui/Badge'
 import { useMe } from '../features/auth/data/authApi'
 
@@ -44,9 +46,24 @@ export function UserDashboard({ dashboardData }: { dashboardData?: DashboardResp
 
   const orders = data?.buyer?.recentOrders ?? []
 
+  /** The order awaiting its release confirmation. */
+  const [pendingRelease, setPendingRelease] = useState<(typeof orders)[number] | null>(null)
+
+  /**
+   * The release itself. Reached only from the confirmation dialog — this card
+   * used to release the escrow on a single click, with no way back.
+   */
   const handleConfirmReceipt = (orderId: string) => {
-    releaseMutation.mutate(orderId)
+    releaseMutation.mutate(orderId, { onSettled: () => setPendingRelease(null) })
   }
+
+  /*
+    Same split as the deal page: with the seller's delivery on record this
+    confirms a claim already made, without it the buyer is asserting receipt
+    themselves.
+  */
+  const releaseDelivered =
+    pendingRelease?.status === 'delivered' || pendingRelease?.status === 'shipped'
 
   return (
     <div className="py-4 sm:py-6 space-y-6 sm:space-y-8">
@@ -257,7 +274,7 @@ export function UserDashboard({ dashboardData }: { dashboardData?: DashboardResp
                       </span>
                     ) : ord.status === 'delivered' || ord.status === 'shipped' || ord.status === 'funded' ? (
                       <button
-                        onClick={() => handleConfirmReceipt(ord.id)}
+                        onClick={() => setPendingRelease(ord)}
                         disabled={releaseMutation.isPending}
                         className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-all shadow-sm cursor-pointer disabled:opacity-50"
                       >
@@ -288,6 +305,27 @@ export function UserDashboard({ dashboardData }: { dashboardData?: DashboardResp
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingRelease !== null}
+        tone={releaseDelivered ? 'primary' : 'danger'}
+        title={releaseDelivered ? 'Release the escrow?' : 'Release without a delivery update?'}
+        description={
+          releaseDelivered
+            ? `${pendingRelease?.vendorName ?? 'The seller'} has marked this as delivered. Confirming says you received it.`
+            : `${pendingRelease?.vendorName ?? 'The seller'} has not marked this as delivered. You are confirming, on your own, that the item reached you.`
+        }
+        consequence={
+          releaseDelivered
+            ? 'The escrow is paid out to the seller. This cannot be undone.'
+            : 'The escrow is paid out to the seller even though delivery is still pending. Only continue if you actually have the item — this cannot be undone.'
+        }
+        confirmLabel="Release Funds"
+        cancelLabel="Not yet"
+        isPending={releaseMutation.isPending}
+        onCancel={() => setPendingRelease(null)}
+        onConfirm={() => pendingRelease && handleConfirmReceipt(pendingRelease.id)}
+      />
     </div>
   )
 }

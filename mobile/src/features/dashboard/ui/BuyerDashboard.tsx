@@ -21,9 +21,10 @@ import { useTheme } from '@/hooks/use-theme';
 import { useSaved } from '@/context/SavedContext';
 import { type User } from '@/constants/appTypes';
 import { apiErrorMessage } from '@/features/shared/data/api';
-import { useDashboard } from '../data/dashboardApi';
+import { useDashboard, type DashboardOrder } from '../data/dashboardApi';
 import { useReleaseDeal } from '@/features/escrow/data/dealsApi';
 import { AppBar } from '@/features/shared/ui/AppBar';
+import { ConfirmDialog } from '@/features/shared/ui/ConfirmDialog';
 import { StatCard } from './StatCard';
 
 /**
@@ -75,15 +76,34 @@ export function BuyerDashboard({ user }: { user: User }) {
   const release = useReleaseDeal();
   /** Which order's release is in flight — so only that row shows a spinner. */
   const [releasingId, setReleasingId] = useState<string | null>(null);
+  /** The order awaiting its release confirmation. */
+  const [pendingRelease, setPendingRelease] = useState<DashboardOrder | null>(null);
 
   const stats = dashboard.data?.buyer.stats;
   const orders = dashboard.data?.buyer.recentOrders ?? [];
 
+  /**
+   * The release itself. Reached only from the confirmation dialog — this card
+   * used to release the escrow on a single tap, with no way back.
+   */
   const confirmReceipt = (orderId: string) => {
     if (release.isPending) return;
     setReleasingId(orderId);
-    release.mutate(orderId, { onSettled: () => setReleasingId(null) });
+    release.mutate(orderId, {
+      onSettled: () => {
+        setReleasingId(null);
+        setPendingRelease(null);
+      },
+    });
   };
+
+  /*
+    Same split as the deal screen: with the seller's delivery on record this
+    confirms a claim already made, without it the buyer is asserting receipt
+    themselves. `status` is the raw escrow status here, so 'delivered' versus
+    'funded' is exactly that distinction.
+  */
+  const releaseDelivered = pendingRelease?.status === 'delivered';
 
   const joined = new Date(user.createdAt).toLocaleDateString('en-GB', {
     month: 'short',
@@ -319,7 +339,7 @@ export function BuyerDashboard({ user }: { user: User }) {
                     // The whole card navigates to the deal; releasing must not
                     // also open it, or the confirmation is lost behind a push.
                     e.stopPropagation();
-                    confirmReceipt(order.id);
+                    setPendingRelease(order);
                   }}
                   disabled={release.isPending}
                   accessibilityRole="button"
@@ -370,6 +390,27 @@ export function BuyerDashboard({ user }: { user: User }) {
           );
         })
       )}
+
+      <ConfirmDialog
+        open={pendingRelease !== null}
+        tone={releaseDelivered ? 'primary' : 'danger'}
+        title={releaseDelivered ? 'Release the escrow?' : 'Release without a delivery update?'}
+        description={
+          releaseDelivered
+            ? `${pendingRelease?.vendorName ?? 'The seller'} has marked this as delivered. Confirming says you received it.`
+            : `${pendingRelease?.vendorName ?? 'The seller'} has not marked this as delivered. You are confirming, on your own, that the item reached you.`
+        }
+        consequence={
+          releaseDelivered
+            ? 'The escrow is paid out to the seller. This cannot be undone.'
+            : 'The escrow is paid out to the seller even though delivery is still pending. Only continue if you actually have the item — this cannot be undone.'
+        }
+        confirmLabel="Release Funds"
+        cancelLabel="Not yet"
+        isPending={release.isPending}
+        onCancel={() => setPendingRelease(null)}
+        onConfirm={() => pendingRelease && confirmReceipt(pendingRelease.id)}
+      />
     </View>
   );
 }
