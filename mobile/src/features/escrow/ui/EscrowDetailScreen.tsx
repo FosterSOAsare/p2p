@@ -230,6 +230,8 @@ export function EscrowDetailScreen() {
    * tap rather than firing on the first. The web opens a confirm modal here.
    */
   const [confirmRelease, setConfirmRelease] = useState(false);
+  /** Which sensitive action is waiting on its confirmation dialog. */
+  const [pending, setPending] = useState<'deliver' | 'cancel' | 'dispute' | null>(null);
 
   // Amending terms, allowed only before funding.
   const [editOpen, setEditOpen] = useState(false);
@@ -370,6 +372,69 @@ export function EscrowDetailScreen() {
    * "seller said it shipped" from "nobody has said anything".
    */
   const sellerMarkedDelivered = Boolean(deal.deliveredAt);
+
+  /*
+    Deliver / cancel / dispute all wait on a confirmation rather than firing.
+
+    The panels above them collect detail — a tracking number, a cancellation
+    reason — but filling a form is not the same as deciding, and all three move
+    money or freeze it. `runPending` is the only path to the mutation.
+  */
+  const runPending = () => {
+    if (pending === 'deliver') {
+      deliverDeal.mutate(
+        {
+          id: deal.id,
+          // Trimmed to undefined rather than sent empty — the server stores ""
+          // as a carrier otherwise.
+          carrier: carrier.trim() || undefined,
+          trackingNumber: tracking.trim() || undefined,
+          note: deliveryNote.trim() || undefined,
+        },
+        { onSuccess: () => setDeliverOpen(false), onSettled: () => setPending(null) },
+      );
+    } else if (pending === 'cancel') {
+      cancelDeal.mutate(
+        { id: deal.id, reason: cancelReason.trim() || undefined },
+        { onSuccess: () => setCancelOpen(false), onSettled: () => setPending(null) },
+      );
+    } else if (pending === 'dispute') {
+      disputeDeal.mutate(
+        { id: deal.id, reason: disputeReason, description: disputeDesc.trim() },
+        { onSuccess: () => setDisputeOpen(false), onSettled: () => setPending(null) },
+      );
+    }
+  };
+
+  /** Copy per pending action, matching the web's `pendingCopy` word for word. */
+  const pendingCopy = {
+    deliver: {
+      title: 'Mark this as delivered?',
+      description: `This tells @${deal.buyerUsername} the item is on its way.`,
+      consequence:
+        'It starts the auto-release countdown: if the buyer does not respond, the funds release to you automatically.',
+      confirmLabel: 'Mark Delivered',
+      tone: 'primary' as const,
+    },
+    cancel: {
+      title: cancelRefunds ? 'Cancel and refund this deal?' : 'Cancel this deal?',
+      description: cancelRefunds
+        ? `${formatMoney(deal.fundingTotal, deal.currency)} goes back to @${deal.buyerUsername}, fees included.`
+        : 'Nothing has been paid yet, so no money moves.',
+      consequence:
+        'The deal closes for good. It cannot be reopened — a new one would have to be created.',
+      confirmLabel: cancelRefunds ? 'Cancel & Refund' : 'Cancel Deal',
+      tone: 'danger' as const,
+    },
+    dispute: {
+      title: 'Open a dispute?',
+      description: 'An administrator will review this deal and decide the outcome.',
+      consequence:
+        'The money is frozen until they rule. Neither side can release, cancel or refund it in the meantime.',
+      confirmLabel: 'Open Dispute',
+      tone: 'danger' as const,
+    },
+  }[pending ?? 'deliver'];
 
   const busy =
     deliverDeal.isPending ||
@@ -861,19 +926,7 @@ export function EscrowDetailScreen() {
                   <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancel</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() =>
-                    deliverDeal.mutate(
-                      {
-                        id: deal.id,
-                        // Trimmed to undefined rather than sent empty — the
-                        // server stores "" as a carrier otherwise.
-                        carrier: carrier.trim() || undefined,
-                        trackingNumber: tracking.trim() || undefined,
-                        note: deliveryNote.trim() || undefined,
-                      },
-                      { onSuccess: () => setDeliverOpen(false) },
-                    )
-                  }
+                  onPress={() => setPending('deliver')}
                   disabled={deliverDeal.isPending}
                   style={({ pressed }) => [
                     styles.submitBtn,
@@ -993,6 +1046,20 @@ export function EscrowDetailScreen() {
             }
           />
 
+          {/* Deliver / cancel / dispute share one dialog — see `pendingCopy`. */}
+          <ConfirmDialog
+            open={pending !== null}
+            tone={pendingCopy.tone}
+            title={pendingCopy.title}
+            description={pendingCopy.description}
+            consequence={pendingCopy.consequence}
+            confirmLabel={pendingCopy.confirmLabel}
+            cancelLabel="Go back"
+            isPending={deliverDeal.isPending || cancelDeal.isPending || disputeDeal.isPending}
+            onCancel={() => setPending(null)}
+            onConfirm={runPending}
+          />
+
           {/*
             Rose-tinted, not neutral — the web's trigger is
             `border-rose-200 bg-rose-50 text-rose-700`, which reads as
@@ -1078,12 +1145,7 @@ export function EscrowDetailScreen() {
                   </Text>
                 </Pressable>
                 <Pressable
-                  onPress={() =>
-                    cancelDeal.mutate(
-                      { id: deal.id, reason: cancelReason.trim() || undefined },
-                      { onSuccess: () => setCancelOpen(false) },
-                    )
-                  }
+                  onPress={() => setPending('cancel')}
                   disabled={cancelDeal.isPending}
                   style={({ pressed }) => [
                     styles.submitBtn,
@@ -1186,16 +1248,7 @@ export function EscrowDetailScreen() {
                   <Text style={[styles.cancelText, { color: theme.textSecondary }]}>Cancel</Text>
                 </Pressable>
                 <Pressable
-                  onPress={() =>
-                    disputeDeal.mutate(
-                      {
-                        id: deal.id,
-                        reason: disputeReason,
-                        description: disputeDesc.trim(),
-                      },
-                      { onSuccess: () => setDisputeOpen(false) },
-                    )
-                  }
+                  onPress={() => setPending('dispute')}
                   // The server requires at least 10 characters, so a shorter
                   // description is refused here rather than after a round trip.
                   disabled={disputeDesc.trim().length < 10 || disputeDeal.isPending}

@@ -78,6 +78,8 @@ export function EscrowDetail() {
   const [payOpen, setPayOpen] = useState(false)
   const [redirecting, setRedirecting] = useState(false)
   const [confirmRelease, setConfirmRelease] = useState(false)
+  /** Which sensitive action is waiting on its confirmation dialog. */
+  const [pending, setPending] = useState<'deliver' | 'cancel' | 'dispute' | null>(null)
   const [deliverOpen, setDeliverOpen] = useState(false)
   const [carrier, setCarrier] = useState('')
   const [tracking, setTracking] = useState('')
@@ -234,20 +236,68 @@ export function EscrowDetail() {
     )
   }
 
-  const submitDeliver = () => {
-    deliver.mutate(
-      { id, carrier: carrier || undefined, trackingNumber: tracking || undefined, note: note || undefined },
-      { onSuccess: () => setDeliverOpen(false) },
-    )
-  }
+  /*
+    Each of these opens a confirmation rather than firing.
+
+    The forms above them collect detail — a tracking number, a cancellation
+    reason — but filling a form is not the same as deciding, and all three of
+    these move money or freeze it. `runPending` below is the only path to the
+    mutation.
+  */
+  const submitDeliver = () => setPending('deliver')
 
   const submitDispute = () => {
     if (disputeDesc.trim().length < 10) return
-    dispute.mutate(
-      { id, reason: disputeReason, description: disputeDesc.trim() },
-      { onSuccess: () => setDisputeOpen(false) },
-    )
+    setPending('dispute')
   }
+
+  const runPending = () => {
+    if (pending === 'deliver') {
+      deliver.mutate(
+        { id, carrier: carrier || undefined, trackingNumber: tracking || undefined, note: note || undefined },
+        { onSuccess: () => setDeliverOpen(false), onSettled: () => setPending(null) },
+      )
+    } else if (pending === 'dispute') {
+      dispute.mutate(
+        { id, reason: disputeReason, description: disputeDesc.trim() },
+        { onSuccess: () => setDisputeOpen(false), onSettled: () => setPending(null) },
+      )
+    } else if (pending === 'cancel') {
+      cancelDeal.mutate(
+        { id, reason: cancelReason.trim() || undefined },
+        { onSuccess: () => setCancelOpen(false), onSettled: () => setPending(null) },
+      )
+    }
+  }
+
+  /** Copy per pending action, so the dialog says what this specific step does. */
+  const pendingCopy = {
+    deliver: {
+      title: 'Mark this as delivered?',
+      description: `This tells @${deal.buyer?.username ?? 'the buyer'} the item is on its way.`,
+      consequence:
+        'It starts the auto-release countdown: if the buyer does not respond, the funds release to you automatically.',
+      confirmLabel: 'Mark Delivered',
+      tone: 'primary' as const,
+    },
+    cancel: {
+      title: cancelRefunds ? 'Cancel and refund this deal?' : 'Cancel this deal?',
+      description: cancelRefunds
+        ? `${formatMoney(deal.fundingTotal, deal.currency)} goes back to @${deal.buyer?.username ?? 'the buyer'}, fees included.`
+        : 'Nothing has been paid yet, so no money moves.',
+      consequence: 'The deal closes for good. It cannot be reopened — a new one would have to be created.',
+      confirmLabel: cancelRefunds ? 'Cancel & Refund' : 'Cancel Deal',
+      tone: 'danger' as const,
+    },
+    dispute: {
+      title: 'Open a dispute?',
+      description: 'An administrator will review this deal and decide the outcome.',
+      consequence:
+        'The money is frozen until they rule. Neither side can release, cancel or refund it in the meantime.',
+      confirmLabel: 'Open Dispute',
+      tone: 'danger' as const,
+    },
+  }[pending ?? 'deliver']
 
   return (
     <div className="py-4 sm:py-6 space-y-6">
@@ -635,12 +685,7 @@ export function EscrowDetail() {
 
                 <div className="flex gap-2 pt-1">
                   <button
-                    onClick={() =>
-                      cancelDeal.mutate(
-                        { id, reason: cancelReason.trim() || undefined },
-                        { onSuccess: () => setCancelOpen(false) },
-                      )
-                    }
+                    onClick={() => setPending('cancel')}
                     disabled={cancelDeal.isPending}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 py-2.5 text-xs font-bold text-white hover:bg-rose-700 cursor-pointer disabled:opacity-50 shadow-sm"
                   >
@@ -975,6 +1020,20 @@ export function EscrowDetail() {
         isPending={release.isPending}
         onConfirm={() => release.mutate(id, { onSettled: () => setConfirmRelease(false) })}
         onCancel={() => setConfirmRelease(false)}
+      />
+
+      {/* Deliver / cancel / dispute all share one dialog — see `pendingCopy`. */}
+      <ConfirmDialog
+        open={pending !== null}
+        tone={pendingCopy.tone}
+        title={pendingCopy.title}
+        description={pendingCopy.description}
+        consequence={pendingCopy.consequence}
+        confirmLabel={pendingCopy.confirmLabel}
+        cancelLabel="Go back"
+        isPending={deliver.isPending || cancelDeal.isPending || dispute.isPending}
+        onCancel={() => setPending(null)}
+        onConfirm={runPending}
       />
 
       <PaymentModal

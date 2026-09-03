@@ -28,6 +28,7 @@ import { usePersona } from '@/hooks/use-persona';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { formatMoney, type Currency } from '@/features/shared/libs/currency';
+import { ConfirmDialog } from '@/features/shared/ui/ConfirmDialog';
 import {
   useWallet,
   useWalletTransactions,
@@ -179,6 +180,8 @@ export function WalletScreen() {
   const isSeller = usePersona() === 'seller';
 
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  /** Payout awaiting its confirmation dialog, after the sheet validated. */
+  const [confirmPayout, setConfirmPayout] = useState(false);
   const topUp = useTopUp();
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState('');
@@ -259,12 +262,29 @@ export function WalletScreen() {
       return;
     }
 
+    /*
+      Validated — now confirm.
+
+      The sheet closes first and the dialog replaces it rather than sitting on
+      top: two React Native modals stacked on Android is a reliability problem
+      not worth taking for a screen that moves money. Cancelling reopens the
+      sheet with everything still filled in.
+    */
+    setWithdrawOpen(false);
+    setConfirmPayout(true);
+  };
+
+  /** The payout itself. Reached only from the confirmation dialog. */
+  const runWithdraw = async () => {
+    const value = Number.parseFloat(amount);
     try {
       // The server re-checks the balance and guards against going negative —
       // the checks above are only there to save a round trip on obvious input
       // mistakes, not to be the authority.
       await withdraw.mutateAsync({ amount: value, destination: destination.trim(), currency });
     } catch (err) {
+      setConfirmPayout(false);
+      setWithdrawOpen(true);
       setError(apiErrorMessage(err));
       return;
     }
@@ -276,7 +296,7 @@ export function WalletScreen() {
     // The web clears the destination too, so a second payout doesn't silently
     // reuse the last number.
     setDestination('');
-    setWithdrawOpen(false);
+    setConfirmPayout(false);
   };
 
   return (
@@ -911,6 +931,32 @@ export function WalletScreen() {
             </KeyboardAwareScroll>
           </SafeAreaView>
         </Modal>
+
+        {/*
+          Payout confirmation. Sits outside the withdraw sheet rather than on
+          top of it — see `submitWithdraw`. Cancelling puts the sheet back with
+          the amount and destination still filled in, so backing out costs
+          nothing but a tap.
+        */}
+        <ConfirmDialog
+          open={confirmPayout}
+          tone="danger"
+          title="Send this payout?"
+          description={`${formatMoney(Number(amount) || 0, currency)} to ${destination.trim()}.`}
+          consequence={
+            currency === 'TRX'
+              ? 'On-chain transfers cannot be reversed. Check the address one more time.'
+              : 'Payouts cannot be reversed once sent. Check the number one more time.'
+          }
+          confirmLabel="Send Payout"
+          cancelLabel="Go back"
+          isPending={withdraw.isPending}
+          onCancel={() => {
+            setConfirmPayout(false);
+            setWithdrawOpen(true);
+          }}
+          onConfirm={() => void runWithdraw()}
+        />
     </SafeAreaView>
   );
 }

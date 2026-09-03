@@ -35,6 +35,7 @@ import {
 import { useInitDeposit, pendingAction, type PayMethod } from '../features/escrow/data/paymentsApi'
 import { PayMethodPicker } from '../features/escrow/ui/PayMethodPicker'
 import { formatMoney } from '../features/shared/libs/currency'
+import { ConfirmDialog } from '../features/shared/ui/ConfirmDialog'
 import { apiErrorMessage } from '../features/shared/libs/api'
 
 /**
@@ -264,6 +265,8 @@ export function SellerWallet() {
   const [withdrawDestination, setWithdrawDestination] = useState(me?.phone || '')
   const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null)
   const [withdrawError, setWithdrawError] = useState<string | null>(null)
+  /** Payout awaiting its confirmation dialog, after the form validated. */
+  const [confirmPayout, setConfirmPayout] = useState(false)
 
   const switchCurrency = (next: WalletCurrency) => {
     setCurrency(next)
@@ -351,6 +354,16 @@ export function SellerWallet() {
       return
     }
 
+    /*
+      Validated — now confirm. `runWithdraw` below is the only path to the
+      mutation, so submitting the form can never move money by itself.
+    */
+    setConfirmPayout(true)
+  }
+
+  /** The payout itself. Reached only from the confirmation dialog. */
+  const runWithdraw = () => {
+    const numAmount = parseFloat(withdrawAmount)
     withdrawMutation.mutate(
       { amount: numAmount, destination: withdrawDestination.trim(), currency },
       {
@@ -365,11 +378,13 @@ export function SellerWallet() {
           // Close the modal — the confirmation is shown on the page behind it,
           // so the payout result stays visible next to the updated balance.
           setWithdrawModalOpen(false)
+          setConfirmPayout(false)
           txQuery.refetch()
           refetchWallet()
         },
         onError: (err) => {
           setWithdrawError(apiErrorMessage(err))
+          setConfirmPayout(false)
         },
       }
     )
@@ -836,6 +851,28 @@ export function SellerWallet() {
           </div>
         </div>
       )}
+
+      {/*
+        Payout confirmation. Rendered after the withdraw modal so it layers on
+        top; cancelling leaves that modal open with the amount and destination
+        still filled in, so backing out costs nothing but a click.
+      */}
+      <ConfirmDialog
+        open={confirmPayout}
+        tone="danger"
+        title="Send this payout?"
+        description={`${formatMoney(parseFloat(withdrawAmount) || 0, currency)} to ${withdrawDestination.trim()}.`}
+        consequence={
+          currency === 'TRX'
+            ? 'On-chain transfers cannot be reversed. Check the address one more time.'
+            : 'Payouts cannot be reversed once sent. Check the number one more time.'
+        }
+        confirmLabel="Send Payout"
+        cancelLabel="Go back"
+        isPending={withdrawMutation.isPending}
+        onCancel={() => setConfirmPayout(false)}
+        onConfirm={runWithdraw}
+      />
     </div>
   )
 }
