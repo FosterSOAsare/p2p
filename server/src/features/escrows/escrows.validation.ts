@@ -124,6 +124,12 @@ export const list: RequestSchema = {
   query: Joi.object({
     role: Joi.string().valid("buyer", "seller"),
     status: Joi.string().valid("created", "funded", "delivered", "disbursed", "disputed", "cancelled"),
+    /*
+      Where the deal came from. "marketplace" is a deal created by checking out
+      a listing; "custom" is a standalone escrow two people agreed between
+      themselves. Omitted means both, which is what every existing caller sends.
+    */
+    source: Joi.string().valid("marketplace", "custom"),
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(50).default(10),
   }),

@@ -42,6 +42,20 @@ const TABS: { id: string; label: string; status?: DealStatus }[] = [
   { id: 'cancelled', label: 'Cancelled', status: 'cancelled' },
 ];
 
+/**
+ * Where a deal came from. Marketplace deals were checked out from a listing;
+ * custom ones are standalone escrows two people agreed between themselves.
+ *
+ * Filtered in memory alongside the status tabs, for the same reason they are —
+ * the screen already holds every row, so switching is instant. (The web filters
+ * this server-side because it pages; this list does not.)
+ */
+const SOURCES: { id: string; label: string; source?: 'marketplace' | 'custom' }[] = [
+  { id: 'all', label: 'All types' },
+  { id: 'marketplace', label: 'Marketplace', source: 'marketplace' },
+  { id: 'custom', label: 'Custom', source: 'custom' },
+];
+
 function formatMoney(amount: number, currency: string) {
   return `${currency} ${amount.toLocaleString('en-GH', {
     minimumFractionDigits: 2,
@@ -60,6 +74,7 @@ export function DealsListScreen() {
   const tabBarHeight = useTabBarHeight();
   const router = useRouter();
   const [tab, setTab] = useState('all');
+  const [source, setSource] = useState('all');
 
   /**
    * One fetch, filtered in memory — so switching tabs is instant rather than a
@@ -71,8 +86,14 @@ export function DealsListScreen() {
   const deals = useMemo(() => {
     const rows = dealsQuery.data?.deals ?? [];
     const active = TABS.find((t) => t.id === tab) ?? TABS[0];
-    return active.status ? rows.filter((d) => d.status === active.status) : rows;
-  }, [tab, dealsQuery.data]);
+    const activeSource = SOURCES.find((s) => s.id === source) ?? SOURCES[0];
+    const byStatus = active.status ? rows.filter((d) => d.status === active.status) : rows;
+    // A marketplace deal is one with a listing behind it; a custom deal never
+    // had one. Same rule the server applies for the web's paged list.
+    if (!activeSource.source) return byStatus;
+    const wantListing = activeSource.source === 'marketplace';
+    return byStatus.filter((d) => Boolean(d.listing) === wantListing);
+  }, [tab, source, dealsQuery.data]);
 
   /** Count for the current tab, shown as the web's "N total". */
   const total = deals.length;
@@ -222,6 +243,41 @@ export function DealsListScreen() {
               })}
             </ScrollView>
 
+            {/* Source filter — independent of the status tabs above. */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.sourceStrip}
+            >
+              {SOURCES.map((opt) => {
+                const on = source === opt.id;
+                return (
+                  <Pressable
+                    key={opt.id}
+                    onPress={() => setSource(opt.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    style={[
+                      styles.sourceChip,
+                      {
+                        backgroundColor: on ? theme.primaryLight : 'transparent',
+                        borderColor: on ? theme.primary : theme.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.sourceText,
+                        { color: on ? theme.primary : theme.textSecondary },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
             <View style={[styles.countRow, { borderTopColor: theme.border }]}>
               <Text style={[styles.countText, { color: theme.textSecondary }]}>
                 <Text style={{ color: theme.text }}>{deals.length}</Text>
@@ -300,6 +356,16 @@ const styles = StyleSheet.create({
   },
   tabText: { fontSize: 12, fontFamily: Fonts.sans[600] },
 
+  /* Source filter chips — a lighter treatment than the status tabs, so the
+     two rows read as different questions rather than one long strip. */
+  sourceStrip: { gap: Spacing.two, paddingBottom: Spacing.three },
+  sourceChip: {
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 6,
+  },
+  sourceText: { fontSize: 11.5, fontFamily: Fonts.sans[700] },
   countRow: { borderTopWidth: 1, paddingTop: Spacing.three },
   countText: { fontSize: 12, fontFamily: Fonts.sans[600] },
 

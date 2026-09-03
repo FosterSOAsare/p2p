@@ -13,10 +13,24 @@ const TABS: { id: string; label: string; status?: EscrowStatus }[] = [
   { id: 'cancelled', label: 'Cancelled', status: 'cancelled' },
 ]
 
+/**
+ * Where a deal came from. Marketplace deals were checked out from a listing;
+ * custom ones are standalone escrows two people agreed between themselves.
+ *
+ * Kept separate from the status tabs rather than folded in with them: the two
+ * are independent questions, and combining them would need a row per pairing.
+ */
+const SOURCES: { id: string; label: string; source?: 'marketplace' | 'custom' }[] = [
+  { id: 'all', label: 'All types' },
+  { id: 'marketplace', label: 'Marketplace', source: 'marketplace' },
+  { id: 'custom', label: 'Custom', source: 'custom' },
+]
+
 /** Shared filter+paginate+render body for the deals / orders / sales lists. */
 export function DealsListView({ role, emptyLabel }: { role?: 'buyer' | 'seller'; emptyLabel: string }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = searchParams.get('tab') ?? 'all'
+  const sourceTab = searchParams.get('source') ?? 'all'
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1)
 
   const setParams = (patch: Record<string, string | null>) => {
@@ -30,9 +44,13 @@ export function DealsListView({ role, emptyLabel }: { role?: 'buyer' | 'seller';
   }
 
   const active = TABS.find((t) => t.id === tab) ?? TABS[0]
+  const activeSource = SOURCES.find((s) => s.id === sourceTab) ?? SOURCES[0]
   const apiQuery = new URLSearchParams()
   if (role) apiQuery.set('role', role)
   if (active.status) apiQuery.set('status', active.status)
+  // Server-side: the total and the pager below come from the same query, so
+  // filtering here rather than in the rendered list keeps them agreeing.
+  if (activeSource.source) apiQuery.set('source', activeSource.source)
   apiQuery.set('page', String(page))
   apiQuery.set('limit', '10')
 
@@ -57,6 +75,23 @@ export function DealsListView({ role, emptyLabel }: { role?: 'buyer' | 'seller';
           </button>
         ))}
         {data && <span className="ml-auto text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">{data.total} total</span>}
+      </div>
+
+      {/* Source filter — independent of the status tabs above. */}
+      <div className="flex items-center gap-1.5 overflow-x-auto">
+        {SOURCES.map((sOpt) => (
+          <button
+            key={sOpt.id}
+            onClick={() => setParams({ source: sOpt.id === 'all' ? null : sOpt.id })}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              sourceTab === sOpt.id
+                ? 'border-primary-600 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-950 dark:text-primary-300'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-900'
+            }`}
+          >
+            {sOpt.label}
+          </button>
+        ))}
       </div>
 
       {dealsQuery.isLoading && (

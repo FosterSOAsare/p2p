@@ -23,7 +23,13 @@ export const updateDeal = asyncHandler(async (req, res) => {
 export const list = asyncHandler(async (req, res) => {
   const result = await escrowsService.list(
     req.user!.id,
-    req.query as unknown as { role?: "buyer" | "seller"; status?: EscrowStatus; page: number; limit: number },
+    req.query as unknown as {
+      role?: "buyer" | "seller";
+      status?: EscrowStatus;
+      source?: "marketplace" | "custom";
+      page: number;
+      limit: number;
+    },
   );
   res.json(result);
 });

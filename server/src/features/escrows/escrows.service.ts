@@ -961,7 +961,17 @@ export async function leaveReview(userId: string, escrowId: string, input: { rat
 
 // ---------- Queries ----------
 
-export async function list(userId: string, params: { role?: "buyer" | "seller"; status?: EscrowStatus; page: number; limit: number }) {
+export async function list(
+  userId: string,
+  params: {
+    role?: "buyer" | "seller";
+    status?: EscrowStatus;
+    /** Marketplace deals came from a listing; custom ones never had one. */
+    source?: "marketplace" | "custom";
+    page: number;
+    limit: number;
+  },
+) {
   const me = await prisma.user.findUnique({ where: { id: userId }, select: { username: true } });
   const myUsername = me?.username;
 
@@ -981,6 +991,17 @@ export async function list(userId: string, params: { role?: "buyer" | "seller"; 
         ? { OR: [{ sellerId: userId }, ...(myUsername ? [{ invitedUsername: myUsername, creatorRole: "buyer" as const }] : [])] }
         : { OR: userOrInvitedFilter }),
     ...(params.status && { status: params.status }),
+    /*
+      The listing link is what separates the two kinds. Filtered here rather
+      than in the client because the count and the pages come from this query —
+      dropping rows after the fact would leave the pager describing a different
+      list from the one on screen.
+    */
+    ...(params.source === "marketplace"
+      ? { listingId: { not: null } }
+      : params.source === "custom"
+        ? { listingId: null }
+        : {}),
   };
   // Concurrent, not transactional — see the note in listings.service list().
   const [total, rows] = await Promise.all([
