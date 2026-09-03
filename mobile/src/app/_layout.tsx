@@ -3,7 +3,9 @@ import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+// The app's hook, not React Native's — this one honours the user's choice
+// rather than only the OS setting, so the navigation theme follows the toggle.
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   Manrope_400Regular,
@@ -21,6 +23,7 @@ import {
 import { QueryClientProvider } from '@tanstack/react-query';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { AppThemeProvider } from '@/context/ThemeContext';
 import { SavedProvider } from '@/context/SavedContext';
 import { BlockedProvider } from '@/context/BlockedContext';
 import { queryClient } from '@/features/shared/data/queryClient';
@@ -95,9 +98,23 @@ function RootNavigator() {
   );
 }
 
-export default function RootLayout() {
+/**
+ * Bridges the app's own light/dark choice into React Navigation's theme.
+ *
+ * Split into its own component because it has to read the scheme, and the
+ * scheme now comes from `AppThemeProvider` — which `RootLayout` renders. A
+ * component cannot consume a context it is itself providing.
+ */
+function NavigationTheme({ children }: { children: React.ReactNode }) {
   const colorScheme = useColorScheme();
+  return (
+    <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
+      {children}
+    </ThemeProvider>
+  );
+}
 
+export default function RootLayout() {
   // Manrope + Space Grotesk, the same pair the web loads from Google Fonts.
   // Every weight is its own family — see the note on `Fonts` in constants/theme.
   const [fontsLoaded, fontError] = useFonts({
@@ -121,19 +138,23 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <SafeAreaProvider>
-      {/* Above AuthProvider: signing in/out invalidates cached server data. */}
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <SavedProvider>
-            <BlockedProvider>
-              <ThemeProvider value={colorScheme === 'dark' ? AppDarkTheme : AppLightTheme}>
-                <RootNavigator />
-              </ThemeProvider>
-            </BlockedProvider>
-          </SavedProvider>
-        </AuthProvider>
-      </QueryClientProvider>
-    </SafeAreaProvider>
+    // Outermost: every other provider, and the navigation theme below, reads
+    // the resolved scheme from here.
+    <AppThemeProvider>
+      <SafeAreaProvider>
+        {/* Above AuthProvider: signing in/out invalidates cached server data. */}
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <SavedProvider>
+              <BlockedProvider>
+                <NavigationTheme>
+                  <RootNavigator />
+                </NavigationTheme>
+              </BlockedProvider>
+            </SavedProvider>
+          </AuthProvider>
+        </QueryClientProvider>
+      </SafeAreaProvider>
+    </AppThemeProvider>
   );
 }

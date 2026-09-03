@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useColorScheme as useRNColorScheme } from 'react-native';
+
+import { useResolvedScheme } from '@/context/ThemeContext';
 
 /**
- * To support static rendering, this value needs to be re-calculated on the client side for web
+ * Web target of `use-color-scheme`. Metro picks this file over the native one.
+ *
+ * Reads the app's own preference like the native hook does, but holds 'light'
+ * until hydration: the server-rendered markup has no access to the stored
+ * preference or the OS setting, so committing to either before hydrating would
+ * mismatch what the server sent.
  */
 export function useColorScheme() {
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -11,11 +17,7 @@ export function useColorScheme() {
     setHasHydrated(true);
   }, []);
 
-  const colorScheme = useRNColorScheme();
+  const scheme = useResolvedScheme();
 
-  if (hasHydrated) {
-    return colorScheme;
-  }
-
-  return 'light';
+  return hasHydrated ? scheme : 'light';
 }

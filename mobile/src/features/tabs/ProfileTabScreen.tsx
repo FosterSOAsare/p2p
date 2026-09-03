@@ -12,9 +12,12 @@ import {
   Clock,
   Lock,
   LogOut,
+  Moon,
   ShieldAlert,
   ShieldCheck,
   ShoppingBag,
+  Smartphone,
+  Sun,
   Store,
   Trash2,
   User as UserIcon,
@@ -26,6 +29,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { usePersona } from '@/hooks/use-persona';
 import { useAuth } from '@/context/AuthContext';
 import { ConfirmDialog } from '@/features/shared/ui/ConfirmDialog';
+import { useThemePreference, type ThemePreference } from '@/context/ThemeContext';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { useUpdateMe, useUpdateNotificationPrefs } from '@/features/user/data/usersApi';
@@ -52,6 +56,13 @@ const PERSONA_BADGE = {
   seller: { label: 'Verified Seller', icon: Store, bg: '#dcfce7', text: '#166534' },
   admin: { label: 'Administrator', icon: ShieldAlert, bg: '#ffe4e6', text: '#be123c' },
 } as const;
+
+/** Light / Dark / System, in that order — the same set the web offers. */
+const THEME_OPTIONS: { id: ThemePreference; label: string; icon: typeof UserIcon }[] = [
+  { id: 'light', label: 'Light', icon: Sun },
+  { id: 'dark', label: 'Dark', icon: Moon },
+  { id: 'system', label: 'System', icon: Smartphone },
+];
 
 const SECTIONS: { id: SectionId; label: string; icon: typeof UserIcon }[] = [
   { id: 'profile', label: 'Personal', icon: UserIcon },
@@ -91,6 +102,7 @@ export function ProfileTabScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { preference, setPreference } = useThemePreference();
 
   const ensureVisible = useEnsureVisible();
   // One wrapper node per field, so focus can scroll the right row into view.
@@ -549,6 +561,46 @@ export function ProfileTabScreen() {
           )}
         </View>
 
+        {/*
+          Appearance. Outside the three section tabs on purpose: it is not part
+          of the account you are editing, it applies immediately, and it has no
+          Save. The web keeps its equivalent in the header for the same reason.
+        */}
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Appearance</Text>
+          <Text style={[styles.cardNote, { color: theme.textSecondary }]}>
+            System follows your phone&apos;s light and dark schedule.
+          </Text>
+          <View style={[styles.themeRow, { borderColor: theme.border }]}>
+            {THEME_OPTIONS.map(({ id, label, icon: Icon }) => {
+              const on = preference === id;
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => setPreference(id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  accessibilityLabel={`${label} theme`}
+                  style={({ pressed }) => [
+                    styles.themeOption,
+                    {
+                      backgroundColor: on ? theme.primary : 'transparent',
+                      opacity: pressed && !on ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  <Icon size={15} color={on ? '#ffffff' : theme.textSecondary} />
+                  <Text
+                    style={[styles.themeText, { color: on ? '#ffffff' : theme.textSecondary }]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
         <Text style={[styles.signedInAs, { color: theme.textTertiary }]}>
           Signed in as @{user?.username ?? 'user'}
         </Text>
@@ -612,6 +664,26 @@ const styles = StyleSheet.create({
 
   card: { borderWidth: 1, borderRadius: Radius.lg, padding: Spacing.four, gap: Spacing.three },
   cardTitle: { fontSize: 13, fontFamily: Fonts.display[700], borderBottomWidth: 1, paddingBottom: Spacing.two },
+
+  /* Appearance picker — a segmented row of Light / Dark / System. */
+  cardNote: { fontSize: 11.5, lineHeight: 16, fontFamily: Fonts.sans[400] },
+  themeRow: {
+    flexDirection: 'row',
+    gap: Spacing.one,
+    padding: 3,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: Spacing.two,
+    borderRadius: Radius.full,
+  },
+  themeText: { fontSize: 11.5, fontFamily: Fonts.sans[700] },
   body: { fontSize: 12.5, lineHeight: 18, fontFamily: Fonts.sans[400] },
 
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
