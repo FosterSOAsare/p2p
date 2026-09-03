@@ -137,7 +137,38 @@ async function request<T>(path: string, options: RequestOptions, allowRefresh: b
  * Exported because the chat socket needs it too: a rejected handshake is the
  * socket's version of a 401, and it recovers the same way this client does.
  */
-export async function refreshTokens(): Promise<boolean> {
+let refreshPromise: Promise<boolean> | null = null;
+
+export function refreshTokens(): Promise<boolean> {
+  /*
+    Exactly one refresh in flight at a time — concurrent 401s share it. The web
+    client has always done this (`web/src/features/shared/libs/api.ts`); mobile
+    never did, and the difference signed people out.
+
+    The server rotates on refresh and treats a *second* presentation of an
+    already-rotated token as theft: `auth.service.ts` revokes every session the
+    user has and answers "Session reuse detected". That is the right thing to do
+    about a stolen token, but two of our own requests racing look identical to
+    it from the server's side.
+
+    Which is what happens on resume. Several queries refetch at once when the
+    app comes back to the foreground; if the access token expired while it was
+    away they all 401 together, all read the same refresh token, and all post
+    it. The first rotates. The rest present a token the server has just revoked,
+    so it revokes everything — including the pair the first call had only
+    just been issued — and the app drops to the login screen with a session
+    that was perfectly valid a moment earlier.
+
+    Sharing one promise means the losers of that race never post at all: they
+    wait for the winner and read the rotated pair out of the store.
+  */
+  refreshPromise ??= doRefresh().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
+async function doRefresh(): Promise<boolean> {
   const refreshToken = await tokenStore.getRefresh();
   if (!refreshToken) return false;
   try {
