@@ -7,6 +7,7 @@ import { useNotificationEvents } from '../../notifications/data/useNotificationE
 import { useUnreadNotifications } from '../../notifications/data/notificationsApi'
 import { NotificationPanel } from '../../notifications/ui/NotificationPanel'
 import { MobileTabBar } from './MobileTabBar'
+import { ConfirmDialog } from './ConfirmDialog'
 import type { LucideIcon } from 'lucide-react'
 import {
   Handshake,
@@ -59,6 +60,7 @@ export function Layout() {
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userDropdownOpen, setUserDropdownOpen] = useState(false)
+  const [confirmLogout, setConfirmLogout] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const { data: me } = useMe()
   const logout = useLogout()
@@ -338,7 +340,7 @@ export function Layout() {
                         <button
                           onClick={() => {
                             setUserDropdownOpen(false)
-                            logout.mutate(undefined, { onSettled: () => navigate('/') })
+                            setConfirmLogout(true)
                           }}
                           className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 font-semibold cursor-pointer"
                         >
@@ -558,7 +560,7 @@ export function Layout() {
                     <button
                       onClick={() => {
                         setMobileMenuOpen(false)
-                        logout.mutate(undefined, { onSettled: () => navigate('/') })
+                        setConfirmLogout(true)
                       }}
                       className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
                     >
@@ -616,6 +618,31 @@ export function Layout() {
       {isLoggedIn && (
         <NotificationPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
       )}
+
+      {/*
+        One dialog for both menus — the desktop dropdown and the mobile sheet
+        each just open it, so the wording can't drift between them. Matches the
+        mobile app's profile-screen logout.
+      */}
+      <ConfirmDialog
+        open={confirmLogout}
+        tone="danger"
+        title="Log out?"
+        description={me ? `You are signed in as @${me.username}.` : undefined}
+        consequence="You will need your username and password to sign back in."
+        confirmLabel="Log Out"
+        cancelLabel="Stay signed in"
+        isPending={logout.isPending}
+        onCancel={() => setConfirmLogout(false)}
+        onConfirm={() =>
+          logout.mutate(undefined, {
+            onSettled: () => {
+              setConfirmLogout(false)
+              navigate('/')
+            },
+          })
+        }
+      />
     </div>
   )
 }

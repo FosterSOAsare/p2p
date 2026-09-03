@@ -25,6 +25,7 @@ import { Fonts, ReadingWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { usePersona } from '@/hooks/use-persona';
 import { useAuth } from '@/context/AuthContext';
+import { ConfirmDialog } from '@/features/shared/ui/ConfirmDialog';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import { useUpdateMe, useUpdateNotificationPrefs } from '@/features/user/data/usersApi';
@@ -96,6 +97,7 @@ export function ProfileTabScreen() {
   const fieldRefs = useRef<Record<string, View | null>>({});
 
   const [section, setSection] = useState<SectionId>('profile');
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const [fullName, setFullName] = useState(user?.fullName ?? '');
   const [username, setUsername] = useState(user?.username ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
@@ -302,7 +304,7 @@ export function ProfileTabScreen() {
           </Pressable>
 
           <Pressable
-            onPress={logout}
+            onPress={() => setConfirmLogout(true)}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Log out"
@@ -551,6 +553,26 @@ export function ProfileTabScreen() {
           Signed in as @{user?.username ?? 'user'}
         </Text>
       </KeyboardAwareScroll>
+
+      {/*
+        Signing out is cheap to undo in principle — you log back in — but the
+        app deliberately keeps no session across a sign-out, so an accidental
+        tap costs credentials and drops any half-finished form on this screen.
+      */}
+      <ConfirmDialog
+        open={confirmLogout}
+        tone="danger"
+        title="Log out?"
+        description={`You are signed in as @${user?.username ?? 'user'}.`}
+        consequence="You will need your username and password to sign back in."
+        confirmLabel="Log Out"
+        cancelLabel="Stay signed in"
+        onCancel={() => setConfirmLogout(false)}
+        onConfirm={() => {
+          setConfirmLogout(false);
+          logout();
+        }}
+      />
     </SafeAreaView>
   );
 }
