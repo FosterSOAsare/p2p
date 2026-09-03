@@ -1,6 +1,9 @@
 import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/features/shared/data/api';
+import type { Currency } from '@/features/shared/libs/currency';
+
+export type { Currency };
 
 /** Idempotency key for a payout. Matches the server's `[A-Za-z0-9_-]{8,64}`. */
 const newPayoutKey = () => `wd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
@@ -13,12 +16,27 @@ const newPayoutKey = () => `wd_${Date.now().toString(36)}_${Math.random().toStri
  * columns, and a withdrawal is simulated. No real money moves anywhere.
  */
 
-export interface WalletBalances {
-  currency: 'GHS' | 'TRX';
+export interface CurrencyWallet {
+  currency: Currency;
   /** Withdrawable. A released payout is available at once — there is no hold. */
   balance: number;
   /** Held against deals that haven't settled. */
   escrowLocked: number;
+}
+
+/**
+ * `GET /api/wallet` returns the GHS wallet spread onto the top level *and* a
+ * `wallets` array holding one entry per currency — see `wallet.controller.ts`,
+ * where the duplication is called out as deliberate back-compat.
+ *
+ * This client only ever read the flat fields, which is why the app showed a
+ * cedi wallet and nothing else however much TRX a seller held. Read `wallets`
+ * for anything that should show both rails; the flat fields remain for callers
+ * that only care about cedis.
+ */
+export interface WalletBalances extends CurrencyWallet {
+  currency: 'GHS';
+  wallets: CurrencyWallet[];
 }
 
 export type TransactionType =
@@ -57,7 +75,7 @@ export interface Withdrawal {
   id: string;
   reference: string;
   amount: number;
-  currency: 'GHS' | 'TRX';
+  currency: Currency;
   destination: string;
   status: WithdrawalStatus;
   /** Why it was rejected — set by an admin, shown to the user. */
@@ -76,7 +94,7 @@ export interface WithdrawalsResponse {
 export const walletKeys = {
   all: ['wallet'] as const,
   balances: () => [...walletKeys.all, 'balances'] as const,
-  transactions: () => [...walletKeys.all, 'transactions'] as const,
+  transactions: (currency: Currency) => [...walletKeys.all, 'transactions', currency] as const,
   withdrawals: (query: string) => [...walletKeys.all, 'withdrawals', query] as const,
 };
 
@@ -108,10 +126,13 @@ export function useWallet() {
  * shows that error against an otherwise working wallet rather than pretending
  * the ledger is empty.
  */
-export function useWalletTransactions() {
+export function useWalletTransactions(currency: Currency = 'GHS') {
   return useQuery({
-    queryKey: walletKeys.transactions(),
-    queryFn: () => api<TransactionsResponse>('/api/wallet/transactions?limit=50'),
+    // Keyed by currency: the rails are separate ledgers, not two views of one,
+    // so switching must fetch rather than re-render the cedi rows as TRX.
+    queryKey: walletKeys.transactions(currency),
+    queryFn: () =>
+      api<TransactionsResponse>(`/api/wallet/transactions?limit=50&currency=${currency}`),
     retry: false,
   });
 }
@@ -163,14 +184,25 @@ export function useWithdraw() {
      * requires it (`wallet.validation.ts`) and rejects the request without it,
      * so sending only the amount meant every withdrawal failed validation.
      */
-    mutationFn: ({ amount, destination }: { amount: number; destination: string }) => {
-      const signature = `${amount}|${destination}`;
+    mutationFn: ({
+      amount,
+      destination,
+      currency = 'GHS',
+    }: {
+      amount: number;
+      destination: string;
+      currency?: Currency;
+    }) => {
+      // Currency is part of the signature: the same amount to the same
+      // destination on the other rail is a different payout, and reusing the
+      // key would replay the first one instead of making it.
+      const signature = `${amount}|${destination}|${currency}`;
       if (pending.current?.signature !== signature) {
         pending.current = { signature, key: newPayoutKey() };
       }
       return api<{ ok: true }>('/api/wallet/withdraw', {
         method: 'POST',
-        body: { amount, destination, reference: pending.current.key },
+        body: { amount, destination, currency, reference: pending.current.key },
       });
     },
     onSuccess: () => {

@@ -7,7 +7,9 @@ import {
   ArrowDownLeft,
   ArrowLeft,
   ArrowUpRight,
+  Banknote,
   Clock,
+  Coins,
   CreditCard,
   ExternalLink,
   Smartphone,
@@ -25,6 +27,7 @@ import { useAuth } from '@/context/AuthContext';
 import { usePersona } from '@/hooks/use-persona';
 import { KeyboardAwareScroll, useEnsureVisible } from '@/features/shared/ui/KeyboardAwareScroll';
 import { apiErrorMessage } from '@/features/shared/data/api';
+import { formatMoney, type Currency } from '@/features/shared/libs/currency';
 import {
   useWallet,
   useWalletTransactions,
@@ -75,12 +78,65 @@ function txView(tx: WalletTransaction) {
 /** How many ledger rows show before "View all" is tapped. */
 const TX_PREVIEW_COUNT = 5;
 
-function formatMoney(amount: number, currency = 'GH₵') {
-  return `${currency}${amount.toLocaleString('en-GH', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
+/**
+ * Per-rail copy and iconography, so the screen reads as one wallet in two
+ * denominations rather than two bolted-together screens. Mirrors `RAILS` in
+ * `web/src/pages/SellerWallet.tsx`.
+ */
+const RAILS: Record<
+  Currency,
+  {
+    label: string;
+    /** Symbol for tight spaces — the amount field's prefix. */
+    short: string;
+    icon: typeof Banknote;
+    available: string;
+    locked: string;
+    payoutTo: string;
+    /** Field label, placeholder and keyboard for the payout destination. */
+    destLabel: string;
+    destPlaceholder: string;
+    destKeyboard: 'phone-pad' | 'default';
+    /** Shown under the field — a payout cannot be reversed on either rail. */
+    destHint: string;
+    /** Error when the destination is empty, matching the web's wording. */
+    destRequired: string;
+  }
+> = {
+  GHS: {
+    label: 'Cedi',
+    short: 'GH₵',
+    icon: Banknote,
+    available: 'Cleared & ready for MoMo payout',
+    locked: 'Held in active GH₵ escrow deals',
+    payoutTo: 'Mobile Money',
+    destLabel: 'Mobile Money Number',
+    destPlaceholder: '+233 24 000 0000',
+    destKeyboard: 'phone-pad',
+    destHint: "Funds are sent to this number. Double-check it — payouts can't be reversed.",
+    destRequired: 'Please provide a Mobile Money phone number for payout.',
+  },
+  TRX: {
+    label: 'TRON',
+    short: 'TRX',
+    icon: Coins,
+    available: 'Cleared & ready to send on-chain',
+    locked: 'Held in active TRX escrow deals',
+    payoutTo: 'TRX address',
+    destLabel: 'TRON Address',
+    destPlaceholder: 'T...',
+    // Base58 is case-sensitive and mixes letters and digits, so a phone pad is
+    // the wrong keyboard here — and autocorrect would happily mangle an address.
+    destKeyboard: 'default',
+    destHint: "Sent on-chain to this address. Double-check it — transfers can't be reversed.",
+    destRequired: 'Please provide a TRON address for payout.',
+  },
+};
+
+/** A TRON address: base58, 34 characters, always leading `T`. Mirrors the
+ *  server's `wallet.validation.ts` pattern so a bad address is caught here
+ *  rather than after a round trip. */
+const TRON_ADDRESS = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
 
 export function WalletScreen() {
   const theme = useTheme();
@@ -91,10 +147,26 @@ export function WalletScreen() {
   const destRow = useRef<View>(null);
 
   const walletQuery = useWallet();
-  const txQuery = useWalletTransactions();
   const withdraw = useWithdraw();
 
-  const currency = walletQuery.data?.currency ?? 'GHS';
+  /**
+   * Which ledger the screen is showing. Everything below — cards, history,
+   * payout — reads from this rather than rendering both rails at once, because
+   * they are separate ledgers and never a converted view of one another.
+   */
+  const [currency, setCurrency] = useState<Currency>('GHS');
+  const txQuery = useWalletTransactions(currency);
+
+  /*
+    The wallets the account actually holds. GHS is always there; TRX only once
+    TRX has moved (`getWallets` in wallet.service.ts), so a fiat-only user never
+    sees a switch — just the cedi wallet they had before.
+  */
+  const held = walletQuery.data?.wallets ?? [];
+  const rail = RAILS[currency];
+  // Falls back to zeroes so a rail with no row yet reads as an empty wallet
+  // rather than a blank.
+  const active = held.find((w) => w.currency === currency);
   // Pending only, matching the web: a settled payout drops off this list and
   // lives in the ledger below, so the section answers one question — what is
   // still in flight — rather than duplicating the history.
@@ -121,8 +193,8 @@ export function WalletScreen() {
    * withdrawal: the mutation invalidates this query, so the balance that
    * appears is the one the ledger actually holds.
    */
-  const available = walletQuery.data?.balance ?? 0;
-  const escrowLocked = walletQuery.data?.escrowLocked ?? 0;
+  const available = active?.balance ?? 0;
+  const escrowLocked = active?.escrowLocked ?? 0;
 
   /**
    * The real ledger, rather than reconstructing credits from released deals.
@@ -145,6 +217,20 @@ export function WalletScreen() {
     else router.replace('/home');
   };
 
+  /**
+   * Switching rails resets anything that belonged to the old one: a cedi payout
+   * receipt shouldn't hang over the TRX wallet, and a momo number is not a
+   * destination on a chain.
+   */
+  const switchCurrency = (next: Currency) => {
+    if (next === currency) return;
+    setCurrency(next);
+    setError(null);
+    setSuccess(null);
+    setAmount('');
+    setDestination(next === 'GHS' ? (user?.phone ?? '') : '');
+  };
+
   /** Mirrors the web's validation order and messages exactly. */
   const submitWithdraw = async () => {
     // Reachable from the field's `onSubmitEditing` as well as the button, so
@@ -163,7 +249,13 @@ export function WalletScreen() {
       return;
     }
     if (!destination.trim()) {
-      setError('Please provide a Mobile Money phone number for payout.');
+      setError(rail.destRequired);
+      return;
+    }
+    // The server rejects a malformed TRON address outright, so catching it here
+    // turns a failed round trip into an immediate, specific message.
+    if (currency === 'TRX' && !TRON_ADDRESS.test(destination.trim())) {
+      setError('That does not look like a TRON address — they start with T and are 34 characters.');
       return;
     }
 
@@ -171,7 +263,7 @@ export function WalletScreen() {
       // The server re-checks the balance and guards against going negative —
       // the checks above are only there to save a round trip on obvious input
       // mistakes, not to be the authority.
-      await withdraw.mutateAsync({ amount: value, destination: destination.trim() });
+      await withdraw.mutateAsync({ amount: value, destination: destination.trim(), currency });
     } catch (err) {
       setError(apiErrorMessage(err));
       return;
@@ -211,46 +303,99 @@ export function WalletScreen() {
             three balances in one tinted panel, which is what gives the page its
             weight. Flat stacked cards lost that. */}
         <View style={[styles.hero, { backgroundColor: theme.primaryLight }]}>
-          <View style={[styles.railPill, { backgroundColor: theme.card }]}>
-            <ShieldCheck size={13} color={theme.primary} />
-            <Text style={[styles.railPillText, { color: theme.primary }]}>
-              VeriTrust Escrow Settle Rail • {currency}
-            </Text>
+          <View style={styles.railHeader}>
+            <View style={[styles.railPill, { backgroundColor: theme.card }]}>
+              <ShieldCheck size={13} color={theme.primary} />
+              <Text style={[styles.railPillText, { color: theme.primary }]}>
+                VeriTrust Escrow Settle Rail • {currency}
+              </Text>
+            </View>
+
+            {/*
+              Only rendered when there is a genuine choice — a TRX wallet exists
+              only once TRX has moved, so a fiat-only account sees no switch at
+              all rather than a second tab that would always read zero.
+            */}
+            {held.length > 1 ? (
+              <View
+                accessibilityRole="tablist"
+                accessibilityLabel="Wallet currency"
+                style={[styles.switchGroup, { backgroundColor: theme.card, borderColor: theme.border }]}
+              >
+                {held.map((w) => {
+                  const opt = RAILS[w.currency];
+                  const OptIcon = opt.icon;
+                  const on = w.currency === currency;
+                  return (
+                    <Pressable
+                      key={w.currency}
+                      onPress={() => switchCurrency(w.currency)}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={`${opt.label} wallet`}
+                      style={({ pressed }) => [
+                        styles.switchTab,
+                        {
+                          backgroundColor: on ? theme.primary : 'transparent',
+                          opacity: pressed && !on ? 0.6 : 1,
+                        },
+                      ]}
+                    >
+                      <OptIcon size={13} color={on ? '#ffffff' : theme.textSecondary} />
+                      <Text
+                        style={[
+                          styles.switchTabText,
+                          { color: on ? '#ffffff' : theme.textSecondary },
+                        ]}
+                      >
+                        {w.currency}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
           </View>
 
           <Text style={[styles.title, { color: theme.text }]}>
             {isSeller ? 'Seller Payout Wallet' : 'My P2P Wallet'}
           </Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            Withdraw cleared sales earnings directly to your Mobile Money account or view pending
-            deal clearances.
+            Withdraw cleared sales earnings directly to your {rail.payoutTo} or view pending deal
+            clearances.
           </Text>
 
           <View style={styles.walletActions}>
             {/* Top up. The web offers this on the same screen; without it a
                 buyer whose balance won't cover an order had no way to add
-                money except by starting a checkout. */}
-            <Pressable
-              onPress={() => {
-                setError(null);
-                setSuccess(null);
-                setTopUpOpen(true);
-              }}
-              disabled={topUp.isPending}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.withdrawBtn,
-                styles.walletAction,
-                { backgroundColor: theme.text, opacity: topUp.isPending ? 0.6 : pressed ? 0.85 : 1 },
-              ]}
-            >
-              {topUp.isPending ? (
-                <ActivityIndicator size="small" color={theme.background} />
-              ) : (
-                <Plus size={18} color={theme.background} />
-              )}
-              <Text style={[styles.withdrawBtnText, { color: theme.background }]}>Add Funds</Text>
-            </Pressable>
+                money except by starting a checkout.
+
+                Fiat only: TRX reaches a deal through its own on-chain invoice,
+                so there is no hosted "add TRX to wallet" page to send anyone
+                to — the button is hidden rather than shown and then failing. */}
+            {currency === 'GHS' ? (
+              <Pressable
+                onPress={() => {
+                  setError(null);
+                  setSuccess(null);
+                  setTopUpOpen(true);
+                }}
+                disabled={topUp.isPending}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.withdrawBtn,
+                  styles.walletAction,
+                  { backgroundColor: theme.text, opacity: topUp.isPending ? 0.6 : pressed ? 0.85 : 1 },
+                ]}
+              >
+                {topUp.isPending ? (
+                  <ActivityIndicator size="small" color={theme.background} />
+                ) : (
+                  <Plus size={18} color={theme.background} />
+                )}
+                <Text style={[styles.withdrawBtnText, { color: theme.background }]}>Add Funds</Text>
+              </Pressable>
+            ) : null}
 
             <Pressable
               onPress={() => {
@@ -285,7 +430,7 @@ export function WalletScreen() {
                 {formatMoney(available, currency)}
               </Text>
               <Text style={[styles.balanceHint, { color: theme.textTertiary }]}>
-                Cleared &amp; ready for MoMo payout
+                {rail.available}
               </Text>
             </View>
 
@@ -301,7 +446,7 @@ export function WalletScreen() {
                   {formatMoney(escrowLocked, currency)}
                 </Text>
                 <Text style={[styles.balanceHint, { color: theme.textTertiary }]}>
-                  Held in active buyer escrow deals
+                  {rail.locked}
                 </Text>
               </View>
             </View>
@@ -344,7 +489,7 @@ export function WalletScreen() {
                   >
                     <View style={styles.payoutHead}>
                       <Text style={[styles.payoutAmount, { color: theme.text }]}>
-                        {formatMoney(w.amount, currency)}
+                        {formatMoney(w.amount, w.currency)}
                       </Text>
                       <View style={[styles.clearChip, { backgroundColor: '#fef3c7' }]}>
                         <Clock size={10} color="#92400e" />
@@ -543,7 +688,7 @@ export function WalletScreen() {
                   ]}
                 >
                   <Text style={[styles.amountCurrency, { color: theme.textTertiary }]}>
-                    {currency}
+                    {rail.short}
                   </Text>
                   <TextInput
                     value={amount}
@@ -570,7 +715,7 @@ export function WalletScreen() {
 
               <View ref={destRow} collapsable={false} style={styles.field}>
                 <Text style={[styles.label, { color: theme.textSecondary }]}>
-                  Mobile Money Number
+                  {rail.destLabel}
                 </Text>
                 <TextInput
                   value={destination}
@@ -578,9 +723,13 @@ export function WalletScreen() {
                     setDestination(v);
                     setError(null);
                   }}
-                  placeholder="+233 24 000 0000"
+                  placeholder={rail.destPlaceholder}
                   placeholderTextColor={theme.textTertiary}
-                  keyboardType="phone-pad"
+                  keyboardType={rail.destKeyboard}
+                  // Base58 is case-sensitive; autocapitalise or autocorrect
+                  // would quietly rewrite an address into an invalid one.
+                  autoCapitalize="none"
+                  autoCorrect={false}
                   returnKeyType="done"
                   onSubmitEditing={submitWithdraw}
                   onFocus={() => ensureVisible(destRow.current)}
@@ -594,7 +743,7 @@ export function WalletScreen() {
                   ]}
                 />
                 <Text style={[styles.labelHint, { color: theme.textTertiary }]}>
-                  Funds are sent to this number. Double-check it — payouts can&apos;t be reversed.
+                  {rail.destHint}
                 </Text>
               </View>
 
@@ -864,6 +1013,34 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   railPillText: { fontSize: 10.5, fontFamily: Fonts.sans[700] },
+
+  /* Rail badge and the currency switch share a row. `wrap` so a narrow phone
+     drops the switch below the badge rather than crushing both. */
+  railHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  switchGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    padding: 3,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
+  switchTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+  },
+  switchTabText: { fontSize: 11, fontFamily: Fonts.sans[700] },
+
   balanceGrid: { borderTopWidth: 1, paddingTop: Spacing.three, gap: Spacing.two, marginTop: Spacing.two },
 
   modalHeader: {
