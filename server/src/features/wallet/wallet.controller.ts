@@ -61,7 +61,12 @@ export const transactions = asyncHandler(async (req, res) => {
 // ---------- Paystack deposit ----------
 
 export const initDeposit = asyncHandler(async (req, res) => {
-  const result = await walletService.initDeposit(req.user!.id, req.body.amount, req.body.method);
+  const result = await walletService.initDeposit(
+    req.user!.id,
+    req.body.amount,
+    req.body.method,
+    req.body.client,
+  );
   res.status(201).json(result);
 });
 

@@ -205,7 +205,13 @@ export async function deposit(userId: string, amount: number) {
  * is NOT credited here — only once the charge is confirmed via webhook or the
  * /verify poll.
  */
-export async function initDeposit(userId: string, amount: number, method?: "momo" | "card") {
+export async function initDeposit(
+  userId: string,
+  amount: number,
+  method?: "momo" | "card",
+  /** Which client is paying. Optional, and absent means web — see `buildCallbackUrl`. */
+  client?: "web" | "mobile",
+) {
   if (!paystackEnabled()) {
     throw ApiError.notImplemented(
       "Paystack is not configured — top up with the simulated deposit (POST /wallet/deposit) instead",
@@ -230,6 +236,9 @@ export async function initDeposit(userId: string, amount: number, method?: "momo
       reference,
       metadata: { userId },
       channels,
+      // Tags the return page so it can hand control back to the app. Absent
+      // for web callers, which keeps their callback URL exactly as it was.
+      client,
     });
     return { authorizationUrl: init.authorizationUrl, accessCode: init.accessCode, reference };
   } catch (err) {

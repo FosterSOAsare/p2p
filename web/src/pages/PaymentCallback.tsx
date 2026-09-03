@@ -30,7 +30,32 @@ export function PaymentCallback() {
 
   const reference = searchParams.get('reference') ?? searchParams.get('trxref') ?? ''
 
+  /*
+    Paystack sent the buyer here from the mobile app.
+
+    The tag is added server-side (`buildCallbackUrl`) and is never present on a
+    web-initiated charge, so everything below this point behaves exactly as it
+    always has for the web.
+
+    This page must not do the confirming in that case. The work below finishes
+    whatever the buyer was doing before the redirect, and that intent lives in
+    the app's memory, not this browser's — there is no `pendingAction` here to
+    load. So bounce straight back to the app and let it verify by reference,
+    which is the flow it already implements.
+  */
+  const returningToApp = searchParams.get('client') === 'mobile'
+
   useEffect(() => {
+    if (!returningToApp) return
+    const target = `veritrust://wallet/deposit/callback${
+      reference ? `?reference=${encodeURIComponent(reference)}` : ''
+    }`
+    // `replace`, so the back button doesn't land the buyer on this page again.
+    window.location.replace(target)
+  }, [returningToApp, reference])
+
+  useEffect(() => {
+    if (returningToApp) return
     if (startedRef.current) return
     startedRef.current = true
 
@@ -133,6 +158,38 @@ export function PaymentCallback() {
 
     void run()
   }, [reference, navigate, queryClient])
+
+  /*
+    Handing back to the app. The redirect above usually fires before this is
+    even seen, but it needs a destination if the browser refuses to follow a
+    custom scheme automatically — some in-app browsers only allow it from a
+    user gesture. The link is that gesture.
+
+    The payment is already safe at this point either way: the charge is
+    Paystack's to report and the app verifies it by reference on return, so
+    even closing this tab by hand loses nothing.
+  */
+  if (returningToApp) {
+    return (
+      <div className="mx-auto max-w-md py-24 text-center space-y-4">
+        <Loader2 size={28} className="mx-auto animate-spin text-primary-600 dark:text-primary-400" />
+        <h1 className="font-display text-xl font-bold text-slate-900 dark:text-white">
+          Returning you to the app…
+        </h1>
+        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+          Your payment is being confirmed in the VeriTrust app. You can close this page.
+        </p>
+        <a
+          href={`veritrust://wallet/deposit/callback${
+            reference ? `?reference=${encodeURIComponent(reference)}` : ''
+          }`}
+          className="inline-block rounded-xl bg-primary-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-primary-700"
+        >
+          Open VeriTrust
+        </a>
+      </div>
+    )
+  }
 
   if (phase === 'failed') {
     return (

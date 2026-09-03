@@ -58,7 +58,17 @@ export function useInitDeposit() {
     mutationFn: ({ amount, method }: { amount: number; method: PayMethod }) =>
       api<InitDepositResult>('/api/wallet/deposit/init', {
         method: 'POST',
-        body: { amount, method },
+        /*
+          `client: 'mobile'` is what makes Paystack's return page hand control
+          back to the app instead of stranding the buyer on the website.
+
+          Paystack will only redirect to an http(s) address, so the callback
+          stays the web URL; the server tags it (`buildCallbackUrl`) and that
+          page bounces to `veritrust://` when it sees the tag. Without this the
+          browser simply sits on the website after payment and the buyer has to
+          work out that they should close it.
+        */
+        body: { amount, method, client: 'mobile' },
       }),
   });
 }

@@ -42,6 +42,29 @@ async function call<T>(path: string, init: RequestInit): Promise<T> {
 /** Paystack channel ids. The client picks "momo" or "card"; we map to these. */
 export type PaymentChannel = "mobile_money" | "card" | "bank" | "bank_transfer" | "ussd";
 
+/**
+ * Tag the configured return page with the client that started the charge.
+ *
+ * Returns the URL byte-for-byte unchanged for anything other than "mobile" —
+ * including when it is unset, which is how every existing caller behaves. The
+ * web flow therefore sees exactly the URL it always has.
+ *
+ * A malformed or empty setting is passed through as-is rather than thrown on:
+ * this is a redirect convenience, and failing the charge over it would be worse
+ * than landing on a page that cannot bounce.
+ */
+export function buildCallbackUrl(configured: string, client?: "web" | "mobile"): string | undefined {
+  if (!configured) return undefined;
+  if (client !== "mobile") return configured;
+  try {
+    const url = new URL(configured);
+    url.searchParams.set("client", "mobile");
+    return url.toString();
+  } catch {
+    return configured;
+  }
+}
+
 export interface InitResult {
   authorizationUrl: string;
   accessCode: string;
@@ -56,7 +79,19 @@ export async function initTransaction(params: {
   metadata?: Record<string, unknown>;
   /** Restrict the hosted page to one method so the buyer's choice carries over. */
   channels?: PaymentChannel[];
+  /**
+   * Which client started this charge. Only "mobile" changes anything: it tags
+   * the return page so it knows to hand control back to the app.
+   *
+   * The callback stays the configured https URL either way. Paystack requires
+   * an http(s) callback — a `veritrust://` value here is rejected — and the
+   * setting is one global shared by both clients, so pointing it at the app
+   * would break the web. The tag is a query parameter on the same page instead.
+   */
+  client?: "web" | "mobile";
 }): Promise<InitResult> {
+  const callbackUrl = buildCallbackUrl(env.PAYSTACK_CALLBACK_URL, params.client);
+
   const data = await call<{ authorization_url: string; access_code: string; reference: string }>(
     "/transaction/initialize",
     {
@@ -68,7 +103,7 @@ export async function initTransaction(params: {
         reference: params.reference,
         metadata: params.metadata ?? {},
         channels: params.channels?.length ? params.channels : undefined,
-        callback_url: env.PAYSTACK_CALLBACK_URL || undefined,
+        callback_url: callbackUrl,
       }),
     },
   );

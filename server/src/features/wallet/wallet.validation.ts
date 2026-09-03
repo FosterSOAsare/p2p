@@ -16,6 +16,12 @@ export const initDeposit: RequestSchema = {
     }),
     // Optional: preselects the method on the hosted payment page.
     method: Joi.string().valid("momo", "card"),
+    /*
+      Which client is paying. Optional and defaulted, so every existing caller —
+      the web app, and any build of the mobile app older than this change —
+      keeps working untouched and is treated as web.
+    */
+    client: Joi.string().valid("web", "mobile").default("web"),
   }),
 };
 
