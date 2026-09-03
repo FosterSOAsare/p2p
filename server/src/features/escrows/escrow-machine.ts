@@ -39,7 +39,23 @@ export const TRANSITIONS: Partial<Record<EscrowStatus, Partial<Record<EscrowEven
   },
   funded: {
     DELIVER: { to: "delivered", allow: ["seller"] },
-    // No RELEASE here — the buyer can only confirm receipt once the seller has marked it delivered.
+    /*
+      The buyer may confirm receipt without the seller having marked delivery.
+
+      This used to be absent, on the reasoning that receipt can only follow
+      dispatch. In practice the seller's status update is bookkeeping the buyer
+      does not control: sellers forget it, skip it, or hand the item over in
+      person and never touch the app. The buyer holding the goods is the fact
+      that matters, and refusing to let them say so leaves the money stuck with
+      nothing wrong except an unticked box.
+
+      Deliberately `buyer` only, NOT `system`. The auto-release timer exists so
+      an unresponsive buyer cannot strand a seller's money *after* dispatch, and
+      `sweepAutoRelease` filters on `status: "delivered"` for exactly that
+      reason. Letting the timer fire here would release funds for something no
+      one ever claimed to have sent.
+    */
+    RELEASE: { to: "disbursed", allow: ["buyer"] },
     // The seller can back out while nothing has shipped: full refund, no fee, stock restored.
     // Not offered on `delivered` — once it's out the door, it's release-or-dispute.
     CANCEL: { to: "cancelled", allow: ["seller"] },

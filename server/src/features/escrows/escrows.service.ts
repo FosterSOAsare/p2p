@@ -1164,10 +1164,13 @@ function availableActions(e: Escrow, userId: string): string[] {
       return actions;
     }
     case "funded":
-      // Seller ships; buyer can't confirm receipt until the seller marks it delivered.
       // CANCEL is the seller's out while nothing has shipped yet.
       if (isSeller) return ["DELIVER", "CANCEL", "DISPUTE"];
-      if (isBuyer) return ["DISPUTE"];
+      // RELEASE is offered before the seller marks delivery — see the note on
+      // `funded` in escrow-machine.ts. The clients were already showing this
+      // button here; the difference is that pressing it now works instead of
+      // being refused by the state machine.
+      if (isBuyer) return ["RELEASE", "DISPUTE"];
       return [];
     case "delivered":
       if (isBuyer) return ["RELEASE", "DISPUTE"];
