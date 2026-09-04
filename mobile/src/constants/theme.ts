@@ -284,6 +284,21 @@ export const MaxContentWidth = 1400;
  */
 export const ReadingWidth = 800;
 
+/**
+ * Cap for a single credential form — sign in, sign up, password reset.
+ *
+ * Narrower than `ReadingWidth` on purpose. Those screens are one column of
+ * short fields, and stretching them across a tablet leaves an input a foot wide
+ * holding an eight-character password, with the label marooned at the far left.
+ * Every app that does this well — and the project's own desktop web, whose form
+ * column is about this wide — keeps it to a centred card instead.
+ *
+ * Applies on phones too, where it simply never binds: a Note 20 is ~412dp
+ * portrait, so nothing changes there. It is landscape and tablets that were
+ * stretched, and this is the dimension that fixes both.
+ */
+export const FormWidth = 440;
+
 /* ── Bottom tab bar ───────────────────────────────────────────── */
 /**
  * Geometry for the signed-in tab bar, shared by the bar itself

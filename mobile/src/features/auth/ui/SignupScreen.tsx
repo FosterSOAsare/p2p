@@ -17,7 +17,7 @@ import {
   UserCheck,
 } from '@/components/icons';
 
-import { Fonts, Primary, Radius, Spacing } from '@/constants/theme';
+import { Fonts, FormWidth, Primary, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
@@ -421,6 +421,10 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 1 },
   card: {
     flex: 1,
+    // Centred and capped rather than stretched — see `FormWidth`.
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: FormWidth,
     paddingHorizontal: Spacing.five,
     paddingBottom: Spacing.five,
     gap: 14,

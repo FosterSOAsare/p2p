@@ -7,7 +7,7 @@ import { Pressable } from '@/components/ui/pressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowRight, CheckCircle2, Eye, EyeOff, Lock } from '@/components/icons';
 
-import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, FormWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
 import { apiErrorMessage } from '@/features/shared/data/api';
@@ -228,6 +228,10 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 1 },
   column: {
     flex: 1,
+    // Centred and capped rather than stretched — see `FormWidth`.
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: FormWidth,
     paddingHorizontal: Spacing.five,
     paddingBottom: Spacing.five,
     gap: Spacing.five,
