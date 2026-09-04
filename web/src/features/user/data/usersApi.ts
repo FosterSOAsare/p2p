@@ -241,7 +241,9 @@ export interface DashboardOrder {
   price: number
   /** What the seller receives, fees deducted — the figure the release dialog quotes. */
   sellerPayout: number
-  currency: string
+  /** The server only ever sends these two; typed as the union so money can be
+   *  formatted without a cast. */
+  currency: 'GHS' | 'TRX'
   imageUrl: string
   productId?: string
   trackingCode?: string

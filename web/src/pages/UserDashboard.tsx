@@ -18,6 +18,7 @@ import {
 import { useDashboard, type DashboardResponse } from '../features/user/data/usersApi'
 import { useReleaseDeal } from '../features/escrow/data/ordersApi'
 import { ConfirmDialog } from '../features/shared/ui/ConfirmDialog'
+import { formatMoney } from '../features/shared/libs/currency'
 import { Badge } from '../features/shared/ui/Badge'
 import { useMe } from '../features/auth/data/authApi'
 
