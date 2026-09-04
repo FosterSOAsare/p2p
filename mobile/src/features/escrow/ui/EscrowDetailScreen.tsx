@@ -464,7 +464,7 @@ export function EscrowDetailScreen() {
     }
   };
 
-  const payWithProvider = async (_walletAmount: number, method: PayMethod) => {
+  const payWithProvider = async (walletAmount: number, method: PayMethod) => {
     if (funding.current) return;
     funding.current = true;
     setFundError(null);
@@ -475,8 +475,24 @@ export function EscrowDetailScreen() {
         successful charge, the money is sitting in the buyer's balance rather
         than lost, and the button can simply be pressed again.
       */
-      const shortfall =
-        Math.round((deal.fundingTotal - Math.min(walletBalance, deal.fundingTotal)) * 100) / 100;
+      /*
+        The shortfall is measured against what the buyer chose to spend from
+        their balance, not against the balance itself.
+
+        This used to subtract the whole wallet balance regardless of the choice
+        made in the sheet. A buyer whose balance already covered the deal but
+        who picked mobile money anyway — wanting to keep the balance, or just
+        testing the card flow — produced a shortfall of exactly 0, and the
+        server rejects a deposit of 0 as "amount must be a positive number".
+        The payment failed validation before it ever reached Paystack.
+      */
+      const shortfall = Math.round((deal.fundingTotal - walletAmount) * 100) / 100;
+      // Nothing left to charge — the balance covers it, so skip the provider.
+      if (shortfall <= 0) {
+        await fundDeal.mutateAsync(deal.id);
+        setFundOpen(false);
+        return;
+      }
       const outcome = await topUp.run(shortfall, method);
 
       if (!outcome.ok) {

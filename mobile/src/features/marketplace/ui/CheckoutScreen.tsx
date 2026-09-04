@@ -194,7 +194,7 @@ export function CheckoutScreen() {
     }
   };
 
-  const payWithProvider = async (_walletAmount: number, method: PayMethod) => {
+  const payWithProvider = async (walletAmount: number, method: PayMethod) => {
     if (placing.current) return;
     placing.current = true;
     setPayError(null);
@@ -207,7 +207,22 @@ export function CheckoutScreen() {
         the checkout fails leaves the money in the buyer's balance rather than
         vanishing. They can retry, or spend it on something else.
       */
-      const shortfall = Math.round((totals.fundingTotal - Math.min(walletBalance, totals.fundingTotal)) * 100) / 100;
+      /*
+        Measured against what the buyer chose to spend from their balance, not
+        against the balance itself.
+
+        This used to subtract the whole wallet balance regardless of the choice
+        made in the sheet. A buyer whose balance already covered the order but
+        who picked mobile money anyway produced a shortfall of exactly 0, and
+        the server rejects a deposit of 0 as "amount must be a positive
+        number" — so the purchase failed validation before reaching Paystack.
+      */
+      const shortfall = Math.round((totals.fundingTotal - walletAmount) * 100) / 100;
+      // Nothing left to charge — the balance covers it, so skip the provider.
+      if (shortfall <= 0) {
+        await completeOrder('wallet');
+        return;
+      }
       const outcome = await topUp.run(shortfall, method);
 
       if (!outcome.ok) {
