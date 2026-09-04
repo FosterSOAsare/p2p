@@ -12,6 +12,16 @@ import { authKeys } from '../features/auth/data/authApi'
 type Phase = 'confirming' | 'placing' | 'done' | 'failed'
 
 /**
+ * How long a confirmed payment stays on screen before moving on.
+ *
+ * Three of the four success paths used to navigate the instant the server
+ * answered, so "All set" rendered for a single frame and the buyer went from a
+ * spinner straight to another page — never actually told the payment had gone
+ * through. Same beat the crypto callback uses.
+ */
+const CONFIRMED_PAUSE_MS = 1400
+
+/**
  * Landing page after the hosted payment. Confirms the payment, credits the
  * wallet, then finishes whatever the buyer was doing before the redirect —
  * placing an order, funding an existing deal, or simply topping up.
@@ -23,6 +33,8 @@ export function PaymentCallback() {
 
   const [phase, setPhase] = useState<Phase>('confirming')
   const [placingLabel, setPlacingLabel] = useState('Funding your escrow…')
+  /** What the payment actually achieved, in the buyer's terms. */
+  const [outcome, setOutcome] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Placing an order is NOT idempotent — make sure this only ever runs once
   // (React strict mode intentionally double-invokes effects in development).
@@ -95,7 +107,8 @@ export function PaymentCallback() {
         setPhase('done')
         const to = action?.returnTo ?? '/wallet'
         pendingAction.clear()
-        setTimeout(() => navigate(to, { replace: true }), 900)
+        setOutcome('Your wallet has been topped up.')
+        setTimeout(() => navigate(to, { replace: true }), CONFIRMED_PAUSE_MS)
         return
       }
 
@@ -109,7 +122,8 @@ export function PaymentCallback() {
           queryClient.invalidateQueries({ queryKey: ['escrows'] })
           queryClient.invalidateQueries({ queryKey: ['wallet'] })
           setPhase('done')
-          navigate(`/escrow/${action.escrowId}`, { replace: true })
+          setOutcome('Payment received and the deal is now funded in escrow.')
+          setTimeout(() => navigate(`/escrow/${action.escrowId}`, { replace: true }), CONFIRMED_PAUSE_MS)
           return
         }
 
@@ -123,12 +137,17 @@ export function PaymentCallback() {
           queryClient.invalidateQueries({ queryKey: ['promotions'] })
           queryClient.invalidateQueries({ queryKey: ['wallet'] })
           setPhase('done')
+          setOutcome('Payment received and your promotion is live.')
           // Same landing as a launch paid straight from the wallet: the hub, with
           // the receipt in tow.
-          navigate('/promotions', {
-            replace: true,
-            state: { notice: `Spotlight live — ${formatMoney(charged)} debited from your wallet.` },
-          })
+          setTimeout(
+            () =>
+              navigate('/promotions', {
+                replace: true,
+                state: { notice: `Spotlight live — ${formatMoney(charged)} debited from your wallet.` },
+              }),
+            CONFIRMED_PAUSE_MS,
+          )
           return
         }
 
@@ -140,7 +159,8 @@ export function PaymentCallback() {
         queryClient.invalidateQueries({ queryKey: ['escrows'] })
         queryClient.invalidateQueries({ queryKey: ['wallet'] })
         setPhase('done')
-        navigate(`/escrow/${deal.id}`, { replace: true })
+        setOutcome('Payment received and your order is now funded in escrow.')
+        setTimeout(() => navigate(`/escrow/${deal.id}`, { replace: true }), CONFIRMED_PAUSE_MS)
       } catch (err) {
         // Payment succeeded but the follow-up didn't — the money is safe in the
         // wallet either way, so say so rather than implying it was lost.
@@ -229,9 +249,13 @@ export function PaymentCallback() {
       <h1 className="font-display text-xl font-bold text-slate-900 dark:text-white">
         {phase === 'confirming' && 'Confirming your payment…'}
         {phase === 'placing' && placingLabel}
-        {phase === 'done' && 'All set'}
+        {phase === 'done' && 'Payment confirmed'}
       </h1>
-      <p className="text-xs text-slate-500 dark:text-slate-400">Just a moment — please don't close this page.</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+        {phase === 'done'
+          ? (outcome ?? 'Your payment went through.')
+          : "Just a moment — please don't close this page."}
+      </p>
     </div>
   )
 }

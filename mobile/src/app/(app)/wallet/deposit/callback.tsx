@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/pressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
-import { Fonts, Spacing } from '@/constants/theme';
+import { AlertTriangle, CheckCircle2 } from '@/components/icons';
+import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useVerifyDeposit } from '@/features/wallet/data/paymentsApi';
 import { pendingAction } from '@/features/wallet/data/pendingAction';
@@ -31,6 +33,9 @@ import { useCheckout, useFundDeal } from '@/features/escrow/data/dealsApi';
  * Verifying is safe to repeat — the server credits a reference only once — and
  * the intent is taken rather than read, so a purchase can never run twice.
  */
+/** How long the confirmation stays up before moving on. Matches the crypto callback. */
+const CONFIRMED_PAUSE_MS = 1400;
+
 export default function PaymentCallbackRoute() {
   const theme = useTheme();
   const { reference, trxref } = useLocalSearchParams<{ reference?: string; trxref?: string }>();
@@ -38,6 +43,23 @@ export default function PaymentCallbackRoute() {
   const checkout = useCheckout();
   const fundDeal = useFundDeal();
   const [message, setMessage] = useState<string | null>(null);
+  const [phase, setPhase] = useState<'confirming' | 'done' | 'failed'>('confirming');
+  /** What the payment actually achieved, in the buyer's terms. */
+  const [outcome, setOutcome] = useState<string | null>(null);
+
+  /*
+    A confirmed payment is held on screen briefly before moving on.
+
+    It used to navigate the instant the server answered, so the buyer went from
+    a spinner reading "Confirming your payment…" straight to another screen and
+    was never told the payment had actually gone through. The same beat the
+    crypto callback already uses.
+  */
+  const finish = (to: string, said: string) => {
+    setPhase('done');
+    setOutcome(said);
+    setTimeout(() => router.replace(to as never), CONFIRMED_PAUSE_MS);
+  };
 
   // The provider sends `reference`, sometimes `trxref`; either identifies it.
   const ref = reference ?? trxref;
@@ -49,6 +71,7 @@ export default function PaymentCallbackRoute() {
     started.current = true;
 
     if (!ref) {
+      setPhase('failed');
       setMessage('No payment reference was returned. Check your wallet balance before retrying.');
       return;
     }
@@ -63,6 +86,7 @@ export default function PaymentCallbackRoute() {
       .mutateAsync(ref)
       .then(async (result) => {
         if (!result.credited) {
+          setPhase('failed');
           setMessage(
             "That payment hasn't been confirmed yet. If you were charged it will appear in your wallet shortly.",
           );
@@ -71,7 +95,7 @@ export default function PaymentCallbackRoute() {
 
         // Nothing was pending — a plain top-up. The wallet is the right place.
         if (!intent) {
-          router.replace('/wallet');
+          finish('/wallet', 'Your wallet has been topped up.');
           return;
         }
 
@@ -83,10 +107,10 @@ export default function PaymentCallbackRoute() {
               quantity: intent.quantity,
               paymentMethod: intent.paymentMethod,
             });
-            router.replace(`/escrow/${deal.id}`);
+            finish(`/escrow/${deal.id}`, 'Payment received and your order is now funded in escrow.');
           } else {
             await fundDeal.mutateAsync(intent.escrowId);
-            router.replace(`/escrow/${intent.escrowId}`);
+            finish(`/escrow/${intent.escrowId}`, 'Payment received and the deal is now funded in escrow.');
           }
         } catch {
           /*
@@ -94,14 +118,16 @@ export default function PaymentCallbackRoute() {
             wallet, which is the safe end state — say so plainly rather than
             leaving them on a spinner wondering where it went.
           */
+          setPhase('failed');
           setMessage(
             'Your payment was received and added to your wallet, but the purchase could not be completed. Nothing was lost — open the item and try again.',
           );
         }
       })
-      .catch(() =>
-        setMessage("We couldn't confirm that payment. Check your wallet balance before retrying."),
-      );
+      .catch(() => {
+        setPhase('failed');
+        setMessage("We couldn't confirm that payment. Check your wallet balance before retrying.");
+      });
     // Mutations are stable; re-running this effect would re-verify and re-buy.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref]);
@@ -109,8 +135,34 @@ export default function PaymentCallbackRoute() {
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]}>
       <View style={styles.centre}>
-        {message ? (
-          <Text style={[styles.text, { color: theme.textSecondary }]}>{message}</Text>
+        {phase === 'done' ? (
+          <>
+            <View style={[styles.badge, { backgroundColor: theme.primaryLight }]}>
+              <CheckCircle2 size={26} color={theme.primary} />
+            </View>
+            <Text style={[styles.title, { color: theme.text }]}>Payment confirmed</Text>
+            {outcome ? (
+              <Text style={[styles.text, { color: theme.textSecondary }]}>{outcome}</Text>
+            ) : null}
+          </>
+        ) : phase === 'failed' ? (
+          <>
+            <View style={[styles.badge, { backgroundColor: '#fee2e2' }]}>
+              <AlertTriangle size={26} color="#e11d48" />
+            </View>
+            <Text style={[styles.title, { color: theme.text }]}>Payment not confirmed</Text>
+            <Text style={[styles.text, { color: theme.textSecondary }]}>{message}</Text>
+            <Pressable
+              onPress={() => router.replace('/wallet')}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.button,
+                { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <Text style={styles.buttonText}>Go to wallet</Text>
+            </Pressable>
+          </>
         ) : (
           <>
             <ActivityIndicator color={theme.primary} />
@@ -126,4 +178,13 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.three, padding: Spacing.six },
   text: { fontSize: 13.5, lineHeight: 20, textAlign: 'center', fontFamily: Fonts.sans[500] },
+  title: { fontSize: 18, textAlign: 'center', fontFamily: Fonts.display[700] },
+  badge: { width: 56, height: 56, borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center' },
+  button: {
+    marginTop: Spacing.two,
+    paddingHorizontal: Spacing.five,
+    paddingVertical: Spacing.three,
+    borderRadius: Radius.md,
+  },
+  buttonText: { color: '#ffffff', fontSize: 13, fontFamily: Fonts.sans[700] },
 });

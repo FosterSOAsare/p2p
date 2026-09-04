@@ -37,6 +37,9 @@ type Phase = 'checking' | 'pending' | 'done' | 'failed';
 
 /** How long to keep asking before handing the buyer back to the deal page. */
 const POLL_MS = 5000;
+/** How long the confirmation stays up before moving on. Same beat the fiat
+ *  callback uses, so both rails confirm identically. */
+const CONFIRMED_PAUSE_MS = 1400;
 const MAX_ATTEMPTS = 24; // ~2 minutes
 
 export default function CryptoCallbackRoute() {
@@ -77,7 +80,7 @@ export default function CryptoCallbackRoute() {
         if (result.funded) {
           setPhase('done');
           // Let the confirmation land before moving on.
-          timer = setTimeout(() => router.replace(`/escrow/${id}`), 1200);
+          timer = setTimeout(() => router.replace(`/escrow/${id}`), CONFIRMED_PAUSE_MS);
           return;
         }
         if (result.dead) {
@@ -180,7 +183,7 @@ export default function CryptoCallbackRoute() {
       </Text>
       <Text style={[styles.body, { color: theme.textSecondary }]}>
         {phase === 'done'
-          ? 'The seller has been notified.'
+          ? 'Your deposit was confirmed on-chain. The seller has been notified.'
           : "Checking the Tron network — this can take a minute. Please don't close this screen."}
       </Text>
     </Shell>
