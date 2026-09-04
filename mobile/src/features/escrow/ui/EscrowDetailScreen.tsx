@@ -502,9 +502,17 @@ export function EscrowDetailScreen() {
       pendingAction.save({ kind: 'fund', escrowId: deal.id });
       const outcome = await topUp.run(shortfall, method);
 
+      /*
+        The callback route may have taken the intent while this was waiting —
+        see the same guard in CheckoutScreen. A dismissal there reads as
+        "cancelled" here even when the payment succeeded, and reporting it would
+        contradict a deal the callback has just funded.
+      */
+      if (!pendingAction.peek()) return;
+      // This side owns it either way now.
+      pendingAction.clear();
+
       if (!outcome.ok) {
-        // Abandoned or unconfirmed — drop the intent so nothing acts on it later.
-        pendingAction.clear();
         setFundError(
           outcome.reason === 'cancelled'
             ? 'Payment cancelled — nothing was charged.'
@@ -512,8 +520,6 @@ export function EscrowDetailScreen() {
         );
         return;
       }
-      // Control came back here, so this side owns the intent.
-      pendingAction.clear();
       await fundDeal.mutateAsync(deal.id);
       setFundOpen(false);
     } catch (err) {

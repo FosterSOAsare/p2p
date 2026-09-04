@@ -7,6 +7,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { AlertTriangle, CheckCircle2, Coins } from '@/components/icons';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { landOn } from '@/features/shared/libs/landOn';
 import { apiErrorMessage } from '@/features/shared/data/api';
 import {
   payStatusLabel,
@@ -80,7 +81,7 @@ export default function CryptoCallbackRoute() {
         if (result.funded) {
           setPhase('done');
           // Let the confirmation land before moving on.
-          timer = setTimeout(() => router.replace(`/escrow/${id}`), CONFIRMED_PAUSE_MS);
+          timer = setTimeout(() => landOn(`/escrow/${id}`), CONFIRMED_PAUSE_MS);
           return;
         }
         if (result.dead) {
@@ -110,7 +111,7 @@ export default function CryptoCallbackRoute() {
     };
   }, [id, NP_id]);
 
-  const openDeal = () => router.replace(`/escrow/${id}`);
+  const openDeal = () => landOn(`/escrow/${id}`);
 
   if (phase === 'failed') {
     return (
@@ -122,7 +123,7 @@ export default function CryptoCallbackRoute() {
         <Text style={[styles.body, { color: theme.textSecondary }]}>{error}</Text>
         <View style={styles.actions}>
           <Pressable
-            onPress={() => router.replace('/deals')}
+            onPress={() => landOn('/deals')}
             style={({ pressed }) => [
               styles.secondaryBtn,
               { borderColor: theme.border, opacity: pressed ? 0.85 : 1 },

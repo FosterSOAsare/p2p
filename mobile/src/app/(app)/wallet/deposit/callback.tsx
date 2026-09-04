@@ -9,6 +9,7 @@ import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useVerifyDeposit } from '@/features/wallet/data/paymentsApi';
 import { pendingAction } from '@/features/wallet/data/pendingAction';
+import { landOn } from '@/features/shared/libs/landOn';
 import { useCheckout, useFundDeal } from '@/features/escrow/data/dealsApi';
 
 /**
@@ -58,7 +59,22 @@ export default function PaymentCallbackRoute() {
   const finish = (to: string, said: string) => {
     setPhase('done');
     setOutcome(said);
-    setTimeout(() => router.replace(to as never), CONFIRMED_PAUSE_MS);
+    setTimeout(() => {
+      /*
+        Clear the screens the buyer walked through to get here before landing
+        on the result.
+
+        Replacing only this screen left the checkout underneath it, so Back
+        after a successful purchase returned to the payment sheet — and that
+        sheet, having seen the browser dismissed, was showing "Payment
+        cancelled". Back out of a purchase that worked and the app told you it
+        had failed, which invites paying twice.
+
+        Popping to the root first means Back from the result goes home, which
+        is where someone who has just finished paying expects to end up.
+      */
+      landOn(to);
+    }, CONFIRMED_PAUSE_MS);
   };
 
   // The provider sends `reference`, sometimes `trxref`; either identifies it.
@@ -153,7 +169,7 @@ export default function PaymentCallbackRoute() {
             <Text style={[styles.title, { color: theme.text }]}>Payment not confirmed</Text>
             <Text style={[styles.text, { color: theme.textSecondary }]}>{message}</Text>
             <Pressable
-              onPress={() => router.replace('/wallet')}
+              onPress={() => landOn('/wallet')}
               accessibilityRole="button"
               style={({ pressed }) => [
                 styles.button,

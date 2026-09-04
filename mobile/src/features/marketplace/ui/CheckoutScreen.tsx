@@ -236,9 +236,24 @@ export function CheckoutScreen() {
       pendingAction.save({ kind: 'checkout', listingId: listing.id, quantity, paymentMethod: method });
       const outcome = await topUp.run(shortfall, method);
 
+      /*
+        The callback route may have taken the intent while this was waiting.
+
+        When Android brings the app back on the deep link rather than here, the
+        browser session ends as a dismissal — so `outcome` reads "cancelled"
+        even though the payment succeeded and the callback is completing the
+        purchase. Reporting that would leave a stale "Payment cancelled" on a
+        screen the buyer can still navigate back to, telling them to pay for
+        something they have already bought.
+
+        A missing intent means someone else owns the rest of the flow. Say
+        nothing.
+      */
+      if (!pendingAction.peek()) return;
+      // This side owns it either way now.
+      pendingAction.clear();
+
       if (!outcome.ok) {
-        // Abandoned or unconfirmed — drop the intent so nothing acts on it later.
-        pendingAction.clear();
         setPayError(
           outcome.reason === 'cancelled'
             ? 'Payment cancelled — nothing was charged.'
@@ -246,8 +261,6 @@ export function CheckoutScreen() {
         );
         return;
       }
-      // Control came back here, so this side owns the intent.
-      pendingAction.clear();
       await completeOrder(method);
     } catch (err) {
       setPayError(apiErrorMessage(err));
