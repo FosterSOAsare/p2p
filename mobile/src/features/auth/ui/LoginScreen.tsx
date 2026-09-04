@@ -100,6 +100,19 @@ export function LoginScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                /*
+                  Autofill. Without these the field is anonymous to Android's
+                  autofill service and to password managers, so nothing is ever
+                  offered — which is why signing in meant typing it out every
+                  time.
+
+                  `username` rather than `email`: this field takes either, and
+                  tagging it as an email would hide credentials saved against a
+                  username. `textContentType` is the iOS half of the same thing.
+                */
+                autoComplete="username"
+                textContentType="username"
+                importantForAutofill="yes"
                 value={value}
                 onChangeText={onChange}
                 error={errors.identifier?.message}
@@ -124,6 +137,9 @@ export function LoginScreen() {
                 placeholder="••••••••••••"
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                autoComplete="current-password"
+                textContentType="password"
+                importantForAutofill="yes"
                 value={value}
                 onChangeText={onChange}
                 error={errors.password?.message}

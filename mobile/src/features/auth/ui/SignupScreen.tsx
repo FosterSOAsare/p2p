@@ -185,6 +185,9 @@ export function SignupScreen() {
                 icon={UserCheck}
                 placeholder="Kofi Mensah"
                 autoCapitalize="words"
+                autoComplete="name"
+                textContentType="name"
+                importantForAutofill="yes"
                 value={value}
                 onChangeText={onChange}
                 error={errors.fullName?.message}
@@ -206,6 +209,9 @@ export function SignupScreen() {
                   icon={User}
                   placeholder="kwame_tech"
                   autoCapitalize="none"
+                  autoComplete="username-new"
+                  textContentType="username"
+                  importantForAutofill="yes"
                   autoCorrect={false}
                   value={value}
                   onChangeText={onChange}
@@ -258,6 +264,9 @@ export function SignupScreen() {
                 placeholder="you@example.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoComplete="email"
+                textContentType="emailAddress"
+                importantForAutofill="yes"
                 autoCorrect={false}
                 value={value}
                 onChangeText={onChange}
@@ -280,6 +289,15 @@ export function SignupScreen() {
                 placeholder="••••••••••••"
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                /*
+                  `new-password` is what makes Android offer to generate one
+                  and, on submit, prompt to save the pair. Tagging it as a
+                  current password instead would offer an existing login on a
+                  form whose whole purpose is creating a new one.
+                */
+                autoComplete="new-password"
+                textContentType="newPassword"
+                importantForAutofill="yes"
                 value={value}
                 onChangeText={onChange}
                 error={errors.password?.message}
@@ -302,6 +320,9 @@ export function SignupScreen() {
                 placeholder="••••••••••••"
                 secureTextEntry={!showConfirm}
                 autoCapitalize="none"
+                autoComplete="new-password"
+                textContentType="newPassword"
+                importantForAutofill="yes"
                 value={value}
                 onChangeText={onChange}
                 error={errors.confirmPassword?.message}

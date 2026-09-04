@@ -147,6 +147,7 @@ export function Signup() {
                   <input
                     id="signup-fullname"
                     type="text"
+                    autoComplete="name"
                     {...register('fullName')}
                     placeholder="Kofi Mensah"
                     className={inputClass}
@@ -165,6 +166,7 @@ export function Signup() {
                   <input
                     id="signup-username"
                     type="text"
+                    autoComplete="username"
                     {...register('username')}
                     placeholder="kwame_tech"
                     className={inputClass}
@@ -194,6 +196,7 @@ export function Signup() {
                   <input
                     id="signup-email"
                     type="email"
+                    autoComplete="email"
                     {...register('email')}
                     placeholder="you@example.com"
                     className={inputClass}
@@ -212,6 +215,9 @@ export function Signup() {
                   <input
                     id="signup-password"
                     type={showPassword ? 'text' : 'password'}
+                    // `new-password` prompts the browser to suggest a strong one
+                    // and to offer to save the pair on submit.
+                    autoComplete="new-password"
                     {...register('password')}
                     placeholder="••••••••••••"
                     className={`${inputClass} pr-10`}
@@ -238,6 +244,7 @@ export function Signup() {
                   <input
                     id="signup-confirm-password"
                     type={showConfirmPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
                     {...register('confirmPassword')}
                     placeholder="••••••••••••"
                     className={`${inputClass} pr-10`}

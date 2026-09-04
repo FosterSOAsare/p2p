@@ -142,9 +142,19 @@ export function Login() {
                 </label>
                 <div className="relative">
                   <Mail size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  {/*
+                    `autoComplete` is what lets the browser and password
+                    managers recognise this as the credential pair — without it
+                    nothing is offered and nothing is saved.
+
+                    `username` rather than `email`: the field accepts either, and
+                    tagging it as an email hides credentials saved against a
+                    username.
+                  */}
                   <input
                     id="login-id"
                     type="text"
+                    autoComplete="username"
                     {...register('identifier')}
                     placeholder="kwame_tech or email@example.com"
                     className={inputClass}
@@ -168,6 +178,7 @@ export function Login() {
                   <input
                     id="login-password"
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
                     {...register('password')}
                     placeholder="••••••••••••"
                     className={`${inputClass} pr-10`}
