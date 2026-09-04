@@ -6,6 +6,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Fonts, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useVerifyDeposit } from '@/features/wallet/data/paymentsApi';
+import { pendingAction } from '@/features/wallet/data/pendingAction';
+import { useCheckout, useFundDeal } from '@/features/escrow/data/dealsApi';
 
 /**
  * Return leg from the hosted payment page.
@@ -15,16 +17,26 @@ import { useVerifyDeposit } from '@/features/wallet/data/paymentsApi';
  * payment, which then verifies and carries on — so the whole flow completes
  * without ever routing here.
  *
- * It exists for the cases where the deep link *does* land on the router
- * instead: the app was killed while the payment page was open, or the link was
- * opened from somewhere else entirely. Without this the buyer would arrive on
- * a dead screen having just been charged. Verifying is safe to repeat — the
- * server credits a reference only once.
+ * In practice on Android it IS reached: the `veritrust://` redirect arrives as
+ * an intent, and expo-router matches this route, so the screen that started the
+ * payment never resumes.
+ *
+ * That is why this does more than verify. Crediting the wallet and stopping
+ * there is what produced the worst version of this bug — the money arrived, the
+ * item was never bought, and the buyer was left on the wallet screen with no
+ * explanation. So it also completes whatever the payment was *for*, from the
+ * intent recorded before the browser opened (see `pendingAction`), and lands on
+ * the deal rather than the wallet.
+ *
+ * Verifying is safe to repeat — the server credits a reference only once — and
+ * the intent is taken rather than read, so a purchase can never run twice.
  */
 export default function PaymentCallbackRoute() {
   const theme = useTheme();
   const { reference, trxref } = useLocalSearchParams<{ reference?: string; trxref?: string }>();
   const verify = useVerifyDeposit();
+  const checkout = useCheckout();
+  const fundDeal = useFundDeal();
   const [message, setMessage] = useState<string | null>(null);
 
   // The provider sends `reference`, sometimes `trxref`; either identifies it.
@@ -41,16 +53,58 @@ export default function PaymentCallbackRoute() {
       return;
     }
 
+    /*
+      Taken, not read: whichever side gets control back consumes the intent, so
+      the purchase cannot be made twice if both run.
+    */
+    const intent = pendingAction.take();
+
     verify
       .mutateAsync(ref)
-      .then((result) => {
-        if (result.credited) router.replace('/wallet');
-        else setMessage("That payment hasn't been confirmed yet. If you were charged it will appear in your wallet shortly.");
+      .then(async (result) => {
+        if (!result.credited) {
+          setMessage(
+            "That payment hasn't been confirmed yet. If you were charged it will appear in your wallet shortly.",
+          );
+          return;
+        }
+
+        // Nothing was pending — a plain top-up. The wallet is the right place.
+        if (!intent) {
+          router.replace('/wallet');
+          return;
+        }
+
+        setMessage(null);
+        try {
+          if (intent.kind === 'checkout') {
+            const { deal } = await checkout.mutateAsync({
+              listingId: intent.listingId,
+              quantity: intent.quantity,
+              paymentMethod: intent.paymentMethod,
+            });
+            router.replace(`/escrow/${deal.id}`);
+          } else {
+            await fundDeal.mutateAsync(intent.escrowId);
+            router.replace(`/escrow/${intent.escrowId}`);
+          }
+        } catch {
+          /*
+            The charge landed but the purchase did not. The money is in the
+            wallet, which is the safe end state — say so plainly rather than
+            leaving them on a spinner wondering where it went.
+          */
+          setMessage(
+            'Your payment was received and added to your wallet, but the purchase could not be completed. Nothing was lost — open the item and try again.',
+          );
+        }
       })
       .catch(() =>
         setMessage("We couldn't confirm that payment. Check your wallet balance before retrying."),
       );
-  }, [ref, verify]);
+    // Mutations are stable; re-running this effect would re-verify and re-buy.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ref]);
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: theme.background }]}>

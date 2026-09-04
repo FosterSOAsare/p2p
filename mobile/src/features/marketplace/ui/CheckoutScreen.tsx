@@ -18,6 +18,7 @@ import { Fonts, ReadingWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { apiErrorMessage } from '@/features/shared/data/api';
+import { pendingAction } from '@/features/wallet/data/pendingAction';
 import { useListing } from '@/features/listings/data/listingsApi';
 import { useCheckout } from '@/features/escrow/data/dealsApi';
 import { useWallet } from '@/features/wallet/data/walletApi';
@@ -188,6 +189,7 @@ export function CheckoutScreen() {
     try {
       await completeOrder('wallet');
     } catch (err) {
+      pendingAction.clear();
       setPayError(apiErrorMessage(err));
     } finally {
       placing.current = false;
@@ -223,9 +225,20 @@ export function CheckoutScreen() {
         await completeOrder('wallet');
         return;
       }
+      /*
+        Write down what this payment is for before handing off to the browser.
+
+        The return deep link is a router route, so Android may bring the app
+        back on the callback screen rather than here — see `pendingAction`. If
+        that happens this function never resumes, and the callback completes
+        the purchase instead.
+      */
+      pendingAction.save({ kind: 'checkout', listingId: listing.id, quantity, paymentMethod: method });
       const outcome = await topUp.run(shortfall, method);
 
       if (!outcome.ok) {
+        // Abandoned or unconfirmed — drop the intent so nothing acts on it later.
+        pendingAction.clear();
         setPayError(
           outcome.reason === 'cancelled'
             ? 'Payment cancelled — nothing was charged.'
@@ -233,6 +246,8 @@ export function CheckoutScreen() {
         );
         return;
       }
+      // Control came back here, so this side owns the intent.
+      pendingAction.clear();
       await completeOrder(method);
     } catch (err) {
       setPayError(apiErrorMessage(err));

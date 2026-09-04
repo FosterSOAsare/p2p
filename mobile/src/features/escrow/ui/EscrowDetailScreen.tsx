@@ -41,6 +41,7 @@ import {
   useEnsureVisible,
 } from '@/features/shared/ui/KeyboardAwareScroll';
 import { ConfirmDialog } from '@/features/shared/ui/ConfirmDialog';
+import { pendingAction } from '@/features/wallet/data/pendingAction';
 import { useCheckCryptoDeposit, useCryptoDeposit, useStartCryptoDeposit } from '../data/cryptoApi';
 import { CryptoDepositPanel } from './CryptoDepositPanel';
 import { statusBadge, TONE_COLORS, type DealStatus } from './dealStatus';
@@ -493,9 +494,17 @@ export function EscrowDetailScreen() {
         setFundOpen(false);
         return;
       }
+      /*
+        Write down what this payment is for before handing off to the browser —
+        the return deep link is a router route, so the app may come back on the
+        callback screen rather than here. See `pendingAction`.
+      */
+      pendingAction.save({ kind: 'fund', escrowId: deal.id });
       const outcome = await topUp.run(shortfall, method);
 
       if (!outcome.ok) {
+        // Abandoned or unconfirmed — drop the intent so nothing acts on it later.
+        pendingAction.clear();
         setFundError(
           outcome.reason === 'cancelled'
             ? 'Payment cancelled — nothing was charged.'
@@ -503,6 +512,8 @@ export function EscrowDetailScreen() {
         );
         return;
       }
+      // Control came back here, so this side owns the intent.
+      pendingAction.clear();
       await fundDeal.mutateAsync(deal.id);
       setFundOpen(false);
     } catch (err) {
