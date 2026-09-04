@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest16495162037709771365.xml:2:13-83
+INJECTED from /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest16495162037709771365.xml:2:13-83
+	package
+		INJECTED from /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest16495162037709771365.xml
+	xmlns:android
+		ADDED from /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest16495162037709771365.xml:2:23-81
+uses-sdk
+INJECTED from /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest16495162037709771365.xml reason: use-sdk injection requested
+INJECTED from /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest16495162037709771365.xml
+INJECTED from /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest16495162037709771365.xml
+	android:targetSdkVersion
+		INJECTED from /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest16495162037709771365.xml
+	android:minSdkVersion
+		INJECTED from /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/tmp/ProcessLibraryManifest/release/tempAndroidManifest16495162037709771365.xml

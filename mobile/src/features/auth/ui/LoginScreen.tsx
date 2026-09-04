@@ -12,6 +12,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
 import { apiErrorMessage } from '@/features/shared/data/api';
+import { cancelAutofill, commitAutofill } from '@/modules/autofill-commit';
 import { loginSchema, type LoginForm } from '../data/schemas';
 import { AuthField } from './AuthField';
 
@@ -52,7 +53,16 @@ export function LoginScreen() {
     setLoginError(null);
     try {
       await login(values.identifier, values.password);
+      /*
+        Tell Android the form was submitted, so it can offer to save the
+        password. Synchronous and before the guard swaps groups: the fields have
+        to still be mounted for the session to mean anything.
+      */
+      commitAutofill();
     } catch (err) {
+      // Drop the session instead — a rejected password must not be left around
+      // to be offered for saving later.
+      cancelAutofill();
       // Wrong credentials, unverified email, suspended account — the server's
       // own wording, rather than a generic failure.
       setLoginError(apiErrorMessage(err));

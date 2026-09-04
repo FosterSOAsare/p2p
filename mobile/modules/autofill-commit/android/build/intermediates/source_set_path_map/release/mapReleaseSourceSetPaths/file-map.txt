@@ -1,0 +1,7 @@
+expo.modules.autofillcommit.autofill-commit-pngs-0 /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/generated/res/pngs/release
+expo.modules.autofillcommit.autofill-commit-resValues-1 /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/generated/res/resValues/release
+expo.modules.autofillcommit.autofill-commit-mergeReleaseResources-2 /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/incremental/release/mergeReleaseResources/merged.dir
+expo.modules.autofillcommit.autofill-commit-mergeReleaseResources-3 /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/incremental/release/mergeReleaseResources/stripped.dir
+expo.modules.autofillcommit.autofill-commit-release-4 /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/build/intermediates/merged_res/release/mergeReleaseResources
+expo.modules.autofillcommit.autofill-commit-main-5 /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/src/main/res
+expo.modules.autofillcommit.autofill-commit-release-6 /home/templar/Documents/Lecture notes/year 3/Sem 2/Mini Project/p2p/mobile/modules/autofill-commit/android/src/release/res

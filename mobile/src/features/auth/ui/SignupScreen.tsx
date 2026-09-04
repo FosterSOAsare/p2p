@@ -22,6 +22,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/context/AuthContext';
 import { KeyboardAwareScroll } from '@/features/shared/ui/KeyboardAwareScroll';
 import { apiErrorMessage } from '@/features/shared/data/api';
+import { cancelAutofill, commitAutofill } from '@/modules/autofill-commit';
 import { signupSchema, type SignupForm } from '../data/schemas';
 import { useSignup, useUsernameAvailable, USERNAME_RE } from '../data/authApi';
 import { AuthField } from './AuthField';
@@ -121,7 +122,15 @@ export function SignupScreen() {
         email: values.email,
         password: values.password,
       });
+      /*
+        Tell Android the form was submitted, so it can offer to save the new
+        password. Synchronous and before navigating to /verify-email: the fields
+        have to still be mounted for the session to mean anything.
+      */
+      commitAutofill();
     } catch {
+      // Drop the session — nothing was created, so there is nothing to save.
+      cancelAutofill();
       // Rendered from `signupMutation.error` below — rethrowing here would
       // only surface as an unhandled rejection.
       return;
