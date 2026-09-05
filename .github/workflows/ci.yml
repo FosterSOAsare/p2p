@@ -1,0 +1,80 @@
+name: CI
+
+# NOTE: automatic triggers are intentionally disabled.
+#
+# GitHub Actions is currently locked on the repository owner's account due to a
+# billing issue, so scheduled/PR jobs cannot start and would show every pull
+# request as "failed" (the jobs never actually run). The workflow below is
+# correct and ready — once Actions is available again (the account owner lifts
+# the billing lock in GitHub → Settings → Billing), re-enable CI on pushes and
+# pull requests by replacing the `on:` block below with:
+#
+#   on:
+#     push:
+#       branches: [main]
+#     pull_request:
+#       branches: [main]
+#
+# Until then it can be run manually from the Actions tab ("Run workflow").
+on:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: server · typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    env:
+      # prisma generate reads config but does not connect; dummy values are fine.
+      DATABASE_URL: postgresql://user:pass@localhost:5432/db
+      DIRECT_URL: postgresql://user:pass@localhost:5432/db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run typecheck
+
+  web:
+    name: web · build & lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+
+  mobile:
+    name: mobile · lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npm run lint

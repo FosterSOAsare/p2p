@@ -1,56 +1,110 @@
-# Welcome to your Expo app 👋
+# VeriTrust — Mobile App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+The **Expo (React Native)** client for VeriTrust — the P2P Marketplace & Escrow
+project (Group 2, KNUST). It talks to the same [API server](../server) as the
+[web client](../web): buyers browse and buy, sellers list and fulfil, and both
+sides run deals through a 6-state escrow (`created → funded → delivered →
+disbursed | disputed | cancelled`).
 
-## Get started
+> Fiat (GHS) payments are **simulated**; the TRX crypto rail is **testnet-only**
+> and partly in progress. See [../FLOWS.md](../FLOWS.md) for every flow and
+> [../README.md](../README.md) for the whole project.
 
-1. Install dependencies
+## Tech stack
 
-   ```bash
-   npm install
-   ```
+| Concern | Choice |
+| --- | --- |
+| Framework | Expo SDK **54** · React Native 0.81 · React 19.1 |
+| Routing | Expo Router (file-based, under `src/app/`) |
+| Server state | TanStack Query 5 (shared fetch client, transparent token refresh) |
+| Forms | React Hook Form + Zod |
+| Realtime | socket.io-client (chat + live deal notices) |
+| Secure storage | `expo-secure-store` (JWT access + refresh tokens) |
+| Media | `expo-image`, `expo-image-picker`, `expo-document-picker` (→ Cloudinary) |
+| Icons / fonts | `lucide-react-native` · Manrope + Space Grotesk (Google Fonts) |
 
-2. Start the app
+## Prerequisites
 
-   ```bash
-   npx expo start
-   ```
+- **Node.js 20 LTS+** and npm
+- The **[Expo Go](https://expo.dev/go)** app on a physical device, or an
+  Android/iOS emulator/simulator
+- The **[API server](../server) running** on the same WiFi (default port `8000`)
 
-In the output, you'll find options to open the app in a
+> ⚠️ **Expo SDK 54.** Read the exact versioned docs at
+> <https://docs.expo.dev/versions/v54.0.0/> before using any Expo API — several
+> APIs differ from newer SDKs (see [AGENTS.md](AGENTS.md)).
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Setup
 
 ```bash
-npm run reset-project
+cd mobile
+npm install
+npx expo start        # scan the QR with Expo Go, or press: a (Android) · i (iOS) · w (web)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+| Script | What it does |
+| --- | --- |
+| `npm start` / `npx expo start` | Start the Expo dev server |
+| `npm run android` | Open on an Android device/emulator |
+| `npm run ios` | Open on an iOS simulator |
+| `npm run web` | Run the app in a browser (react-native-web) |
+| `npm run lint` | `expo lint` |
 
-### Other setup steps
+## Connecting to the API
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+The API base URL is resolved in
+[`src/features/shared/data/config.ts`](src/features/shared/data/config.ts):
 
-## Learn more
+1. If `EXPO_PUBLIC_API_URL` is set, it wins (use this to target a **deployed**
+   backend, e.g. the Render URL).
+2. Otherwise the app derives the host from the machine serving the Expo bundle
+   (`Constants.expoConfig.hostUri`, e.g. `192.168.x.x:8081`) and points at that
+   host on **port 8000** — so a phone on the same WiFi reaches the dev API with
+   no configuration.
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+# Target a deployed API instead of the local machine:
+EXPO_PUBLIC_API_URL=https://p2p-api-xxxx.onrender.com npx expo start
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Project structure
 
-## Join the community
+File-based routing (Expo Router) with feature-sliced business code.
 
-Join our community of developers creating universal apps.
+```
+mobile/
+├── app.json                 # Expo config (SDK 54)
+├── src/
+│   ├── app/                 # ROUTES (Expo Router)
+│   │   ├── (public)/        # unauthenticated screens (auth, landing)
+│   │   ├── (app)/           # authenticated app (tabs, deals, wallet, admin…)
+│   │   └── join/            # join-a-deal-by-code screens
+│   ├── features/            # marketplace, escrow, wallet, messages, seller,
+│   │                        #   user, admin, dashboard, notifications, auth, upload…
+│   ├── components/          # shared UI (ui/) and brand assets (brand/)
+│   ├── context/             # app-wide providers (auth, theme, query…)
+│   ├── constants/           # theme tokens, config constants
+│   ├── hooks/               # reusable hooks
+│   └── types/               # shared types
+├── assets/                  # icons, splash, fonts
+└── android/                 # native Android project (generated; build output gitignored)
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Deep links & payment returns
+
+The app registers a URL scheme (see `app.json`) so external payment providers can
+return the buyer to the right screen after paying — the flow that used to strand
+a buyer behind a completed Paystack/NOWPayments payment now lands them back on the
+deal. Deals are also joinable by share code via the `join/` routes.
+
+## Theme
+
+A persistent light/dark theme toggle is provided via the app's theme context and
+survives restarts.
+
+## Status
+
+Auth, marketplace, checkout, the deal lifecycle (deliver → release → review),
+wallet, messaging, and the admin views are wired to the real API and share the
+web client's behaviour. Remaining gaps track the project roadmap in
+[../NEXT-STEPS.md](../NEXT-STEPS.md).

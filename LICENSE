@@ -1,0 +1,49 @@
+VeriTrust — P2P Marketplace & Escrow Engine
+Academic Project License (All Rights Reserved)
+
+Copyright (c) 2026 Asenso Owusu Ansah, Foster Solomon Owusu Asare, and
+Frederick Baah ("the Authors").
+
+Group 2, Department of Computer Science,
+Kwame Nkrumah University of Science and Technology (KNUST), Ghana.
+
+-------------------------------------------------------------------------------
+
+This software and its accompanying documentation (the "Work") were produced as
+academic coursework — the Group 2 mini-project — and are made available
+publicly for reference, evaluation, and demonstration only.
+
+ALL RIGHTS ARE RESERVED BY THE AUTHORS.
+
+You MAY, without prior permission:
+  - view and read the source code and documentation;
+  - clone the repository and run the Work locally for personal study,
+    evaluation, or academic assessment.
+
+You MAY NOT, without the prior written permission of the Authors:
+  - copy, reproduce, or redistribute the Work, in whole or in part;
+  - modify the Work or create derivative works from it;
+  - use the Work, or any substantial part of it, in any submitted academic
+    assessment, publication, product, or service;
+  - use the Work for any commercial purpose.
+
+Submitting this Work, or any part of it, as your own academic work constitutes
+plagiarism and academic misconduct.
+
+Third-party dependencies included or referenced by the Work remain the property
+of their respective owners and are governed by their own licenses.
+
+THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS BE LIABLE
+FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE WORK OR THE
+USE OR OTHER DEALINGS IN THE WORK.
+
+The Work is a demonstration system. Fiat payments are simulated and no real
+funds are transmitted; the crypto rail is testnet-only. The Work is not a
+licensed financial service and must not be used to handle real money or as a
+substitute for a regulated escrow or payment provider.
+
+For permissions beyond the scope of this license, contact the Authors via the
+project repository: https://github.com/FosterSOAsare/p2p
