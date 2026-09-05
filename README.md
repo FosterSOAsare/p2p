@@ -377,7 +377,7 @@ Group 2 — Department of Computer Science, KNUST.
 | --- | --- |
 | Asenso Owusu Ansah | [@holmes1560](https://github.com/holmes1560) |
 | Foster Solomon Owusu Asare | [@FosterSOAsare](https://github.com/FosterSOAsare) |
-| Frederick Baah | [@Bigfredo270](https://github.com/Bigfredo270) |
+| Frederick Baah | [@BaahFredrick270](https://github.com/BaahFredrick270) |
 
 ---
 
