@@ -1,10 +1,23 @@
 name: CI
 
+# NOTE: automatic triggers are intentionally disabled.
+#
+# GitHub Actions is currently locked on the repository owner's account due to a
+# billing issue, so scheduled/PR jobs cannot start and would show every pull
+# request as "failed" (the jobs never actually run). The workflow below is
+# correct and ready — once Actions is available again (the account owner lifts
+# the billing lock in GitHub → Settings → Billing), re-enable CI on pushes and
+# pull requests by replacing the `on:` block below with:
+#
+#   on:
+#     push:
+#       branches: [main]
+#     pull_request:
+#       branches: [main]
+#
+# Until then it can be run manually from the Actions tab ("Run workflow").
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
 concurrency:

@@ -22,6 +22,7 @@ Buyers pay into escrow, sellers ship, and money is only released when the buyer 
 
 - [What is VeriTrust?](#what-is-veritrust)
 - [Academic context & scope disclaimer](#academic-context--scope-disclaimer)
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Tech stack](#tech-stack)
 - [System architecture](#system-architecture)
@@ -67,6 +68,28 @@ VeriTrust is the **Group 2 mini‑project** for the BSc Computer Science program
 > - **The crypto rail (TRX on the TRON Shasta testnet, via NOWPayments sandbox) is the only rail wired to move "real" value**, and it is **testnet only** — never mainnet.
 > - **Email/SMS are simulated to the server console** by default (an SMTP driver can be switched on).
 > - Because no real value settles, VeriTrust deliberately does **not** implement the licensing, AML/KYC depth, or custody controls a live money‑transmitting service in Ghana would legally require. Testnet‑only crypto is a conscious compliance boundary, not an oversight.
+
+---
+
+## Screenshots
+
+> The live **web client**, captured against seeded demo data. Amounts shown are simulated GH₵.
+
+<table>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/home.png" alt="VeriTrust landing page with a live escrow simulator" /></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/marketplace.png" alt="Marketplace browse with filters and listing grid" /><br/><sub><b>Marketplace</b> — search, filter and browse listings</sub></td>
+    <td width="50%"><img src="docs/screenshots/listing-detail.png" alt="Listing detail with escrow purchase panel" /><br/><sub><b>Listing detail</b> — buy into escrow, message the seller</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/login.png" alt="Sign-in screen" /><br/><sub><b>Authentication</b> — sign in by email or username</sub></td>
+    <td width="50%" align="center"><img src="docs/screenshots/mobile-marketplace.png" alt="Marketplace at phone width" width="230" /><br/><sub><b>Responsive</b> — the web client at phone width</sub></td>
+  </tr>
+</table>
+
+> The [mobile app](mobile/) (Expo / React Native) mirrors these flows natively on iOS and Android.
 
 ---
 
@@ -310,6 +333,7 @@ The API ships with a [`render.yaml`](render.yaml) blueprint (region pinned, heal
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System, request/auth pipeline, escrow state machine, money ledger, data model |
 | [FLOWS.md](FLOWS.md) | Every end‑to‑end flow with endpoints, states, and ✅/⚠️/⛔ status |
 | [DEPLOY.md](DEPLOY.md) | Production deployment runbook (Neon + Render + Vercel) |
+| [CHANGELOG.md](CHANGELOG.md) | Notable changes, grouped, plus a milestone timeline |
 | [server/README.md](server/README.md) | API server — setup, structure, data model, endpoints, conventions |
 | [web/README.md](web/README.md) | Web client — setup, architecture, routes, SEO |
 | [mobile/README.md](mobile/README.md) | Mobile app — setup, structure, API wiring, deep links |
